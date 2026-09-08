@@ -1,0 +1,24 @@
+'use client';
+
+import Link from 'next/link';
+import { use } from 'react';
+import { ProjectDatabase } from '../../../components/ProjectDatabase';
+import { TokenBar } from '../../../components/ProjectForms';
+
+export default function ProjectDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): React.JSX.Element {
+  const { id } = use(params);
+  return (
+    <section aria-labelledby="project-title">
+      <p>
+        <Link href="/projects">← Projects</Link>
+      </p>
+      <h1 id="project-title">Project database</h1>
+      <TokenBar onChange={() => undefined} />
+      <ProjectDatabase projectId={id} />
+    </section>
+  );
+}

@@ -99,6 +99,39 @@ export function toPublicError(
       },
     };
   }
+  // Structural mapping for domain errors (auth/tenant) without hard deps:
+  // ApiError-like { code, status }, tenant { code: 'TENANT_FORBIDDEN' },
+  // AuthError (name) → 401. Prevents auth failures surfacing as 500s.
+  if (typeof err === 'object' && err !== null) {
+    const code = (err as { code?: unknown }).code;
+    const status = (err as { status?: unknown }).status;
+    const name = (err as { name?: unknown }).name;
+    if (typeof code === 'string' && typeof status === 'number') {
+      return {
+        status,
+        body: {
+          error: {
+            code,
+            message: status >= 500 ? 'Internal server error' : (err as Error).message,
+            requestId,
+          },
+        },
+      };
+    }
+    if (code === 'TENANT_FORBIDDEN') {
+      return {
+        status: 403,
+        body: { error: { code: 'TENANT_FORBIDDEN', message: 'Access denied', requestId } },
+      };
+    }
+    if (name === 'AuthError' && typeof code === 'string') {
+      const badInput = code.startsWith('WEAK_');
+      return {
+        status: badInput ? 400 : 401,
+        body: { error: { code, message: (err as Error).message, requestId } },
+      };
+    }
+  }
   return fail('INTERNAL', 'Internal server error', requestId, undefined, 500);
 }
 

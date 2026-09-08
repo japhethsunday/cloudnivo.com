@@ -1,4 +1,4 @@
-# CloudNivo API architecture (Phase 1)
+# CloudNivo API architecture (Phase 2)
 
 Base path: **`/api/v1`** (dashboard BFF + standalone `apps/api` share it).
 
@@ -11,8 +11,10 @@ Base path: **`/api/v1`** (dashboard BFF + standalone `apps/api` share it).
 { "error": { "code": "VALIDATION_ERROR", "message": "Invalid request", "requestId": "…", "details": [...] } }
 ```
 
-Status mapping: `400` validation, `401` auth, `403` tenant/RBAC, `404` unknown,
-`409` conflicts, `429` rate-limited, `500` internal (message redacted).
+Status mapping: `400` validation, `401` auth, `403` tenant/RBAC/limits,
+`404` unknown, `409` conflicts, `429` rate-limited, `500` internal (message
+redacted), `502` infrastructure operation failure (detail logged, not returned),
+`503` infrastructure unavailable (Docker unreachable — retry later).
 
 ## Cross-cutting behavior
 
@@ -24,13 +26,28 @@ Status mapping: `400` validation, `401` auth, `403` tenant/RBAC, `404` unknown,
 - `toPublicError()` guarantees no stack/credential leak in 5xx.
 - Structured logs with `requestId`, redacted fields.
 
-## Endpoints (Phase 1)
+## Endpoints (Phase 2)
 
-| Method | Path               | Auth   | Description                                                                   |
-| ------ | ------------------ | ------ | ----------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/health`   | no     | liveness + version envelope                                                   |
-| `GET`  | `/api/v1/projects` | Bearer | tenant-scoped stub (empty list; DB in Phase 2)                                |
-| `POST` | `/api/v1/projects` | Bearer | validates `{ name, slug, organizationId }`, echoes `201` (no persistence yet) |
+| Method   | Path                                       | Auth   | Description                                              |
+| -------- | ------------------------------------------ | ------ | -------------------------------------------------------- |
+| `GET`    | `/api/v1/health`                           | no     | liveness + version envelope                              |
+| `GET`    | `/api/v1/organizations`                    | Bearer | caller's orgs                                            |
+| `POST`   | `/api/v1/organizations`                    | Bearer | create org (caller becomes owner)                        |
+| `GET`    | `/api/v1/projects`                         | Bearer | tenant-scoped list with live database state              |
+| `POST`   | `/api/v1/projects`                         | Bearer | create + enqueue provisioning → `202 { project, jobId }` |
+| `GET`    | `/api/v1/projects/:id`                     | Bearer | project + database record + latest job                   |
+| `DELETE` | `/api/v1/projects/:id`                     | Bearer | delete infra (container + volume) then metadata          |
+| `GET`    | `/api/v1/projects/:id/database`            | Bearer | overview with REAL live status/health                    |
+| `GET`    | `/api/v1/projects/:id/database/connection` | Bearer | masked by default; `?reveal=true` audited full access    |
+| `POST`   | `/api/v1/projects/:id/database/actions`    | Bearer | `{ action: start\|stop\|restart }`                       |
+| `GET`    | `/api/v1/projects/:id/database/schema`     | Bearer | tables, columns, PKs, FKs, indexes                       |
+| `POST`   | `/api/v1/projects/:id/database/query`      | Bearer | guarded single-statement SQL + duration                  |
+| `GET`    | `/api/v1/projects/:id/database/metrics`    | Bearer | version, size, connection count                          |
+| `GET`    | `/api/v1/projects/:id/jobs` (+ `/:jobId`)  | Bearer | provisioning/operation jobs + logs                       |
+
+`POST /projects` honors `Idempotency-Key` (opaque, same-org): repeats return
+the live job without creating duplicates. Provisioning runs as a background
+job — poll `jobs/:jobId` until `completed`, then read `database`.
 
 ## Auth
 

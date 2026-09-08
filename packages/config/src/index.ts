@@ -44,6 +44,19 @@ const EnvSchema = z.object({
   STORAGE_LOCAL_DIR: z.string().default('./.data/storage'),
 
   REALTIME_DRIVER: z.enum(['memory', 'redis']).default('memory'),
+
+  // ── Provisioning (Phase 2: local Docker database engine) ──
+  PROVISION_DRIVER: z.enum(['docker', 'fake']).default('docker'),
+  POSTGRES_IMAGE: z.string().default('postgres:16-alpine'),
+  PROVISION_BASE_PORT: z.coerce.number().int().min(1024).max(60000).default(15432),
+  PROVISION_NETWORK: z.string().default('cloudnivo'),
+  PROVISION_MAX_DATABASES: z.coerce.number().int().min(1).max(1000).default(20),
+  PROVISION_MAX_DB_SIZE_MB: z.coerce.number().int().min(10).max(100_000).default(1024),
+  PROVISION_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(500).default(50),
+  PROVISION_MAX_SQL_MS: z.coerce.number().int().min(500).max(300_000).default(15_000),
+  PROVISION_MAX_SQL_ROWS: z.coerce.number().int().min(10).max(10_000).default(500),
+  PROVISION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  PROVISION_HEALTH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(60_000),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

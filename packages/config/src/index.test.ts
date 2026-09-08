@@ -44,4 +44,19 @@ describe('loadConfig', () => {
     } as NodeJS.ProcessEnv);
     expect(cfg.corsOrigins).toEqual(['https://a.example', 'https://b.example']);
   });
+
+  it('provides safe provisioning defaults (resource limits)', () => {
+    const cfg = loadConfig({ ...base } as NodeJS.ProcessEnv);
+    expect(cfg.PROVISION_DRIVER).toBe('docker');
+    expect(cfg.PROVISION_MAX_DATABASES).toBe(20);
+    expect(cfg.PROVISION_MAX_SQL_MS).toBe(15_000);
+    expect(cfg.PROVISION_MAX_SQL_ROWS).toBe(500);
+    expect(cfg.PROVISION_BASE_PORT).toBe(15432);
+  });
+
+  it('rejects out-of-range provisioning limits', () => {
+    expect(() =>
+      loadConfig({ ...base, PROVISION_MAX_DATABASES: '0' } as NodeJS.ProcessEnv),
+    ).toThrow(ConfigError);
+  });
 });

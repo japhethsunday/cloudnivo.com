@@ -1,10 +1,10 @@
-# CloudNivo security model (Phase 1)
+# CloudNivo security model (Phase 2)
 
 ## Threat model
 
 Untrusted browser clients, multi-tenant data, long-lived secrets (JWT, API keys,
-`DATABASE_URL`). The foundation assumes the network is hostile and the client
-is lying.
+`DATABASE_URL`, per-project DB passwords). The platform assumes the network is
+hostile and the client is lying — now including infrastructure operations.
 
 ## Boundaries
 
@@ -26,6 +26,26 @@ is lying.
   Stored form is `{ keyPrefix, keyHash: sha256 }`. Passwords are
   `scrypt:salt:hash`. `DATABASE_URL`/tokens are redacted in logs and never
   echoed in `ConfigError` or 5xx responses.
+- **Database credentials (Phase 2):** per-project passwords are generated
+  server-side (`crypto.randomBytes`) or validated (12–128 chars), stored in
+  `database_credentials`, masked (`••••••••`) in every API response, revealed
+  only to org members via an audited endpoint. Error redaction strips
+  credential-shaped substrings from driver messages. Known local-dev tradeoff:
+  the password travels via `docker -e` at container create (briefly visible in
+  the host process list); cloud providers later will use secret mounts.
+- **Command injection:** no shell is ever spawned for infrastructure. Docker runs
+  through `execFile` argv with allow-listed identifiers (`validation.ts`:
+  slugs, container names, pg idents, image versions). Unsanitized input cannot
+  reach a process API.
+- **SQL injection:** the SQL editor executes exactly one statement per call
+  (multi-statements rejected), under `statement_timeout`, with SELECT row caps.
+  Schema/metrics use parameterized `postgres.js` tagged templates only.
+- **Cross-project/org access:** every database route resolves the org from the
+  stored project row (`mustOwnProject`) and asserts membership; job lookups are
+  re-scoped to the project; idempotency dedup verifies membership before
+  returning a peer job (no cross-org oracle).
+- **Destructive actions:** start/stop/restart/delete require membership and are
+  audit-logged; delete removes the container AND its volume AND metadata.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,
@@ -40,8 +60,10 @@ is lying.
 - **Headers/IDs:** every response carries `X-Request-Id` (client-supplied only
   if well-formed, else `randomUUID()`); logs join on it without PII.
 
-## What Phase 1 does NOT yet do
+## What Phase 2 does NOT yet do
 
-Row-Level Security (RLS) policies, key rotation, OAuth, WebSocket auth, or
-per-project network isolation — all scheduled after the control-plane
-persistence lands (see `roadmap.md`). The interfaces already reserve space.
+Row-Level Security (RLS) policies, KMS envelope encryption for stored DB
+passwords, key rotation, OAuth, WebSocket auth, or per-project network
+isolation — tracked in `roadmap.md`. Audit coverage for provisioning events
+(`project.created` … `database.query.executed`) is implemented; review the
+audit store before relying on it for compliance.

@@ -38,6 +38,20 @@ describe('api-core', () => {
     expect(JSON.stringify(body)).not.toContain('postgres://');
   });
 
+  it('maps domain errors to real statuses (not 500s)', () => {
+    const tenant = Object.assign(new Error('Access denied for this organization'), {
+      code: 'TENANT_FORBIDDEN',
+    });
+    expect(toPublicError(tenant, 'r2').status).toBe(403);
+    const auth = Object.assign(new Error('Invalid or expired session'), {
+      name: 'AuthError',
+      code: 'INVALID_SESSION',
+    });
+    const mapped = toPublicError(auth, 'r3');
+    expect(mapped.status).toBe(401);
+    expect(mapped.body.error.code).toBe('INVALID_SESSION');
+  });
+
   it('emits secure defaults + strict CORS', () => {
     expect(securityHeaders()['X-Frame-Options']).toBe('DENY');
     expect(

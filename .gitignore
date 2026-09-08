@@ -34,7 +34,3 @@ test-results/
 
 # Vercel
 .vercel
-
-# Drizzle
-drizzle/*.sql
-!drizzle/meta/**

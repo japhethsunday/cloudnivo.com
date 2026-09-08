@@ -1,10 +1,14 @@
-# CloudNivo database architecture (Phase 1)
+# CloudNivo database architecture (Phase 2)
 
 ## Engine
 
 PostgreSQL 16 (Docker locally, managed Postgres later). Access only via
 `DatabaseService` (`packages/database/src/service.ts`) — Drizzle ORM +
 `postgres` driver are implementation details.
+
+Two strictly separated planes: the **control database** (platform metadata)
+and **project databases** (one Postgres per project, customer data). Never mix
+them — see below.
 
 ## Control-plane tables
 
@@ -18,6 +22,43 @@ PostgreSQL 16 (Docker locally, managed Postgres later). Access only via
 | `api_keys`                                   | `{ prefix, sha256 hash, scopes[] }`, never raw | via project     |
 | `roles` / `permissions` / `role_permissions` | static RBAC catalog                            | global          |
 | `audit_logs`                                 | append-only, org-scoped, redacted metadata     | org-scoped      |
+
+## Phase 2 metadata tables (control plane)
+
+| Table                      | Purpose                                                | Tenancy                       |
+| -------------------------- | ------------------------------------------------------ | ----------------------------- |
+| `project_databases`        | one row per provisioned DB (handle, host/port, status) | org-scoped (+ project unique) |
+| `database_credentials`     | server-side user/password (access-checked + audited)   | org-scoped                    |
+| `infrastructure_instances` | provider records (container id, status)                | via database                  |
+| `provisioning_jobs`        | async ops, idempotency keys, attempts, logs            | org-scoped                    |
+
+`organization_memberships` already covers `project_members` semantics — no
+duplicate table. Passwords stay out of logs and API payloads (masked by
+default, explicit audited reveal only). Phase 3 adds KMS envelope encryption
+for `database_credentials.db_password`.
+
+## Database lifecycle
+
+`creating → ready → running ⇄ stopped → restarting → ready`, plus `failed`,
+`deleting → deleted` (`lifecycle.ts`, transition-guarded). Steady states are
+`ready/running/stopped`. Live health (`healthy/unhealthy/starting/unavailable`)
+comes from real `select 1` probes (`project-db.ts`), overlaid on the stored
+lifecycle status by the API on every read.
+
+## Customer access layer (`project-db.ts`)
+
+- `checkProjectDbHealth()` — refused/unreachable → `unavailable`, auth errors → `unhealthy`.
+- `executeProjectSql()` — single statement only, `statement_timeout`, SELECT
+  row-capping, bounded length. Writes execute exactly once.
+- `inspectProjectSchema()` — tables, columns, PKs, FKs, indexes from
+  `information_schema`/`pg_catalog`.
+- `getProjectDbMetrics()` — `version()`, `pg_database_size`, `pg_stat_activity`.
+
+## Provisioning jobs
+
+`pending → running → completed`, with `retrying`/`failed`. Idempotency keys are
+unique per org (double submits collapse); retries apply only to recoverable
+provider errors within `PROVISION_MAX_ATTEMPTS`, with capped backoff.
 
 ## Multi-tenancy rules
 

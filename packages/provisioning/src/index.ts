@@ -75,3 +75,13 @@ export class LocalProvisioningService implements ProvisioningService {
 export function createProvisioningService(): ProvisioningService {
   return new LocalProvisioningService();
 }
+
+// ── Phase 2: database provisioning engine ─────────────────────────────
+// Phase 1 exports above are unchanged. New modules extend (never duplicate).
+
+export * from './provisioner.js';
+export * from './validation.js';
+export * from './fake.js';
+export * from './docker-provider.js';
+export * from './jobs.js';
+export * from './orchestrator.js';

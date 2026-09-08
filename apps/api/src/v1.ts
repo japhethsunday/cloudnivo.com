@@ -1,12 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import {
   ApiError,
   checkRateLimit,
   corsHeaders,
   ok,
-  parseBody,
   securityHeaders,
   toPublicError,
   type RateLimitStore,
@@ -15,6 +13,22 @@ import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
 import { createCacheService, type CacheService } from '@cloudnivo/cache';
 import type { AppConfig } from '@cloudnivo/config';
 import { createLogger, type Logger } from '@cloudnivo/logging';
+import {
+  DockerDatabaseProvider,
+  FakeDatabaseProvider,
+  MemoryJobStore,
+  type AuditSink,
+  type DatabaseProvisioner,
+  type JobStore,
+} from '@cloudnivo/provisioning';
+import { MemoryRegistry, type Registry } from './registry.js';
+import {
+  FakeProjectDbGateway,
+  RealProjectDbGateway,
+  handleOrgRoutes,
+  handleProjectRoutes,
+  type ProjectDbGateway,
+} from './projects.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -26,12 +40,40 @@ export interface ApiContext {
   logger: Logger;
   cache: CacheService;
   rateLimitStore: RateLimitStore;
+  registry: Registry;
+  provider: DatabaseProvisioner;
+  gateway: ProjectDbGateway;
+  jobs: JobStore;
+  audit: AuditSink;
 }
 
 export function createContext(config: AppConfig): ApiContext {
   const logger = createLogger({ service: 'api' });
   const cache = createCacheService(config.REDIS_URL);
-  return { config, logger, cache, rateLimitStore: cache };
+  const registry = new MemoryRegistry();
+  const isFake = config.PROVISION_DRIVER === 'fake';
+  const provider: DatabaseProvisioner = isFake
+    ? new FakeDatabaseProvider()
+    : new DockerDatabaseProvider({
+        image: config.POSTGRES_IMAGE,
+        network: config.PROVISION_NETWORK,
+        basePort: config.PROVISION_BASE_PORT,
+        healthTimeoutMs: config.PROVISION_HEALTH_TIMEOUT_MS,
+      });
+  const gateway: ProjectDbGateway = isFake ? new FakeProjectDbGateway() : RealProjectDbGateway;
+  const jobs = new MemoryJobStore();
+  const audit: AuditSink = {
+    record: (event, fields) => {
+      registry.recordAudit(event, {
+        projectId: typeof fields['projectId'] === 'string' ? fields['projectId'] : undefined,
+        organizationId:
+          typeof fields['organizationId'] === 'string' ? fields['organizationId'] : undefined,
+        userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
+      });
+      logger.info('audit', { event, ...fields });
+    },
+  };
+  return { config, logger, cache, rateLimitStore: cache, registry, provider, gateway, jobs, audit };
 }
 
 function requestIdOf(req: IncomingMessage): string {
@@ -77,16 +119,6 @@ async function requireSession(
     issuer: ctx.config.JWT_ISSUER,
   });
 }
-
-const CreateProjectBody = z.object({
-  name: z.string().min(2).max(100),
-  slug: z
-    .string()
-    .min(2)
-    .max(63)
-    .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/),
-  organizationId: z.string().uuid(),
-});
 
 export async function handleRequest(
   req: IncomingMessage,
@@ -135,29 +167,41 @@ export async function handleRequest(
       return;
     }
 
-    if (url.pathname === '/api/v1/projects' && req.method === 'GET') {
-      const session = await requireSession(req, ctx);
-      // Phase 1: DB wiring lands with migrations (Phase 2). Return tenant-scoped
-      // empty set to prove auth + envelope without requiring live Postgres.
-      logger.info('projects.list', { user: session.sub });
-      sendJson(res, 200, ok({ projects: [], user: session.sub }, requestId), baseHeaders);
-      return;
-    }
-
-    if (url.pathname === '/api/v1/projects' && req.method === 'POST') {
+    // Phase 2: project + database provisioning routes (tenant-enforced).
+    if (url.pathname === '/api/v1/organizations') {
       const session = await requireSession(req, ctx);
       const body = await readJson(req);
-      const parsed = parseBody(CreateProjectBody, body);
-      // Tenant check happens against DB memberships in Phase 2; here we prove
-      // validation + auth boundary + secure error shape.
-      logger.info('projects.create', { user: session.sub, org: parsed.organizationId });
-      sendJson(
+      const handled = await handleOrgRoutes(
+        req,
         res,
-        201,
-        ok({ project: { ...parsed, id: requestId, status: 'active' } }, requestId),
+        ctx,
+        logger,
         baseHeaders,
+        requestId,
+        session,
+        async () => body,
       );
-      return;
+      if (handled) return;
+    }
+
+    if (url.pathname === '/api/v1/projects' || url.pathname.startsWith('/api/v1/projects/')) {
+      const session = await requireSession(req, ctx);
+      const body = await readJson(req);
+      const rest = url.pathname.replace('/api/v1/projects', '').split('/').filter(Boolean);
+      const handled = await handleProjectRoutes(
+        req,
+        res,
+        ctx,
+        ctx.config,
+        logger,
+        baseHeaders,
+        requestId,
+        session,
+        rest,
+        url.searchParams,
+        async () => body,
+      );
+      if (handled) return;
     }
 
     sendJson(

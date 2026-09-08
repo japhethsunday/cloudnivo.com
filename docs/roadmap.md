@@ -7,7 +7,19 @@ helpers, service abstractions (db/storage/realtime/cache/provisioning),
 versioned API envelope, dashboard shell, docs, green
 `lint → typecheck → test → build`.
 
-## Phase 2 — Control-plane persistence & auth (next)
+## Phase 2 — Database provisioning engine (DONE)
+
+- `DatabaseProvisioner` interface + real `DockerDatabaseProvider` (execFile,
+  labeled containers, localhost-only ports) + test-only fake.
+- Job system (idempotency, retry budgets, logs) + orchestrator + audit sink.
+- Control metadata tables (`project_databases`, `database_credentials`,
+  `infrastructure_instances`, `provisioning_jobs`) + lifecycle machine.
+- Live health/SQL/schema/metrics against project databases; masked + audited
+  credential reveal; guarded SQL editor foundation.
+- Project database console in the dashboard; 67 green tests (1 Docker test
+  gated on `DOCKER_TESTS=1`); green `lint → typecheck → test → build`.
+
+## Phase 3 — Control-plane persistence & auth (next)
 
 - Drizzle migrations + seed (roles/permissions).
 - Signup/login/session cookies + `GET /me`, org CRUD + invites.
