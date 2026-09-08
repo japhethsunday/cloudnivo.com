@@ -1,0 +1,53 @@
+name: cloudnivo
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudnivo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudnivo_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudnivo}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - cloudnivo
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    # NOTE: when REDIS_PASSWORD is empty, redis-server still starts (no auth).
+    # Production must set REDIS_PASSWORD. See .env.example.
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - cloudnivo
+
+networks:
+  cloudnivo:
+    name: cloudnivo
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: cloudnivo_pgdata
+  redisdata:
+    name: cloudnivo_redisdata

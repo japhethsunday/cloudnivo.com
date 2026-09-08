@@ -1,0 +1,29 @@
+{
+  "name": "@cloudnivo/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --max-warnings=0"
+  },
+  "dependencies": {
+    "@cloudnivo/api-core": "0.1.0",
+    "@cloudnivo/auth": "0.1.0",
+    "@cloudnivo/config": "0.1.0",
+    "@cloudnivo/logging": "0.1.0",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.6.3"
+  }
+}
