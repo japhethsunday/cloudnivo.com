@@ -16,12 +16,29 @@
 </p>
 
 <p>
+  <a href="https://github.com/japhethsunday/cloudnivo.com/stargazers"><img src="https://img.shields.io/github/stars/japhethsunday/cloudnivo.com?style=flat-square&logo=github" alt="stars" /></a>
+  <a href="https://github.com/japhethsunday/cloudnivo.com/network/members"><img src="https://img.shields.io/github/forks/japhethsunday/cloudnivo.com?style=flat-square&logo=github" alt="forks" /></a>
+  <a href="https://github.com/japhethsunday/cloudnivo.com/issues"><img src="https://img.shields.io/github/issues/japhethsunday/cloudnivo.com?style=flat-square&logo=github" alt="issues" /></a>
+  <img src="https://img.shields.io/github/last-commit/japhethsunday/cloudnivo.com?style=flat-square&logo=github" alt="last commit" />
+  <img src="https://img.shields.io/github/repo-size/japhethsunday/cloudnivo.com?style=flat-square&logo=github" alt="repo size" />
+  <img src="https://img.shields.io/github/languages/top/japhethsunday/cloudnivo.com?style=flat-square&logo=typescript" alt="top language" />
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/lint-clean-brightgreen?style=flat-square&logo=eslint" alt="lint" />
+  <img src="https://img.shields.io/badge/typecheck-12_workspaces-blue?style=flat-square&logo=typescript" alt="typecheck" />
+  <img src="https://img.shields.io/badge/tests-41_passing-brightgreen?style=flat-square&logo=vitest" alt="tests" />
+  <img src="https://img.shields.io/badge/build-production-blue?style=flat-square&logo=vercel" alt="build" />
+</p>
+
+<p>
   <strong>Developer-focused Backend-as-a-Service (Supabase-like) control-plane foundation.</strong><br />
   Production-quality monorepo, multi-tenant by design, $0 infra to start — Vercel-ready control plane, Docker-local data services, portable to any cloud without rewrites.
 </p>
 
 <p>
   <a href="#-quickstart"><strong>Quickstart</strong></a> ·
+  <a href="#at-a-glance">At a glance</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="docs/api.md">API</a> ·
   <a href="docs/security.md">Security</a> ·
@@ -36,14 +53,22 @@
 ## Table of contents
 
 - [Why CloudNivo](#why-cloudnivo)
+- [At a glance](#at-a-glance)
 - [Stack](#stack)
 - [Quickstart](#-quickstart)
 - [Verify](#verify)
 - [Architecture](#architecture)
+- [Data model](#data-model)
+- [Request lifecycle](#request-lifecycle)
 - [Layout](#layout)
+- [Service catalog](#service-catalog)
 - [API](#api)
+- [Error catalog](#error-catalog)
 - [Tenancy and security](#tenancy-and-security)
 - [Testing](#testing)
+- [Production build report](#production-build-report)
+- [Scripts](#scripts)
+- [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -59,6 +84,18 @@ Every project gets isolated infrastructure per environment — Postgres, auth, s
 | Storage / Realtime / Cache abstractions               | Done — local/memory drivers                     | S3-compatible + Redis/WS drivers in Phase 3 |
 | Provisioning (`Project → Infrastructure`)             | Done — local planner                            | Cloud driver (Terraform/API) in Phase 4     |
 | Dashboard shell                                       | Done — 5 routes, dark/light, responsive         | Live data wiring in Phase 2                 |
+
+## At a glance
+
+| Metric               | Value                                                         |
+| -------------------- | ------------------------------------------------------------- |
+| Workspaces           | 12 (2 apps + 10 packages)                                     |
+| Test suite           | 41 tests across 13 files — all passing                        |
+| API surface          | 9 dashboard routes (5 pages + 2 API + middleware + not-found) |
+| Control-plane tables | 8 (`users` → `audit_logs`, see Data model)                    |
+| RBAC                 | 4 roles, 14 permissions, strict hierarchy                     |
+| First Load JS        | 103 kB shared (see Production build report)                   |
+| Infra cost           | $0 — Docker-local Postgres/Redis, Vercel control plane        |
 
 ## Stack
 
@@ -79,6 +116,8 @@ docker compose up -d
 npm run dev        # dashboard → http://localhost:3000
 npm run dev:api    # standalone API → http://localhost:3001
 ```
+
+Windows PowerShell note: `cp` works in PowerShell via alias; alternatively use `Copy-Item .env.example .env`.
 
 ## Verify
 
@@ -113,6 +152,42 @@ flowchart TB
 - **Data plane** (future): per-project Postgres, buckets, realtime gateways, functions. Phase 1 ships the interfaces + local drivers only.
 - Full decision log: [`docs/architecture.md`](docs/architecture.md).
 
+## Data model
+
+```mermaid
+erDiagram
+  users ||--o{ organizations : creates
+  users ||--o{ organization_memberships : joins
+  organizations ||--o{ organization_memberships : has
+  organizations ||--o{ projects : owns
+  projects ||--o{ project_environments : has
+  projects ||--o{ api_keys : issues
+  roles ||--o{ role_permissions : grants
+  permissions ||--o{ role_permissions : granted-by
+  organizations ||--o{ audit_logs : scopes
+```
+
+Authoritative DDL lives in [`packages/database/src/schema.ts`](packages/database/src/schema.ts); tenancy helpers in `tenant.ts`, role hierarchy in `rbac.ts`. Details: [`docs/database.md`](docs/database.md).
+
+## Request lifecycle
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant M as Middleware / Edge
+  participant R as Route handler (Node)
+  participant A as Auth + Tenant + RBAC
+  participant S as Service / DB
+  C->>M: GET /api/v1/projects + Bearer JWT
+  M->>M: attach X-Request-Id + security headers
+  M->>R: forward
+  R->>R: CORS allowlist + rate-limit check
+  R->>A: verifySession() → memberships → assertSameTenant() + can()
+  A->>S: tenant-scoped query (Phase 2 live)
+  S-->>R: rows
+  R-->>C: { data, meta: { requestId } } envelope
+```
+
 ## Layout
 
 ```text
@@ -132,6 +207,21 @@ tests/           Cross-package integration tests
 - `docs/` — `architecture.md`, `security.md`, `database.md`, `api.md`, `roadmap.md`
 - `tests/` — cross-package integration tests
 
+## Service catalog
+
+| Package                                              | Interface             | Phase 1 driver             | Future driver       |
+| ---------------------------------------------------- | --------------------- | -------------------------- | ------------------- |
+| [`config`](packages/config/src/index.ts)             | `loadConfig()`        | env + Zod fail-fast        | managed secrets     |
+| [`logging`](packages/logging/src/index.ts)           | `Logger`              | redacting JSON stdout      | log aggregator      |
+| [`validation`](packages/validation/src/index.ts)     | shared Zod schemas    | strict slugs/UUIDs         | — (stable)          |
+| [`database`](packages/database/src/service.ts)       | `DatabaseService`     | `postgres` + Drizzle       | managed Postgres    |
+| [`auth`](packages/auth/src/index.ts)                 | sessions + keys       | scrypt + JWT + sha256 keys | OAuth, rotation     |
+| [`storage`](packages/storage/src/index.ts)           | `StorageService`      | local filesystem           | S3-compatible       |
+| [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`     | in-memory pub/sub          | Redis + WS gateway  |
+| [`cache`](packages/cache/src/index.ts)               | `CacheService`        | memory (+ `ioredis` ready) | Redis               |
+| [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService` | local planner              | Terraform/cloud API |
+| [`api-core`](packages/api-core/src/index.ts)         | envelope + guards     | shared by both apps        | — (stable)          |
+
 ## API
 
 Base path: `/api/v1` — identical envelope in both runtimes.
@@ -149,11 +239,29 @@ curl -H "Authorization: Bearer <JWT>" http://localhost:3001/api/v1/projects
 
 Contract details: [`docs/api.md`](docs/api.md).
 
+## Error catalog
+
+| Code                               | Status | When                                        |
+| ---------------------------------- | ------ | ------------------------------------------- |
+| `VALIDATION_ERROR` / `BAD_REQUEST` | 400    | Zod body/query failure, field-level details |
+| `UNAUTHORIZED`                     | 401    | Missing/invalid Bearer token or session     |
+| `FORBIDDEN` / `TENANT_FORBIDDEN`   | 403    | Cross-org access or insufficient role       |
+| `NOT_FOUND`                        | 404    | Unknown route or resource                   |
+| `CONFLICT`                         | 409    | Slug/unique collisions (Phase 2 live)       |
+| `RATE_LIMITED`                     | 429    | Over 120 req/min/IP default                 |
+| `INTERNAL`                         | 500    | Message redacted, `requestId` preserved     |
+
 ## Tenancy and security
 
 `User → Organization → Project → Infrastructure`. Memberships are the only access grant; `assertSameTenant()` + `can(role, permission)` run server-side on every request. See `docs/security.md` and `docs/database.md`.
 
-Highlights: Bearer JWT sessions + hash-only API keys (`cn_…` shown once), Zod at every boundary, fail-closed CORS allowlist, per-IP rate limiting (120/min default), redacting JSON logger with `requestId`, `X-Request-Id` + strict transport/frame/CSP headers, append-only org-scoped audit logs.
+- [x] Bearer JWT sessions + hash-only API keys (`cn_…` shown once, stored as sha256)
+- [x] Zod at every boundary — client IDs/roles never trusted
+- [x] Fail-closed CORS allowlist + per-IP rate limiting (120/min)
+- [x] Redacting JSON logger (`requestId`, no secrets/PII)
+- [x] `X-Request-Id` + HSTS / frame / CSP / referrer headers
+- [x] Append-only org-scoped audit logs
+- [ ] Row-Level Security, key rotation, OAuth, WS auth (scheduled post-Phase 2)
 
 ## Testing
 
@@ -164,6 +272,38 @@ Highlights: Bearer JWT sessions + hash-only API keys (`cn_…` shown once), Zod 
 | `npm test`          | Vitest: 41 tests — tenant isolation, RBAC, auth, validation, envelopes, storage traversal, realtime channel auth, live HTTP 401/400/404 |
 | `npm run build`     | All packages `tsc` emit + `apps/api` + `next build` (9 routes)                                                                          |
 
+## Production build report
+
+Measured via `npm run build` (Next.js 15.5.25):
+
+| Route (app)                                            | Size    | First Load JS |
+| ------------------------------------------------------ | ------- | ------------- |
+| `/`                                                    | 163 B   | 106 kB        |
+| `/dashboard`                                           | 163 B   | 106 kB        |
+| `/account`, `/organizations`, `/projects`, `/settings` | 137 B   | 103 kB        |
+| `/api/v1/health`, `/api/v1/projects` (dynamic)         | 137 B   | 103 kB        |
+| Shared First Load JS                                   | —       | 103 kB        |
+| Middleware                                             | 34.5 kB | —             |
+
+## Scripts
+
+| Script                                          | Purpose                                    |
+| ----------------------------------------------- | ------------------------------------------ |
+| `npm run dev` / `dev:api`                       | Dashboard (:3000) / standalone API (:3001) |
+| `npm run lint` / `typecheck` / `test` / `build` | Quality gates (run in this order)          |
+| `npm run format` / `format:check`               | Prettier write / check                     |
+| `npm run db:generate` / `db:migrate`            | Drizzle generate / migrate                 |
+
+## Troubleshooting
+
+| Symptom                               | Fix                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `docker` not recognized               | Install Docker Desktop, then `docker compose up -d`                   |
+| Port 3000/3001/5432 in use            | Free the port or override via `.env` (`API_PORT`, `POSTGRES_PORT`)    |
+| `ConfigError: JWT_SECRET`             | Copy `.env.example` → `.env`, set 32+ char secret                     |
+| DB unreachable                        | `docker compose ps`, check `DATABASE_URL` matches compose credentials |
+| Native `swc` warning on Windows build | Harmless — Next falls back to wasm, build still succeeds              |
+
 ## Env
 
 All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigError` when secrets are missing. Never commit `.env`, `*.key`, `*.pem`. Start from [`.env.example`](.env.example).
@@ -171,6 +311,10 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 ## Roadmap
 
 Phase 2: migrations + seed, real auth/org/project/key persistence, audit writes, live dashboard data, Playwright smoke. Phase 3: Redis realtime/WS + S3 storage + auto data APIs. Phase 4: cloud provisioning + functions + usage/CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md).
+
+## Star history
+
+<a href="https://github.com/japhethsunday/cloudnivo.com/stargazers"><img src="https://api.star-history.com/svg?repos=japhethsunday/cloudnivo.com&type=Date" alt="star history" width="100%" /></a>
 
 ## Contributing
 

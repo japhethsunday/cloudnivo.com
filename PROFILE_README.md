@@ -12,6 +12,8 @@
 </p>
 
 <p>
+  <img src="https://img.shields.io/github/followers/japhethsunday?style=flat-square&logo=github&label=followers" alt="followers" />
+  <img src="https://img.shields.io/github/stars/japhethsunday?style=flat-square&logo=github&label=stars" alt="stars" />
   <img src="https://komarev.com/ghpvc/?username=japhethsunday&label=Profile%20views&color=2563eb&style=flat" alt="profile views" />
 </p>
 
@@ -23,6 +25,15 @@
 
 I am a full-stack engineer operating as designer, architect, and shipper. My current mission is **CloudNivo** — a developer-focused Backend-as-a-Service platform (Supabase-class) with a production-grade control plane: organizations, projects, environments, API keys, RBAC, audit logging, and a versioned API envelope shared across runtimes.
 
+```ts
+const currently = {
+  building: 'CloudNivo — multi-tenant BaaS control plane (Phase 1 shipped)',
+  mastering: ['Drizzle ORM', 'Postgres tenancy patterns', 'Next.js App Router'],
+  askMeAbout: ['Platform architecture', 'Auth + RBAC', 'API envelopes', 'Monorepos'],
+  discipline: 'lint + typecheck + tests + build, green before done',
+} as const;
+```
+
 What defines my work:
 
 - **Architecture before features** — monorepos, service abstractions, and contracts that survive cloud migration.
@@ -30,11 +41,25 @@ What defines my work:
 - **Zero-to-production discipline** — lint, typecheck, tests, and build green before anything is called done.
 - **Local-first, $0 start** — Docker-local Postgres/Redis today, managed cloud tomorrow, no rewrites.
 
+## What I do
+
+| Architect                     | Build                          | Secure                         |
+| ----------------------------- | ------------------------------ | ------------------------------ |
+| Monorepo + service boundaries | Next.js dashboards + Node APIs | Tenant isolation + RBAC        |
+| Versioned API contracts       | Drizzle schemas + migrations   | Hash-only keys, redacted logs  |
+| Local-to-cloud portability    | Docker Compose environments    | Audit trails, fail-closed CORS |
+
 ## Stack
 
 <p align="center">
   <img src="https://skillicons.dev/icons?i=ts,js,nodejs,nextjs,react,postgres,redis,docker,vercel,git,githubactions,vscode,postman&theme=light" alt="tech stack" />
 </p>
+
+| Layer    | Core                                   | Also                                        |
+| -------- | -------------------------------------- | ------------------------------------------- |
+| Frontend | TypeScript, Next.js 15, React 19       | Responsive + dark/light theming, a11y       |
+| Backend  | Node.js, Drizzle ORM, Zod, JWT         | Rate limits, envelopes, `requestId` tracing |
+| Data/Ops | PostgreSQL 16, Redis 7, Docker Compose | Vercel control plane, Vitest + ESLint gates |
 
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TS" />
@@ -69,6 +94,8 @@ What defines my work:
 <img src="https://github-profile-trophy.vercel.app/?username=japhethsunday&theme=flat&no-frame=true&no-bg=true&column=4&margin-w=8&title=Stars,Followers,Commits,Repositories" alt="trophies" width="49%" />
 
 <img src="https://github-readme-activity-graph.vercel.app/graph?username=japhethsunday&theme=github-compact&color=2563eb&line=2563eb&point=0f172a&hide_border=true&area=true" alt="activity graph" width="100%" />
+
+<img src="https://github-readme-quotes.vercel.app/quote?theme=transparent&animation=grow_out_in&layout=default" alt="dev quote" width="100%" />
 
 </div>
 
