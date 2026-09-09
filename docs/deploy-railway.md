@@ -55,6 +55,11 @@ npm run dev         # dashboard on :3000
 - `DATA_API_KEY_MAX` / `DATA_API_PROJECT_MAX` tuned per plan.
 - `AUTH_*` TTLs at defaults unless you need shorter sessions; `EMAIL_DRIVER`
   stays `memory` until an SMTP/transactional driver is configured.
+- Storage: local disks are ephemeral on Railway/Vercel — set
+  `STORAGE_DRIVER=s3` with `STORAGE_S3_ENDPOINT/REGION/BUCKET/ACCESS_KEY_ID/
+SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
+  Tune `STORAGE_MAX_FILE_MB`, `STORAGE_PROJECT_QUOTA_MB`, `STORAGE_RATE_MAX`,
+  and set a persistent `STORAGE_SIGNING_SECRET` so signed URLs survive restarts.
 - `REDIS_PASSWORD` set; `DATABASE_URL` points at managed Postgres.
 - Run `npm run db:migrate` against the control database on deploy.
 - No `.env`, keys, or `*.pem` in images or git (`.dockerignore`-equivalent:

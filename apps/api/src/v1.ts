@@ -43,6 +43,7 @@ import {
   isDataRoute,
   type DataBackend,
 } from './data.js';
+import { handleStorageRoutes, isStorageRoute } from './storage.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -230,7 +231,9 @@ export async function handleRequest(
       // Project CORS override (project allowlist wins over global when set).
       const routeHeaders =
         rest[0] &&
-        (isDataRoute(rest, req.method ?? 'GET') || isCustomerAuthRoute(rest, req.method ?? 'GET'))
+        (isDataRoute(rest, req.method ?? 'GET') ||
+          isCustomerAuthRoute(rest, req.method ?? 'GET') ||
+          isStorageRoute(rest, req.method ?? 'GET'))
           ? projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
           : baseHeaders;
       // Customer auth namespace — public signup/login live here (no session yet).
@@ -246,6 +249,23 @@ export async function handleRequest(
           requestId,
           rest,
           async () => body,
+        );
+        if (handled) return;
+      }
+      // Storage plane: buckets + objects (+ public signed-token redemption).
+      // Reads the raw stream itself, so it runs BEFORE any readJson call.
+      if (isStorageRoute(rest, req.method ?? 'GET')) {
+        const handled = await handleStorageRoutes(
+          req,
+          res,
+          ctx,
+          ctx.config,
+          logger,
+          routeHeaders,
+          requestId,
+          rest,
+          url.searchParams,
+          async () => readJson(req),
         );
         if (handled) return;
       }

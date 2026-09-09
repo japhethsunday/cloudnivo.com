@@ -62,6 +62,49 @@ apps/dashboard       + projects/[id]/auth console (users, CORS, email status)
 docs/authentication.md (flows, tokens, RLS, client sketch)
 ```
 
+Phase 5 additions (same layout, no rebuild):
+
+```text
+packages/storage     + types/validation/mime/signed-urls/providers (local
+                       streaming + SigV4 S3)/policies/metadata/service/openapi
+packages/database    + storage_buckets, storage_objects tables + migration
+packages/config      + STORAGE_S3_*, STORAGE_MAX_FILE_MB/MAX_BUCKETS/
+                       PROJECT_QUOTA_MB/RATE_MAX/SIGNING_SECRET/MAX_SIGNED_TTL_S
+apps/api             + storage.ts (buckets/objects/sign/usage routes,
+                       streaming uploads, signed redemption, quotas, audit)
+                     + projects.ts: storage cascade on project delete
+                     + data.ts: storage paths merged into openapi.json
+                     + storage.test.ts (6-test E2E + security matrix)
+apps/dashboard       + projects/[id]/storage console (buckets, browser,
+                       upload, previews, usage, settings/policies)
+docs/storage.md (providers, buckets, signed URLs, quotas, security)
+```
+
+## Storage architecture
+
+```text
+Dashboard ──► Storage API ──► ObjectStorageService ──► StorageProvider ──► disk / S3
+   │               │                    │                        │
+   │               │                    ▼                        ▼
+   │               │           MemoryMetadataStore      Local (streaming fs)
+   │               │         (Drizzle tables as         S3Compatible (SigV4)
+   │               │          durable target)
+   │               ▼
+   │         Registry (audit) + quotas + policies
+   ▼
+Buckets browser, upload, previews, usage, settings
+```
+
+- **Provider boundary.** Routes depend only on `ObjectStorageService`, which
+  binds a `StorageProvider` (bytes) to a metadata store (records). Local
+  streams socket → temp file; S3 signs SigV4 over injected fetch. Vendors
+  change at the factory.
+- **Metadata ≠ bytes.** PostgreSQL rows describe; providers persist. Quotas
+  reconcile both (overshoot rolls bytes back).
+- **Capabilities, not sessions, for links.** Signed URLs carry their own
+  HMAC-scoped authorization (`downloadSigned`/`putSigned` bypass caller
+  policy by design — the token already authorized the exact object).
+
 ## Provisioning architecture
 
 ```text

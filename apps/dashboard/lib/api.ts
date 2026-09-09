@@ -56,3 +56,26 @@ export async function apiFetch<T>(
   }
   return { ok: true, status: res.status, data: (json as { data: T }).data, error: null };
 }
+
+/** Raw (non-JSON) requests with the same Bearer auth — for bytes up/down. */
+export async function apiFetchRaw(
+  path: string,
+  opts: {
+    method?: string;
+    body?: BodyInit;
+    contentType?: string;
+    token?: string;
+    headers?: Record<string, string>;
+  } = {},
+): Promise<Response> {
+  const token = opts.token ?? getToken();
+  return fetch(`${apiBase()}${path}`, {
+    method: opts.method ?? 'GET',
+    headers: {
+      ...(opts.contentType ? { 'Content-Type': opts.contentType } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts.headers,
+    },
+    body: opts.body,
+  });
+}

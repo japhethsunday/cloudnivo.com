@@ -77,21 +77,22 @@
 
 Every project gets isolated infrastructure per environment — Postgres, auth, storage, realtime, and versioned APIs — behind one coherent control plane:
 
-| Capability                                            | Status (Phase 3)                                          | Next                                       |
-| ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ |
-| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 5) | Durable Drizzle stores, signup/login       |
-| Versioned REST envelope (`/api/v1`)                   | Done — control + generated data APIs share it             | Stable (v2 only for breaking changes)      |
-| Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI           | RLS policies, nested resources             |
-| Storage / Realtime / Cache abstractions               | Done — local/memory drivers                               | S3-compatible + Redis/WS drivers (Phase 5) |
-| Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)            | Cloud drivers (Railway/VPS/K8s)            |
-| Dashboard                                             | Database console + API console (keys, docs, examples)     | Live data wiring (Phase 4)                 |
+| Capability                                            | Status (Phase 5)                                          | Next                                  |
+| ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------- |
+| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 6) | Durable Drizzle stores, signup/login  |
+| Versioned REST envelope (`/api/v1`)                   | Done — control + data + storage APIs share it             | Stable (v2 only for breaking changes) |
+| Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI           | RLS policies, nested resources        |
+| Storage (buckets, objects, signed URLs)               | Done — streaming local driver + SigV4 S3 driver           | Webhooks, multipart dashboard uploads |
+| Realtime / Cache abstractions                         | Done — local/memory drivers                               | Redis/WS drivers (Phase 7)            |
+| Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)            | Cloud drivers (Railway/VPS/K8s)       |
+| Dashboard                                             | Database, API, Auth + Storage consoles                    | Live data wiring (Phase 6)            |
 
 ## At a glance
 
 | Metric               | Value                                                  |
 | -------------------- | ------------------------------------------------------ |
 | Workspaces           | 13 (2 apps + 11 packages)                              |
-| Test suite           | 100+ tests, all passing (2 Docker tests gated)         |
+| Test suite           | 140+ tests, all passing (3 Docker tests gated)         |
 | API surface          | Control plane + generated per-table REST + OpenAPI     |
 | Control-plane tables | 12 (`users` → `provisioning_jobs`, see Data model)     |
 | RBAC                 | 4 roles, 14 permissions, strict hierarchy              |
@@ -219,7 +220,7 @@ tests/           Cross-package integration tests
 | [`validation`](packages/validation/src/index.ts)     | shared Zod schemas                           | strict slugs/UUIDs                  | — (stable)              |
 | [`database`](packages/database/src/service.ts)       | `DatabaseService`                            | `postgres` + Drizzle                | managed Postgres        |
 | [`auth`](packages/auth/src/index.ts)                 | platform sessions + keys + customer plane    | scrypt + JWT + rotation + RLS       | OAuth, Magic Link       |
-| [`storage`](packages/storage/src/index.ts)           | `StorageService`                             | local filesystem                    | S3-compatible           |
+| [`storage`](packages/storage/src/index.ts)           | buckets, objects, signed URLs, quotas        | streaming local FS + SigV4 S3       | webhooks, multipart UI  |
 | [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`                            | in-memory pub/sub                   | Redis + WS gateway      |
 | [`cache`](packages/cache/src/index.ts)               | `CacheService`                               | memory (+ `ioredis` ready)          | Redis                   |
 | [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService`                        | Docker provider (+ host modes)      | Railway/VPS/K8s drivers |
@@ -281,13 +282,13 @@ Contract details: [`docs/api.md`](docs/api.md).
 
 ## Testing
 
-| Command             | What it proves                                                                                                 |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`      | ESLint flat config, zero warnings                                                                              |
-| `npm run typecheck` | `tsc --noEmit` across all 13 workspaces                                                                        |
-| `npm test`          | Vitest: engine + keys + full data-plane E2E (CRUD, isolation, injection matrix, rate limits), all prior suites |
-| `npm run build`     | All packages `tsc` emit + `apps/api` + `next build`                                                            |
-| `DOCKER_TESTS=1`    | Real-Postgres integration (provision → CRUD → delete) where Docker exists                                      |
+| Command             | What it proves                                                                            |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| `npm run lint`      | ESLint flat config, zero warnings                                                         |
+| `npm run typecheck` | `tsc --noEmit` across all 13 workspaces                                                   |
+| `npm test`          | Vitest: storage E2E (real bytes) + engine/keys/auth suites + injection/isolation matrices |
+| `npm run build`     | All packages `tsc` emit + `apps/api` + `next build`                                       |
+| `DOCKER_TESTS=1`    | Real-Postgres integration (provision → CRUD → delete) where Docker exists                 |
 
 ## Production build report
 
@@ -327,7 +328,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 4 (this release): customer auth (JWT + refresh rotation, verify/reset, sessions, RLS owner scoping, Auth console). Phase 5: durable Drizzle stores, platform signup/login, Playwright smoke. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 5 (this release): storage buckets/objects, signed URLs, quotas, Storage console, S3-compatible driver. Phase 6: durable Drizzle stores, platform signup/login, Playwright smoke. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

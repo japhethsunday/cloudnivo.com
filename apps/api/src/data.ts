@@ -22,6 +22,7 @@ import {
   type KeyRole,
   type ProjectApiKey,
 } from '@cloudnivo/api-engine';
+import { storageOpenApiPaths } from '@cloudnivo/storage';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
@@ -285,7 +286,7 @@ function cmp(a: unknown, op: string, b: unknown): boolean {
 
 // ── Routing ───────────────────────────────────────────────────────────
 
-const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth']);
+const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage']);
 
 /** True when /projects/:id/<seg>... belongs to the data plane. */
 export function isDataRoute(rest: string[], method: string): boolean {
@@ -296,7 +297,7 @@ export function isDataRoute(rest: string[], method: string): boolean {
   return ['GET', 'POST', 'PATCH', 'DELETE'].includes(method);
 }
 
-type DataCaller =
+export type DataCaller =
   | { kind: 'session'; userId: string; role: string; project: ProjectRecord }
   | { kind: 'key'; key: ProjectApiKey; project: ProjectRecord }
   | { kind: 'customer'; userId: string; role: 'admin' | 'authenticated'; project: ProjectRecord };
@@ -314,7 +315,7 @@ function credsForProject(ctx: ApiContext, project: ProjectRecord): ProjectConnec
   };
 }
 
-async function resolveCaller(
+export async function resolveCaller(
   ctx: ApiContext,
   req: IncomingMessage,
   projectId: string,
@@ -578,16 +579,14 @@ export async function handleDataRoutes(
     if (seg === 'openapi.json' && req.method === 'GET' && rest.length === 2) {
       const creds = credsForProject(ctx, caller.project);
       const schema = await introspect(ctx, caller.project.id, creds);
-      return finish(
-        200,
-        buildOpenApiDoc({
-          baseUrl: config.PUBLIC_API_URL,
-          projectId,
-          schema,
-          maxRows: config.PROVISION_MAX_SQL_ROWS,
-        }),
-        { caller: caller.kind },
-      );
+      const doc = buildOpenApiDoc({
+        baseUrl: config.PUBLIC_API_URL,
+        projectId,
+        schema,
+        maxRows: config.PROVISION_MAX_SQL_ROWS,
+      }) as { paths?: Record<string, unknown> };
+      doc.paths = { ...(doc.paths ?? {}), ...storageOpenApiPaths() };
+      return finish(200, doc, { caller: caller.kind });
     }
 
     // ── Table routes ──

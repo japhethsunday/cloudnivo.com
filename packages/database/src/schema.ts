@@ -287,3 +287,62 @@ export const provisioningJobs = pgTable(
     unique('provisioning_jobs_org_key_unique').on(t.organizationId, t.idempotencyKey),
   ],
 );
+
+/**
+ * Phase 5 — storage metadata (control plane; bytes live in the provider).
+ * Mirrors `MemoryStorageMetadataStore` record shapes 1:1 so the durable
+ * adapter swaps in without touching routes.
+ */
+export const storageBuckets = pgTable(
+  'storage_buckets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 63 }).notNull(),
+    visibility: varchar('visibility', { length: 10 }).notNull().default('private'),
+    fileSizeLimit: integer('file_size_limit'),
+    allowedMimeTypes: text('allowed_mime_types').array().notNull().default([]),
+    ownerIsolation: varchar('owner_isolation', { length: 5 }).notNull().default('true'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('storage_buckets_project_name_unique').on(t.projectId, t.name),
+    index('storage_buckets_org_idx').on(t.organizationId),
+  ],
+);
+
+export const storageObjects = pgTable(
+  'storage_objects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    bucketId: uuid('bucket_id')
+      .notNull()
+      .references(() => storageBuckets.id, { onDelete: 'cascade' }),
+    bucket: varchar('bucket', { length: 63 }).notNull(),
+    path: varchar('path', { length: 1024 }).notNull(),
+    filename: varchar('filename', { length: 255 }).notNull(),
+    mimeType: varchar('mime_type', { length: 127 }).notNull(),
+    size: integer('size').notNull().default(0),
+    etag: varchar('etag', { length: 64 }).notNull().default(''),
+    storageKey: text('storage_key').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('storage_objects_bucket_path_unique').on(t.bucketId, t.path),
+    index('storage_objects_project_idx').on(t.projectId),
+  ],
+);

@@ -23,6 +23,9 @@ export default function ProjectDetailPage({
         </Link>{' '}
         <Link className="btn" href={`/projects/${id}/auth`}>
           Authentication
+        </Link>{' '}
+        <Link className="btn" href={`/projects/${id}/storage`}>
+          Storage
         </Link>
       </p>
       <TokenBar onChange={() => undefined} />

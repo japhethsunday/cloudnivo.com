@@ -5,7 +5,19 @@ import { join, normalize, sep } from 'node:path';
  * Object-storage abstraction. Phase 1 ships a local-filesystem driver
  * (zero cost, Docker-free). The `StorageService` interface is S3-compatible
  * by design — migrating to R2/S3/GCS later only changes the factory.
+ *
+ * Phase 5 adds the full bucket/object system alongside (new modules below).
+ * The legacy key-value surface is preserved for compatibility.
  */
+export * from './types.js';
+export * from './validation.js';
+export * from './mime.js';
+export * from './signed-urls.js';
+export * from './providers.js';
+export * from './policies.js';
+export * from './metadata.js';
+export * from './service.js';
+export * from './openapi.js';
 
 export interface PutOptions {
   contentType?: string;

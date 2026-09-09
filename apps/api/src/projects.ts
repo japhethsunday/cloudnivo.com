@@ -22,6 +22,7 @@ import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { generateDbPassword, mustOwnProject, toTenantError } from './registry.js';
+import { storageFor } from './storage.js';
 
 export function sendJson(
   res: ServerResponse,
@@ -370,6 +371,14 @@ export async function handleProjectRoutes(
         }
       }
       ctx.registry.deleteProject(project.id);
+      try {
+        await storageFor(ctx).deleteProjectData(project.id);
+      } catch (err) {
+        logger.warn('projects.delete.storage_cleanup_failed', {
+          project: project.id,
+          error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+        });
+      }
       logger.info('projects.delete', { project: project.id });
       sendJson(res, 200, ok({ deleted: true, jobId }, requestId), baseHeaders);
       return true;

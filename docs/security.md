@@ -62,6 +62,17 @@ hostile and the client is lying — now including infrastructure operations.
   trips at 10/window); metadata allowlist (roles never user-writable);
   per-project CORS (wildcards rejected); full security audit trail; no
   passwords/tokens/secrets in logs, responses, or admin listings.
+- **Storage (Phase 5):** logical keys validated (traversal, null bytes,
+  absolute/drive paths rejected) and namespaced per project; browser MIME
+  distrusted (magic-byte sniffing, executable spoofs rejected, safe-inline
+  allowlist for previews, rest `attachment`); HMAC capability tokens bind
+  project/bucket/path/op/expiry with constant-time verifies and op separation;
+  owner-prefix policies for customers, public-bucket anonymous downloads only
+  (no listing oracle); reads 404 / writes 403 on denial; quotas enforced
+  pre- and post-write with rollback; per-bucket caps; non-empty bucket delete
+  blocked; signed-URL + upload/download/list/delete budgets rate-limited;
+  responses never carry storage keys or secrets; Docker-socket mounting (compose
+  `api` profile) documented as a local-dev-only tradeoff.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,

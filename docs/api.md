@@ -95,6 +95,37 @@ reset|verify|change`, `GET|PATCH /user`, `GET /sessions`,
 `GET|PATCH|DELETE /admin/users`, `GET|PATCH /config`, `GET /email/status`.
 Full reference in `docs/authentication.md`.
 
+## Storage plane (Phase 5)
+
+`/storage/v1` mounted per project (`/api/v1/projects/:id/storage/*`).
+Reserved word: a table literally named `storage` stays unreachable via data
+routes (documented collision, same class as `database`/`jobs`/`auth`).
+
+| Method   | Path                                                 | Auth                    | Description                                                                  |
+| -------- | ---------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| `POST`   | `/storage/buckets`                                   | admin/owner session     | create `{name, visibility, fileSizeLimit, allowedMimeTypes, ownerIsolation}` |
+| `GET`    | `/storage/buckets`                                   | member+                 | list (tenant-scoped, never cross-project)                                    |
+| `GET`    | `/storage/buckets/:bucket`                           | member+                 | bucket metadata                                                              |
+| `PATCH`  | `/storage/buckets/:bucket`                           | admin/owner session     | visibility/limits/allowlist/isolation                                        |
+| `DELETE` | `/storage/buckets/:bucket`                           | admin/owner session     | must be empty (409 otherwise)                                                |
+| `GET`    | `/storage/buckets/:b/objects?prefix=&limit=&offset=` | member+ (authed)        | list (mine-only for isolated customers)                                      |
+| `PUT`    | `/storage/buckets/:b/objects/:path`                  | writer (`?upsert=true`) | raw-body upload, streamed, sniffed                                           |
+| `GET`    | `/storage/buckets/:b/objects/:path`                  | gated (or public/anon)  | download with safe disposition                                               |
+| `GET`    | `/storage/buckets/:b/objects/:path/metadata`         | gated                   | metadata, no bytes                                                           |
+| `DELETE` | `/storage/buckets/:b/objects/:path`                  | writer                  | delete bytes + metadata                                                      |
+| `POST`   | `/storage/buckets/:b/objects/:path/move`             | writer (`{dest}`)       | atomic-ish move                                                              |
+| `POST`   | `/storage/buckets/:b/objects/:path/copy`             | writer (`{dest}`)       | copy (quota-checked)                                                         |
+| `POST`   | `/storage/buckets/:b/sign`                           | writer                  | mint download/upload capability URL                                          |
+| `POST`   | `/storage/buckets/:b/upload-sign`                    | writer                  | mint upload URL (`PUT` target)                                               |
+| `GET`    | `/storage/s/:token`                                  | token-only (no headers) | redeem download                                                              |
+| `PUT`    | `/storage/s/:token`                                  | token-only (no headers) | redeem upload                                                                |
+| `GET`    | `/storage/usage`                                     | member+                 | files/bytes/uploads/downloads vs quota                                       |
+
+Paths with slashes must be percent-encoded per segment. Uploads stream with a
+`STORAGE_MAX_FILE_MB` cap; per-bucket caps and project quotas (`STORAGE_*`
+limits) are enforced pre- and post-write. Storage paths ship inside
+`openapi.json` alongside table routes.
+
 ## Auth
 
 `Authorization: Bearer <JWT>` → `verifySession()` (issuer-checked). Missing or

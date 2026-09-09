@@ -42,6 +42,23 @@ const EnvSchema = z.object({
 
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./.data/storage'),
+  // S3-compatible backend (Phase 5; local default keeps $0 dev).
+  STORAGE_S3_ENDPOINT: z.string().default(''),
+  STORAGE_S3_REGION: z.string().default('us-east-1'),
+  STORAGE_S3_BUCKET: z.string().default(''),
+  STORAGE_S3_ACCESS_KEY_ID: z.string().default(''),
+  STORAGE_S3_SECRET_ACCESS_KEY: z.string().default(''),
+  STORAGE_S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform(v => v === 'true'),
+  // Storage limits + budgets (enforced server-side, never hard-coded).
+  STORAGE_MAX_FILE_MB: z.coerce.number().int().min(1).max(5120).default(50),
+  STORAGE_MAX_BUCKETS: z.coerce.number().int().min(1).max(1000).default(20),
+  STORAGE_PROJECT_QUOTA_MB: z.coerce.number().int().min(1).max(1_000_000).default(1024),
+  STORAGE_RATE_MAX: z.coerce.number().int().min(1).max(10_000).default(60),
+  STORAGE_SIGNING_SECRET: z.string().default(''),
+  STORAGE_MAX_SIGNED_TTL_S: z.coerce.number().int().min(60).max(604_800).default(3600),
 
   REALTIME_DRIVER: z.enum(['memory', 'redis']).default('memory'),
 

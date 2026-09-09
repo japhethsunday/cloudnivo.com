@@ -70,5 +70,13 @@ export const DB_AUDIT_EVENTS = [
   'data.created',
   'data.updated',
   'data.deleted',
+  'bucket.created',
+  'bucket.deleted',
+  'bucket.updated',
+  'file.uploaded',
+  'file.deleted',
+  'file.updated',
+  'file.moved',
+  'file.copied',
 ] as const;
 export type DbAuditEvent = (typeof DB_AUDIT_EVENTS)[number];

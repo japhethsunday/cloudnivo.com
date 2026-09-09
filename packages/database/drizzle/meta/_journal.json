@@ -8,6 +8,13 @@
       "when": 1788909776784,
       "tag": "0000_stale_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788954292257,
+      "tag": "0001_known_inertia",
+      "breakpoints": true
     }
   ]
 }
