@@ -9,7 +9,18 @@
     "incremental": true,
     "noEmit": true,
     "allowJs": true,
-    "plugins": [{ "name": "next" }]
+    "baseUrl": ".",
+    "plugins": [{ "name": "next" }],
+    // Dashboard bundles workspace packages from built `dist` (real files),
+    // not TS sources — the bundler cannot resolve source subpath imports.
+    // Run `npm run build:packages` from the repo root first (root `typecheck`
+    // and `build` scripts already enforce this order).
+    "paths": {
+      "@cloudnivo/api-core": ["../../packages/api-core/dist/index.js"],
+      "@cloudnivo/auth": ["../../packages/auth/dist/index.js"],
+      "@cloudnivo/config": ["../../packages/config/dist/index.js"],
+      "@cloudnivo/logging": ["../../packages/logging/dist/index.js"]
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules", ".next", "out", "dist"]

@@ -30,15 +30,23 @@ versioned API envelope, dashboard shell, docs, green
 - Railway/Docker deploy (`Dockerfile.api`, `railway.json`, compose `api`
   profile, `docs/deploy-railway.md`); gated real-Postgres integration tests.
 
-## Phase 4 — Control-plane persistence & auth (next)
+## Phase 4 — Authentication & authorization (DONE)
 
-- Drizzle migrations + seed (roles/permissions).
-- Signup/login/session cookies + `GET /me`, org CRUD + invites.
-- Project/env CRUD with real tenant checks against Postgres.
-- API-key issue/verify/revoke (hash lookup + scopes).
-- Audit-log writes on all mutations.
+- `@cloudnivo/auth` customer plane: users/sessions/opaque tokens, scrypt,
+  rotation + reuse detection, verify/reset flows, metadata guards, email
+  abstraction, RLS policy generator, PG + memory stores.
+- `/auth/*` routes per project, strict rate limits, project CORS, full audit
+  events; engine integration (customer JWTs + owner scoping).
+- Dashboard Auth section (users, sessions, CORS, email status).
+- 100+ green tests (unit + HTTP E2E + isolation matrix); gated real-PG test.
+
+## Phase 5 — Durable control plane (next)
+
+- Drizzle migrations + seed (roles/permissions) applied at deploy.
+- Drizzle-backed registry/key/job/customer stores (replace memory adapters).
+- Platform signup/login/session cookies + `GET /me`, org invites.
 - Dashboard wires to live data (loading/empty/error states stay).
-- Playwright smoke: signup → org → project → key → 403 cross-org.
+- Playwright smoke: signup → org → project → key → data CRUD → 403 cross-org.
 
 ## Phase 5 — Data-plane primitives
 

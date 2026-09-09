@@ -53,6 +53,8 @@ npm run dev         # dashboard on :3000
 - `JWT_SECRET` ≥ 32 random chars, `CORS_ORIGINS` tight allowlist.
 - `PUBLIC_API_URL` = the public API origin (drives OpenAPI servers + dashboard).
 - `DATA_API_KEY_MAX` / `DATA_API_PROJECT_MAX` tuned per plan.
+- `AUTH_*` TTLs at defaults unless you need shorter sessions; `EMAIL_DRIVER`
+  stays `memory` until an SMTP/transactional driver is configured.
 - `REDIS_PASSWORD` set; `DATABASE_URL` points at managed Postgres.
 - Run `npm run db:migrate` against the control database on deploy.
 - No `.env`, keys, or `*.pem` in images or git (`.dockerignore`-equivalent:

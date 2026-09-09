@@ -66,6 +66,14 @@ const EnvSchema = z.object({
   DATA_API_KEY_MAX: z.coerce.number().int().min(1).max(10_000).default(300),
   DATA_API_PROJECT_MAX: z.coerce.number().int().min(1).max(100_000).default(1000),
   INTROSPECTION_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(30_000),
+
+  // ── Customer auth (Phase 4: per-project application users) ──
+  AUTH_ACCESS_TTL_S: z.coerce.number().int().min(60).max(86_400).default(900),
+  AUTH_REFRESH_TTL_S: z.coerce.number().int().min(3600).max(7_776_000).default(2_592_000),
+  AUTH_RESET_TTL_S: z.coerce.number().int().min(300).max(86_400).default(3600),
+  AUTH_VERIFY_TTL_S: z.coerce.number().int().min(3600).max(604_800).default(86_400),
+  AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
+  EMAIL_DRIVER: z.enum(['memory']).default('memory'),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

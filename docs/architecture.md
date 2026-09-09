@@ -48,6 +48,20 @@ apps/dashboard       + projects list/create, projects/[id] database console
                        (status, connection reveal, actions, schema, SQL editor)
 ```
 
+Phase 4 additions (same layout, no rebuild):
+
+```text
+packages/auth        + customer/ (types, tokens, metadata guards, email
+                       abstraction, memory + Postgres stores, service, RLS)
+packages/config      + AUTH_* TTLs/rate limits, EMAIL_DRIVER
+apps/api             + customer-auth.ts (/auth/* routes, store selector,
+                       strict limits, project CORS, audit)
+                     + data.ts: customer-JWT callers + owner scoping
+                     + auth.test.ts (7-test E2E), auth-docker.test.ts (gated)
+apps/dashboard       + projects/[id]/auth console (users, CORS, email status)
+docs/authentication.md (flows, tokens, RLS, client sketch)
+```
+
 ## Provisioning architecture
 
 ```text
@@ -97,9 +111,12 @@ Poll jobs + database status (5s)
 1. **No cloud coupling.** Every infra dependency sits behind an interface with a
    local/memory implementation. `ioredis`, `postgres`, and `jose` are the only
    infra clients, and none are imported outside their owning package.
-2. **TypeScript paths + built `dist`.** Dev/test resolve `@cloudnivo/*` to
-   `packages/*/src` (instant, no build). Production resolves to built
-   `dist/` via npm workspace symlinks. Root `npm run build` builds everything.
+2. **TypeScript paths + built `dist`.** Tests and `apps/api` typecheck resolve
+   `@cloudnivo/*` to `packages/*/src` (instant, no build). The dashboard
+   bundles built `dist/` (its bundler cannot resolve TS source subpaths), so
+   run `npm run build:packages` before dashboard dev/build — root `typecheck`
+   and `build` scripts already enforce this order. Production resolves to
+   built `dist/` via npm workspace symlinks everywhere.
 3. **Framework-free `apps/api`.** Plain `node:http` proves the envelope works
    without Next.js, keeping the future data-plane portable.
 4. **Drizzle owns the schema.** `infrastructure/postgres/init.sql` only enables

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { decodeCustomerToken } from '@cloudnivo/auth';
 import {
   can,
   inspectProjectSchema,
@@ -26,6 +27,7 @@ import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { mustOwnProject } from './registry.js';
+import { verifyCustomerCaller } from './customer-auth.js';
 import { sendJson } from './projects.js';
 
 /**
@@ -225,10 +227,15 @@ export class FakeDataBackend implements DataBackend {
       col: x[1] as string,
       idx: Number(x[2]) - 1,
     }));
-    const id = params[params.length - 1];
+    // Last placeholder belongs to the WHERE pk clause; the rest are SETs.
+    const whereIdx = params.length - 1;
+    const id = params[whereIdx];
     const row = tables.get(table)?.find(r => looseEq(r['id'], id));
     if (!row) return [];
-    for (const s of sets.slice(0, -1)) row[s.col] = params[s.idx];
+    for (const s of sets) {
+      if (s.idx === whereIdx) continue;
+      row[s.col] = params[s.idx];
+    }
     return [{ ...row }];
   }
 
@@ -278,7 +285,7 @@ function cmp(a: unknown, op: string, b: unknown): boolean {
 
 // ── Routing ───────────────────────────────────────────────────────────
 
-const PROJECT_RESERVED = new Set(['database', 'jobs']);
+const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth']);
 
 /** True when /projects/:id/<seg>... belongs to the data plane. */
 export function isDataRoute(rest: string[], method: string): boolean {
@@ -291,7 +298,8 @@ export function isDataRoute(rest: string[], method: string): boolean {
 
 type DataCaller =
   | { kind: 'session'; userId: string; role: string; project: ProjectRecord }
-  | { kind: 'key'; key: ProjectApiKey; project: ProjectRecord };
+  | { kind: 'key'; key: ProjectApiKey; project: ProjectRecord }
+  | { kind: 'customer'; userId: string; role: 'admin' | 'authenticated'; project: ProjectRecord };
 
 function credsForProject(ctx: ApiContext, project: ProjectRecord): ProjectConnectionInfo {
   const db = ctx.registry.getDatabaseByProject(project.id);
@@ -325,15 +333,38 @@ async function resolveCaller(
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing credentials (Bearer or apikey)', 401);
-  const session = await verifySession(token, {
+  const project = ctx.registry.getProject(projectId);
+  if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+  // Customer access tokens are audience-bound: a structurally valid customer
+  // credential for ANOTHER project is forbidden (403); an unusable one falls
+  // through to the platform session check (401 when that fails too).
+  const asCustomer = await decodeCustomerToken(token, {
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
-  });
-  const project = mustOwnProject(ctx.registry, session.sub, projectId);
+  }).catch(() => null);
+  if (asCustomer) {
+    if (asCustomer.projectId !== projectId) {
+      throw new ApiError('TENANT_FORBIDDEN', 'Token is not scoped to this project', 403);
+    }
+    const customer = await verifyCustomerCaller(ctx, project, token);
+    if (!customer) throw new ApiError('UNAUTHORIZED', 'Invalid or expired credentials', 401);
+    return { kind: 'customer', userId: customer.user.id, role: customer.role, project };
+  }
+  let session: { sub: string } | null = null;
+  try {
+    session = await verifySession(token, {
+      jwtSecret: ctx.config.JWT_SECRET,
+      issuer: ctx.config.JWT_ISSUER,
+    });
+  } catch {
+    session = null;
+  }
+  if (!session) throw new ApiError('UNAUTHORIZED', 'Invalid or expired credentials', 401);
+  const owned = mustOwnProject(ctx.registry, session.sub, projectId);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === project.organizationId)
+    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === owned.organizationId)
       ?.role ?? 'viewer';
-  return { kind: 'session', userId: session.sub, role, project };
+  return { kind: 'session', userId: session.sub, role, project: owned };
 }
 
 function toKeyError(err: unknown): ApiError {
@@ -348,6 +379,9 @@ function requireWrite(caller: DataCaller): void {
     }
     return;
   }
+  // Customer users write their own rows (owner-scoped below); platform
+  // viewers cannot mutate.
+  if (caller.kind === 'customer') return;
   if (!can(caller.role, 'projects:update')) {
     throw new ApiError('FORBIDDEN', 'Viewers cannot mutate data', 403);
   }
@@ -357,7 +391,10 @@ function requireKeysPerm(
   caller: DataCaller,
   perm: 'keys:read' | 'keys:create' | 'keys:revoke',
 ): void {
-  if (caller.kind === 'key') throw new ApiError('FORBIDDEN', 'API keys cannot manage keys', 403);
+  // Project keys and customer tokens can never manage keys (no escalation).
+  if (caller.kind !== 'session') {
+    throw new ApiError('FORBIDDEN', 'API keys cannot manage keys', 403);
+  }
   if (!can(caller.role, perm)) throw new ApiError('FORBIDDEN', 'Insufficient role', 403);
 }
 
@@ -371,6 +408,14 @@ async function rateLimitData(ctx: ApiContext, caller: DataCaller): Promise<ApiEr
     });
     if (!rk.allowed) return new ApiError('RATE_LIMITED', 'API key rate limit exceeded', 429);
   }
+  if (caller.kind === 'customer') {
+    const rc = await checkRateLimit(ctx.rateLimitStore, caller.userId, {
+      windowMs,
+      max: ctx.config.DATA_API_KEY_MAX,
+      keyPrefix: 'data-cust',
+    });
+    if (!rc.allowed) return new ApiError('RATE_LIMITED', 'Rate limit exceeded', 429);
+  }
   const rp = await checkRateLimit(ctx.rateLimitStore, caller.project.id, {
     windowMs,
     max: ctx.config.DATA_API_PROJECT_MAX,
@@ -378,6 +423,56 @@ async function rateLimitData(ctx: ApiContext, caller: DataCaller): Promise<ApiEr
   });
   if (!rp.allowed) return new ApiError('RATE_LIMITED', 'Project rate limit exceeded', 429);
   return null;
+}
+
+/**
+ * Owner scoping for customer callers (engine-level RLS enforcement).
+ * Admins and tables without a `user_id` column are unaffected.
+ */
+function ownerFilterFor(schema: SchemaInfo, table: string, caller: DataCaller): string | null {
+  if (caller.kind !== 'customer' || caller.role === 'admin') return null;
+  const t = schema.tables.find(x => x.name === table);
+  if (!t || !t.columns.some(c => c.name === 'user_id')) return null;
+  return `user_id=eq.${caller.userId}`;
+}
+
+function assertRowOwner(row: Record<string, unknown>, caller: DataCaller): void {
+  if (caller.kind !== 'customer' || caller.role === 'admin') return;
+  if (!('user_id' in row)) return;
+  if (String(row['user_id'] ?? '') !== caller.userId) {
+    // 404, not 403 — no existence oracle for other owners' rows.
+    const err = new ApiError('NOT_FOUND', 'Row not found', 404);
+    (err as { code: string }).code = 'ROW_NOT_FOUND';
+    throw err;
+  }
+}
+
+/**
+ * Ownership on write: non-admin customers get `user_id` forced to their id
+ * (absent → set; conflicting → 403). Admins/service may set freely.
+ */
+function forceOwnerInsert(
+  schema: SchemaInfo,
+  table: string,
+  caller: DataCaller,
+  body: Record<string, unknown>,
+  isUpdate = false,
+): Record<string, unknown> {
+  if (caller.kind !== 'customer' || caller.role === 'admin') return body;
+  const t = schema.tables.find(x => x.name === table);
+  if (!t || !t.columns.some(c => c.name === 'user_id')) return body;
+  if (isUpdate) {
+    if ('user_id' in body && String(body['user_id'] ?? '') !== caller.userId) {
+      throw new ApiError('FORBIDDEN', 'Cannot reassign row ownership', 403);
+    }
+    const { user_id: _drop, ...rest } = body;
+    void _drop;
+    return rest;
+  }
+  if ('user_id' in body && String(body['user_id'] ?? '') !== caller.userId) {
+    throw new ApiError('FORBIDDEN', 'Cannot create rows for another user', 403);
+  }
+  return { ...body, user_id: caller.userId };
 }
 
 const CreateKeyBody = z.object({
@@ -511,6 +606,9 @@ export async function handleDataRoutes(
           if (['select', 'order', 'limit', 'offset'].includes(k)) continue;
           filters.push(`${k}=${v}`);
         }
+        // Owner scoping: customers see only their rows (admins exempt).
+        const scope = ownerFilterFor(schema, seg, caller);
+        if (scope) filters.push(scope);
         const page = await engine.list(schema, seg, {
           select: query.get('select'),
           filters,
@@ -536,7 +634,8 @@ export async function handleDataRoutes(
         if (!body || typeof body !== 'object' || Array.isArray(body)) {
           throw new ApiError('VALIDATION_ERROR', 'Request body must be a JSON object', 400);
         }
-        const row = await engine.create(schema, seg, body as Record<string, unknown>);
+        const payload = forceOwnerInsert(schema, seg, caller, body as Record<string, unknown>);
+        const row = await engine.create(schema, seg, payload);
         auditMutation(ctx, caller, 'data.created', seg);
         return finish(201, ok({ row }, requestId), { caller: caller.kind });
       }
@@ -548,6 +647,7 @@ export async function handleDataRoutes(
     const id = decodeURIComponent(rowId);
     if (req.method === 'GET') {
       const row = await engine.get(schema, seg, id);
+      assertRowOwner(row, caller);
       return finish(200, ok({ row }, requestId), { caller: caller.kind });
     }
     if (req.method === 'PATCH') {
@@ -559,12 +659,17 @@ export async function handleDataRoutes(
       if (!body || typeof body !== 'object' || Array.isArray(body)) {
         throw new ApiError('VALIDATION_ERROR', 'Request body must be a JSON object', 400);
       }
-      const row = await engine.update(schema, seg, id, body as Record<string, unknown>);
+      const existing = await engine.get(schema, seg, id);
+      assertRowOwner(existing, caller);
+      const payload = forceOwnerInsert(schema, seg, caller, body as Record<string, unknown>, true);
+      const row = await engine.update(schema, seg, id, payload);
       auditMutation(ctx, caller, 'data.updated', seg);
       return finish(200, ok({ row }, requestId), { caller: caller.kind });
     }
     if (req.method === 'DELETE') {
       requireWrite(caller);
+      const existing = await engine.get(schema, seg, id);
+      assertRowOwner(existing, caller);
       await engine.remove(schema, seg, id);
       auditMutation(ctx, caller, 'data.deleted', seg);
       return finish(200, ok({ deleted: true }, requestId), { caller: caller.kind });
@@ -602,7 +707,7 @@ function auditMutation(ctx: ApiContext, caller: DataCaller, event: string, table
   ctx.registry.recordAudit(event, {
     projectId: caller.project.id,
     organizationId: caller.project.organizationId,
-    userId: caller.kind === 'session' ? caller.userId : undefined,
+    userId: caller.kind === 'key' ? undefined : caller.userId,
   });
   ctx.logger.info('audit', { event, project: caller.project.id, table });
 }

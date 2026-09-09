@@ -31,6 +31,12 @@ import {
   type ProjectDbGateway,
 } from './projects.js';
 import {
+  handleCustomerAuthRoutes,
+  isCustomerAuthRoute,
+  projectCorsHeaders,
+  type CustomerAuthHandle,
+} from './customer-auth.js';
+import {
   FakeDataBackend,
   RealDataBackend,
   handleDataRoutes,
@@ -55,6 +61,8 @@ export interface ApiContext {
   keys: KeyStore;
   jobs: JobStore;
   audit: AuditSink;
+  /** Per-project customer-auth handles (service + dev outbox), cached. */
+  customerAuth: Map<string, CustomerAuthHandle>;
 }
 
 export function createContext(config: AppConfig): ApiContext {
@@ -98,6 +106,7 @@ export function createContext(config: AppConfig): ApiContext {
     keys,
     jobs,
     audit,
+    customerAuth: new Map(),
   };
 }
 
@@ -218,6 +227,28 @@ export async function handleRequest(
 
     if (url.pathname === '/api/v1/projects' || url.pathname.startsWith('/api/v1/projects/')) {
       const rest = url.pathname.replace('/api/v1/projects', '').split('/').filter(Boolean);
+      // Project CORS override (project allowlist wins over global when set).
+      const routeHeaders =
+        rest[0] &&
+        (isDataRoute(rest, req.method ?? 'GET') || isCustomerAuthRoute(rest, req.method ?? 'GET'))
+          ? projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
+          : baseHeaders;
+      // Customer auth namespace — public signup/login live here (no session yet).
+      if (isCustomerAuthRoute(rest, req.method ?? 'GET')) {
+        const body = await readJson(req);
+        const handled = await handleCustomerAuthRoutes(
+          req,
+          res,
+          ctx,
+          ctx.config,
+          logger,
+          routeHeaders,
+          requestId,
+          rest,
+          async () => body,
+        );
+        if (handled) return;
+      }
       // Data plane accepts session JWT OR project apikey (resolved inside).
       if (isDataRoute(rest, req.method ?? 'GET')) {
         const body = await readJson(req);
@@ -227,7 +258,7 @@ export async function handleRequest(
           ctx,
           ctx.config,
           logger,
-          baseHeaders,
+          routeHeaders,
           requestId,
           rest,
           url.searchParams,

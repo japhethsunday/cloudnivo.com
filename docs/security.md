@@ -54,6 +54,14 @@ hostile and the client is lying — now including infrastructure operations.
   enforced, usage-counted, and can never mint keys. `apikey` header only —
   never query strings (no secret in logs/URLs). Error messages never echo raw
   table references, SQL, or credentials.
+- **Customer auth (Phase 4):** scrypt password hashing (8–128 chars); short
+  access JWTs audience-bound per project + live session checks (revocation
+  kills tokens); rotating opaque refresh with reuse-theft detection; hashed
+  single-use verify/reset tokens; enumeration-neutral login/reset; dummy-hash
+  timing equalization; strict per-endpoint rate limits (brute-force bucket
+  trips at 10/window); metadata allowlist (roles never user-writable);
+  per-project CORS (wildcards rejected); full security audit trail; no
+  passwords/tokens/secrets in logs, responses, or admin listings.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,

@@ -62,6 +62,13 @@ export interface AuditRecord {
   at: string;
 }
 
+export interface ProjectAuthConfig {
+  projectId: string;
+  /** Project-level browser allowlist. Empty = inherit global CORS_ORIGINS. */
+  allowedOrigins: string[];
+  updatedAt: string;
+}
+
 export interface Registry {
   createOrganization(userId: string, name: string, slug: string): ProjectOrg;
   listOrganizations(userId: string): OrganizationRecord[];
@@ -88,6 +95,8 @@ export interface Registry {
     fields: { projectId?: string; organizationId?: string; userId?: string },
   ): void;
   listAudit(): AuditRecord[];
+  getAuthConfig(projectId: string): ProjectAuthConfig | null;
+  setAuthConfig(projectId: string, allowedOrigins: string[]): ProjectAuthConfig;
 }
 
 export interface ProjectOrg {
@@ -105,6 +114,7 @@ export class MemoryRegistry implements Registry {
   private readonly databases = new Map<string, ProjectDbRecord>();
   private readonly credentials = new Map<string, { dbUser: string; password: string }>();
   private readonly audit: AuditRecord[] = [];
+  private readonly authConfigs = new Map<string, ProjectAuthConfig>();
   private auditCounter = 0;
 
   createOrganization(userId: string, name: string, slug: string): ProjectOrg {
@@ -233,6 +243,25 @@ export class MemoryRegistry implements Registry {
 
   listAudit(): AuditRecord[] {
     return [...this.audit];
+  }
+
+  getAuthConfig(projectId: string): ProjectAuthConfig | null {
+    return this.authConfigs.get(projectId) ?? null;
+  }
+
+  setAuthConfig(projectId: string, allowedOrigins: string[]): ProjectAuthConfig {
+    for (const o of allowedOrigins) {
+      if (o !== 'null' && !/^https?:\/\/[^/]+$/.test(o)) {
+        throw new ApiError('VALIDATION_ERROR', `Invalid origin: ${o.slice(0, 80)}`, 400);
+      }
+    }
+    const cfg: ProjectAuthConfig = {
+      projectId,
+      allowedOrigins: [...new Set(allowedOrigins)].slice(0, 20),
+      updatedAt: new Date().toISOString(),
+    };
+    this.authConfigs.set(projectId, cfg);
+    return cfg;
   }
 }
 

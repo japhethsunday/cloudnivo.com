@@ -113,3 +113,14 @@ export function bearerFromHeader(header: string | null | undefined): string | nu
   const m = /^Bearer\s+(\S+)$/i.exec(header.trim());
   return m?.[1] ?? null;
 }
+
+// ── Customer authentication (per-project application users) ─────────────
+// Extends — never replaces — the platform primitives above.
+export * from './customer/types.js';
+export * from './customer/tokens.js';
+export * from './customer/metadata.js';
+export * from './customer/email.js';
+export * from './customer/store.js';
+export * from './customer/pg-store.js';
+export * from './customer/service.js';
+export * from './customer/rls.js';

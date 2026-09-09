@@ -20,6 +20,9 @@ export default function ProjectDetailPage({
       <p>
         <Link className="btn btn-primary" href={`/projects/${id}/api`}>
           Open API console
+        </Link>{' '}
+        <Link className="btn" href={`/projects/${id}/auth`}>
+          Authentication
         </Link>
       </p>
       <TokenBar onChange={() => undefined} />

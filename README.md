@@ -79,7 +79,7 @@ Every project gets isolated infrastructure per environment — Postgres, auth, s
 
 | Capability                                            | Status (Phase 3)                                          | Next                                       |
 | ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ |
-| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 4) | Durable Drizzle stores, signup/login       |
+| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 5) | Durable Drizzle stores, signup/login       |
 | Versioned REST envelope (`/api/v1`)                   | Done — control + generated data APIs share it             | Stable (v2 only for breaking changes)      |
 | Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI           | RLS policies, nested resources             |
 | Storage / Realtime / Cache abstractions               | Done — local/memory drivers                               | S3-compatible + Redis/WS drivers (Phase 5) |
@@ -91,7 +91,7 @@ Every project gets isolated infrastructure per environment — Postgres, auth, s
 | Metric               | Value                                                  |
 | -------------------- | ------------------------------------------------------ |
 | Workspaces           | 13 (2 apps + 11 packages)                              |
-| Test suite           | 89+ tests, all passing (1 Docker test gated)           |
+| Test suite           | 100+ tests, all passing (2 Docker tests gated)         |
 | API surface          | Control plane + generated per-table REST + OpenAPI     |
 | Control-plane tables | 12 (`users` → `provisioning_jobs`, see Data model)     |
 | RBAC                 | 4 roles, 14 permissions, strict hierarchy              |
@@ -114,6 +114,7 @@ Next.js 15 · TypeScript · PostgreSQL 16 · Redis 7 · Drizzle ORM · Zod · Vi
 cp .env.example .env
 npm install
 docker compose up -d
+npm run build:packages  # once — the dashboard bundles built workspace output
 npm run dev        # dashboard → http://localhost:3000
 npm run dev:api    # standalone API → http://localhost:3001
 ```
@@ -217,7 +218,7 @@ tests/           Cross-package integration tests
 | [`logging`](packages/logging/src/index.ts)           | `Logger`                                     | redacting JSON stdout               | log aggregator          |
 | [`validation`](packages/validation/src/index.ts)     | shared Zod schemas                           | strict slugs/UUIDs                  | — (stable)              |
 | [`database`](packages/database/src/service.ts)       | `DatabaseService`                            | `postgres` + Drizzle                | managed Postgres        |
-| [`auth`](packages/auth/src/index.ts)                 | sessions + keys                              | scrypt + JWT + sha256 keys          | OAuth, rotation         |
+| [`auth`](packages/auth/src/index.ts)                 | platform sessions + keys + customer plane    | scrypt + JWT + rotation + RLS       | OAuth, Magic Link       |
 | [`storage`](packages/storage/src/index.ts)           | `StorageService`                             | local filesystem                    | S3-compatible           |
 | [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`                            | in-memory pub/sub                   | Redis + WS gateway      |
 | [`cache`](packages/cache/src/index.ts)               | `CacheService`                               | memory (+ `ioredis` ready)          | Redis                   |
@@ -238,9 +239,10 @@ curl -H "apikey: cn_…" "http://localhost:3001/api/v1/projects/<id>/users?limit
 Control plane (Bearer session): orgs, projects, database lifecycle, connection,
 SQL console, schema, metrics, jobs — see [`docs/api.md`](docs/api.md).
 
-Data plane (session JWT or project `apikey`): auto-generated per-table REST —
+Data plane (session JWT, project `apikey`, or customer JWT): auto-generated per-table REST —
 `GET/POST /:table`, `GET/PATCH/DELETE /:table/:id` with filter/sort/pagination,
-plus per-project `keys` management and live `openapi.json`. Try it in the
+plus per-project `keys` management and live `openapi.json`. Customer users get
+owner-scoped rows automatically. Try it in the
 dashboard: project page → **Open API console**.
 
 Contract details: [`docs/api.md`](docs/api.md).
@@ -266,6 +268,9 @@ Contract details: [`docs/api.md`](docs/api.md).
 `User → Organization → Project → Infrastructure`. Memberships are the only access grant; `assertSameTenant()` + `can(role, permission)` run server-side on every request. See `docs/security.md` and `docs/database.md`.
 
 - [x] Bearer JWT sessions + project API keys (`public`/`service`, hash-only, expiring, revocable, usage-counted)
+- [x] Customer auth per project (rotating refresh, verify/reset, metadata guards, owner-scoped data)
+- [ ] DB-enforced RLS policies, KMS-encrypted credentials, OAuth/Magic Link, WS auth (later phases)
+- [ ] KMS-encrypted credentials, OAuth/Magic Link, WS auth (later phases)
 - [x] Zod at every boundary — client IDs/roles never trusted
 - [x] Fail-closed CORS allowlist + IP, per-key, and per-project rate limiting
 - [x] Allow-listed SQL identifiers + `$n` values only; bodies capped; secrets never in URLs
@@ -322,7 +327,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 3 (this release): generated data APIs, project keys, live OpenAPI, API console, Railway/Docker deploy. Phase 4: durable Drizzle stores, signup/login, Playwright smoke. Phase 5: realtime gateway + S3 storage. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 4 (this release): customer auth (JWT + refresh rotation, verify/reset, sessions, RLS owner scoping, Auth console). Phase 5: durable Drizzle stores, platform signup/login, Playwright smoke. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

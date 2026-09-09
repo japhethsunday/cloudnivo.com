@@ -85,6 +85,15 @@ need `projects:update`) or `apikey: <cn_…>` project key (`public` read-only,
 Rate limits (all 429 on breach): global per-IP (existing) + per-key
 (`DATA_API_KEY_MAX`, default 300) + per-project (`DATA_API_PROJECT_MAX`,
 default 1000) over the cache abstraction (memory locally, Redis in prod).
+Auth endpoints carry stricter budgets (`AUTH_RATE_MAX`, default 10/window).
+
+## Customer auth (Phase 4)
+
+`POST /api/v1/projects/:id/auth/signup|token|refresh|logout|reset-request|
+reset|verify|change`, `GET|PATCH /user`, `GET /sessions`,
+`DELETE /sessions/:id`, `POST /sessions/revoke-all`,
+`GET|PATCH|DELETE /admin/users`, `GET|PATCH /config`, `GET /email/status`.
+Full reference in `docs/authentication.md`.
 
 ## Auth
 
