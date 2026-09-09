@@ -21,6 +21,7 @@ import {
   type DatabaseProvisioner,
   type JobStore,
 } from '@cloudnivo/provisioning';
+import { MemoryKeyStore, type KeyStore } from '@cloudnivo/api-engine';
 import { MemoryRegistry, type Registry } from './registry.js';
 import {
   FakeProjectDbGateway,
@@ -29,6 +30,13 @@ import {
   handleProjectRoutes,
   type ProjectDbGateway,
 } from './projects.js';
+import {
+  FakeDataBackend,
+  RealDataBackend,
+  handleDataRoutes,
+  isDataRoute,
+  type DataBackend,
+} from './data.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -43,6 +51,8 @@ export interface ApiContext {
   registry: Registry;
   provider: DatabaseProvisioner;
   gateway: ProjectDbGateway;
+  data: DataBackend;
+  keys: KeyStore;
   jobs: JobStore;
   audit: AuditSink;
 }
@@ -59,8 +69,11 @@ export function createContext(config: AppConfig): ApiContext {
         network: config.PROVISION_NETWORK,
         basePort: config.PROVISION_BASE_PORT,
         healthTimeoutMs: config.PROVISION_HEALTH_TIMEOUT_MS,
+        hostMode: config.PROVISION_HOST_MODE,
       });
   const gateway: ProjectDbGateway = isFake ? new FakeProjectDbGateway() : RealProjectDbGateway;
+  const data: DataBackend = isFake ? new FakeDataBackend() : RealDataBackend;
+  const keys = new MemoryKeyStore();
   const jobs = new MemoryJobStore();
   const audit: AuditSink = {
     record: (event, fields) => {
@@ -73,7 +86,19 @@ export function createContext(config: AppConfig): ApiContext {
       logger.info('audit', { event, ...fields });
     },
   };
-  return { config, logger, cache, rateLimitStore: cache, registry, provider, gateway, jobs, audit };
+  return {
+    config,
+    logger,
+    cache,
+    rateLimitStore: cache,
+    registry,
+    provider,
+    gateway,
+    data,
+    keys,
+    jobs,
+    audit,
+  };
 }
 
 function requestIdOf(req: IncomingMessage): string {
@@ -103,7 +128,14 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   if (chunks.length === 0) return undefined;
   const text = Buffer.concat(chunks).toString('utf8');
   if (!text) return undefined;
-  return JSON.parse(text) as unknown;
+  if (text.length > 1_000_000) {
+    throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
+  }
 }
 
 async function requireSession(
@@ -185,9 +217,26 @@ export async function handleRequest(
     }
 
     if (url.pathname === '/api/v1/projects' || url.pathname.startsWith('/api/v1/projects/')) {
+      const rest = url.pathname.replace('/api/v1/projects', '').split('/').filter(Boolean);
+      // Data plane accepts session JWT OR project apikey (resolved inside).
+      if (isDataRoute(rest, req.method ?? 'GET')) {
+        const body = await readJson(req);
+        const handled = await handleDataRoutes(
+          req,
+          res,
+          ctx,
+          ctx.config,
+          logger,
+          baseHeaders,
+          requestId,
+          rest,
+          url.searchParams,
+          async () => body,
+        );
+        if (handled) return;
+      }
       const session = await requireSession(req, ctx);
       const body = await readJson(req);
-      const rest = url.pathname.replace('/api/v1/projects', '').split('/').filter(Boolean);
       const handled = await handleProjectRoutes(
         req,
         res,

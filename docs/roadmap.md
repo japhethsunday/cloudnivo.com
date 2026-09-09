@@ -19,7 +19,18 @@ versioned API envelope, dashboard shell, docs, green
 - Project database console in the dashboard; 67 green tests (1 Docker test
   gated on `DOCKER_TESTS=1`); green `lint → typecheck → test → build`.
 
-## Phase 3 — Control-plane persistence & auth (next)
+## Phase 3 — API engine (DONE)
+
+- `@cloudnivo/api-engine`: introspection service (cached), pure query builder
+  (allow-list identifiers, `$n` values only), executor-based CRUD engine,
+  project keys (hash-only, roles, expiry, revocation, usage), live OpenAPI 3.0.
+- Data routes `/:projectId/:table[/:rowId]` + keys + `openapi.json` with
+  session-or-key auth, per-key/per-project rate limits, audit + metrics.
+- Dashboard API console (base URL, keys, endpoints, curl examples, OpenAPI).
+- Railway/Docker deploy (`Dockerfile.api`, `railway.json`, compose `api`
+  profile, `docs/deploy-railway.md`); gated real-Postgres integration tests.
+
+## Phase 4 — Control-plane persistence & auth (next)
 
 - Drizzle migrations + seed (roles/permissions).
 - Signup/login/session cookies + `GET /me`, org CRUD + invites.
@@ -29,14 +40,14 @@ versioned API envelope, dashboard shell, docs, green
 - Dashboard wires to live data (loading/empty/error states stay).
 - Playwright smoke: signup → org → project → key → 403 cross-org.
 
-## Phase 3 — Data-plane primitives
+## Phase 5 — Data-plane primitives
 
 - Redis-backed `CacheService`/`RealtimeService` in prod; WS gateway with
   channel auth (`canSubscribe`).
 - S3-compatible `StorageService` + signed URLs, per-project buckets.
 - Automatic per-project REST (`/api/v1/data/:table` with RLS).
 
-## Phase 4 — Provisioning & serverless
+## Phase 6 — Provisioning & serverless
 
 - `ProvisioningService` cloud driver (Terraform/API) per project env.
 - Serverless functions + logs + usage metering + CLI/SDKs.

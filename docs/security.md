@@ -46,6 +46,14 @@ hostile and the client is lying — now including infrastructure operations.
   returning a peer job (no cross-org oracle).
 - **Destructive actions:** start/stop/restart/delete require membership and are
   audit-logged; delete removes the container AND its volume AND metadata.
+- **Data plane (Phase 3):** table/column names are allow-listed against live
+  introspection (never interpolated); values are `$n` bind parameters only.
+  Unknown fields rejected (no mass assignment), PKs immutable, pagination
+  clamped, bodies capped (256 KB data writes, 1 MB global), single-statement
+  SQL editor unchanged. Project keys are sha256-hashed, expiry/revocation
+  enforced, usage-counted, and can never mint keys. `apikey` header only —
+  never query strings (no secret in logs/URLs). Error messages never echo raw
+  table references, SQL, or credentials.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,

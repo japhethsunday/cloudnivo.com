@@ -17,6 +17,11 @@ export default function ProjectDetailPage({
         <Link href="/projects">← Projects</Link>
       </p>
       <h1 id="project-title">Project database</h1>
+      <p>
+        <Link className="btn btn-primary" href={`/projects/${id}/api`}>
+          Open API console
+        </Link>
+      </p>
       <TokenBar onChange={() => undefined} />
       <ProjectDatabase projectId={id} />
     </section>

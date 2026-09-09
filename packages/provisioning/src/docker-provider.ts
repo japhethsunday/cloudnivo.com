@@ -28,6 +28,12 @@ export interface DockerProviderOptions {
   network?: string;
   basePort?: number;
   healthTimeoutMs?: number;
+  /**
+   * loopback (default): reach DBs via 127.0.0.1:mapped-port — for host-run API.
+   * container: reach DBs via container-name:5432 — for containerized API on
+   * the same Docker network (compose `api` service, Railway private net).
+   */
+  hostMode?: 'loopback' | 'container';
 }
 
 const DOCKER_TIMEOUT_MS = 60_000;
@@ -88,6 +94,7 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
   private readonly network: string;
   private readonly basePort: number;
   private readonly healthTimeoutMs: number;
+  private readonly hostMode: 'loopback' | 'container';
   private dockerChecked = false;
   private dockerOk = false;
 
@@ -96,6 +103,14 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
     this.network = opts.network ?? 'cloudnivo';
     this.basePort = opts.basePort ?? 15432;
     this.healthTimeoutMs = opts.healthTimeoutMs ?? 60_000;
+    this.hostMode = opts.hostMode ?? 'loopback';
+  }
+
+  /** Connection endpoint for a container, per host mode. */
+  private endpoint(container: string, mappedPort: number): { host: string; port: number } {
+    return this.hostMode === 'container'
+      ? { host: container, port: 5432 }
+      : { host: '127.0.0.1', port: mappedPort };
   }
 
   async isAvailable(): Promise<boolean> {
@@ -168,8 +183,7 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
       image,
     ]);
     const conn = {
-      host: '127.0.0.1',
-      port,
+      ...this.endpoint(container, port),
       database: dbName,
       user: dbUser,
       password: req.password,
@@ -184,7 +198,13 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
       }
       await new Promise(r => setTimeout(r, 1500));
     }
-    return { databaseId: container, host: '127.0.0.1', port, dbName, dbUser, version: req.version };
+    return {
+      databaseId: container,
+      ...this.endpoint(container, port),
+      dbName,
+      dbUser,
+      version: req.version,
+    };
   }
 
   /** Find a live container previously created for this project (crash recovery). */
@@ -225,10 +245,10 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
           return [l.slice(0, i), l.slice(i + 1)];
         }),
     );
+    const mappedPort = m?.[1] ? Number(m[1]) : this.basePort;
     return {
       databaseId: container,
-      host: '127.0.0.1',
-      port: m?.[1] ? Number(m[1]) : this.basePort,
+      ...this.endpoint(container, mappedPort),
       dbName: env['POSTGRES_DB'] || 'app',
       dbUser: env['POSTGRES_USER'] || 'app',
       version: '16',

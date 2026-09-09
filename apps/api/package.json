@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@cloudnivo/api-core": "0.1.0",
+    "@cloudnivo/api-engine": "0.1.0",
     "@cloudnivo/auth": "0.1.0",
     "@cloudnivo/cache": "0.1.0",
     "@cloudnivo/config": "0.1.0",

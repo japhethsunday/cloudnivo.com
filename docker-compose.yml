@@ -41,6 +41,36 @@ services:
     networks:
       - cloudnivo
 
+  # Standalone data/control API (same image Railway deploys).
+  # Start with: docker compose --profile api up --build
+  # The Docker socket lets the containerized API provision project databases
+  # on the shared network (local-dev tradeoff, documented in docs/security.md).
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cloudnivo}:${POSTGRES_PASSWORD:-cloudnivo_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-cloudnivo}
+      REDIS_URL: redis://redis:6379
+      API_PORT: 3001
+      PROVISION_HOST_MODE: container
+    ports:
+      - '${API_PORT:-3001}:3001'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudnivo
+    profiles:
+      - api
+
 networks:
   cloudnivo:
     name: cloudnivo

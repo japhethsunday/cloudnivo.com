@@ -292,6 +292,33 @@ export async function inspectProjectSchema(
   }
 }
 
+// ── Parameterized executor (API engine data plane) ────────────────────
+
+/**
+ * Run one parameterized statement with bound values. Identifiers must be
+ * validated + quoted by the caller (see @cloudnivo/api-engine query-builder);
+ * values travel as `$n` parameters only — never interpolated.
+ */
+export async function queryProjectDb(
+  info: ProjectConnectionInfo,
+  text: string,
+  params: unknown[],
+  timeoutMs = 15_000,
+): Promise<Record<string, unknown>[]> {
+  if (text.length > 20_000) throw new SqlRejectedError('SQL exceeds maximum length');
+  if (params.length > 100) throw new SqlRejectedError('Too many bind parameters');
+  const sql = clientFor(info, timeoutMs);
+  try {
+    await sql`select set_config('statement_timeout', ${String(timeoutMs)}, true)`.simple();
+    const rows = (await sql.unsafe(text, params as never[])) as Record<string, unknown>[];
+    return rows;
+  } catch (err) {
+    throw new Error(`Query failed: ${redactError(err)}`);
+  } finally {
+    await sql.end({ timeout: 2 }).catch(() => undefined);
+  }
+}
+
 // ── Metrics (real pg statistics) ──────────────────────────────────────
 
 export interface ProjectDbMetrics {

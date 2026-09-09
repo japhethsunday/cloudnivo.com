@@ -1,0 +1,23 @@
+# CloudNivo standalone API image (Railway / Docker / VPS).
+# Build from the repo root:  docker build -f Dockerfile.api -t cloudnivo-api .
+# Run: docker run -p 3001:3001 --env-file .env cloudnivo-api
+# No secrets are baked in — every value arrives via environment at runtime.
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+RUN npm ci --no-audit --no-fund && \
+    npm run build:packages && \
+    npm run build --workspace=@cloudnivo/api
+
+FROM node:20-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+EXPOSE 3001
+CMD ["node", "apps/api/dist/index.js"]

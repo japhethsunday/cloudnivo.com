@@ -77,25 +77,26 @@
 
 Every project gets isolated infrastructure per environment — Postgres, auth, storage, realtime, and versioned APIs — behind one coherent control plane:
 
-| Capability                                            | Phase 1 (this repo)                             | Where it lands                              |
-| ----------------------------------------------------- | ----------------------------------------------- | ------------------------------------------- |
-| Organizations, projects, environments, API keys, RBAC | Schema + service interfaces + guards            | Live persistence in Phase 2                 |
-| Versioned REST envelope (`/api/v1`)                   | Done — shared by dashboard BFF + standalone API | Automatic per-project data APIs in Phase 3  |
-| Storage / Realtime / Cache abstractions               | Done — local/memory drivers                     | S3-compatible + Redis/WS drivers in Phase 3 |
-| Provisioning (`Project → Infrastructure`)             | Done — local planner                            | Cloud driver (Terraform/API) in Phase 4     |
-| Dashboard shell                                       | Done — 5 routes, dark/light, responsive         | Live data wiring in Phase 2                 |
+| Capability                                            | Status (Phase 3)                                          | Next                                       |
+| ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ |
+| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 4) | Durable Drizzle stores, signup/login       |
+| Versioned REST envelope (`/api/v1`)                   | Done — control + generated data APIs share it             | Stable (v2 only for breaking changes)      |
+| Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI           | RLS policies, nested resources             |
+| Storage / Realtime / Cache abstractions               | Done — local/memory drivers                               | S3-compatible + Redis/WS drivers (Phase 5) |
+| Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)            | Cloud drivers (Railway/VPS/K8s)            |
+| Dashboard                                             | Database console + API console (keys, docs, examples)     | Live data wiring (Phase 4)                 |
 
 ## At a glance
 
-| Metric               | Value                                                         |
-| -------------------- | ------------------------------------------------------------- |
-| Workspaces           | 12 (2 apps + 10 packages)                                     |
-| Test suite           | 41 tests across 13 files — all passing                        |
-| API surface          | 9 dashboard routes (5 pages + 2 API + middleware + not-found) |
-| Control-plane tables | 8 (`users` → `audit_logs`, see Data model)                    |
-| RBAC                 | 4 roles, 14 permissions, strict hierarchy                     |
-| First Load JS        | 103 kB shared (see Production build report)                   |
-| Infra cost           | $0 — Docker-local Postgres/Redis, Vercel control plane        |
+| Metric               | Value                                                  |
+| -------------------- | ------------------------------------------------------ |
+| Workspaces           | 13 (2 apps + 11 packages)                              |
+| Test suite           | 89+ tests, all passing (1 Docker test gated)           |
+| API surface          | Control plane + generated per-table REST + OpenAPI     |
+| Control-plane tables | 12 (`users` → `provisioning_jobs`, see Data model)     |
+| RBAC                 | 4 roles, 14 permissions, strict hierarchy              |
+| First Load JS        | 103 kB shared (see Production build report)            |
+| Infra cost           | $0 — Docker-local Postgres/Redis, Vercel control plane |
 
 ## Stack
 
@@ -194,7 +195,8 @@ sequenceDiagram
 apps/dashboard   Next.js control-plane UI + /api/v1/* BFF
 apps/api         Framework-free Node API (same envelope)
 packages/config, logging, validation, database, auth,
-         storage, realtime, cache, provisioning, api-core
+         storage, realtime, cache, provisioning, api-core,
+         api-engine
 infrastructure/  Docker + Postgres bootstrap
 docs/            architecture.md, security.md, database.md, api.md, roadmap.md
 tests/           Cross-package integration tests
@@ -202,25 +204,26 @@ tests/           Cross-package integration tests
 
 - `apps/dashboard` — Next.js control-plane UI + `/api/v1/*` BFF
 - `apps/api` — framework-free Node API (same envelope)
-- `packages/{config,logging,validation,database,auth,storage,realtime,cache,provisioning,api-core}` — shared foundation
+- `packages/{config,logging,validation,database,auth,storage,realtime,cache,provisioning,api-core,api-engine}` — shared foundation
 - `infrastructure/` — Docker + Postgres bootstrap
-- `docs/` — `architecture.md`, `security.md`, `database.md`, `api.md`, `roadmap.md`
+- `docs/` — `architecture.md`, `security.md`, `database.md`, `api.md`, `roadmap.md`, `deploy-railway.md`
 - `tests/` — cross-package integration tests
 
 ## Service catalog
 
-| Package                                              | Interface             | Phase 1 driver             | Future driver       |
-| ---------------------------------------------------- | --------------------- | -------------------------- | ------------------- |
-| [`config`](packages/config/src/index.ts)             | `loadConfig()`        | env + Zod fail-fast        | managed secrets     |
-| [`logging`](packages/logging/src/index.ts)           | `Logger`              | redacting JSON stdout      | log aggregator      |
-| [`validation`](packages/validation/src/index.ts)     | shared Zod schemas    | strict slugs/UUIDs         | — (stable)          |
-| [`database`](packages/database/src/service.ts)       | `DatabaseService`     | `postgres` + Drizzle       | managed Postgres    |
-| [`auth`](packages/auth/src/index.ts)                 | sessions + keys       | scrypt + JWT + sha256 keys | OAuth, rotation     |
-| [`storage`](packages/storage/src/index.ts)           | `StorageService`      | local filesystem           | S3-compatible       |
-| [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`     | in-memory pub/sub          | Redis + WS gateway  |
-| [`cache`](packages/cache/src/index.ts)               | `CacheService`        | memory (+ `ioredis` ready) | Redis               |
-| [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService` | local planner              | Terraform/cloud API |
-| [`api-core`](packages/api-core/src/index.ts)         | envelope + guards     | shared by both apps        | — (stable)          |
+| Package                                              | Interface                                    | Phase 1 driver                      | Future driver           |
+| ---------------------------------------------------- | -------------------------------------------- | ----------------------------------- | ----------------------- |
+| [`config`](packages/config/src/index.ts)             | `loadConfig()`                               | env + Zod fail-fast                 | managed secrets         |
+| [`logging`](packages/logging/src/index.ts)           | `Logger`                                     | redacting JSON stdout               | log aggregator          |
+| [`validation`](packages/validation/src/index.ts)     | shared Zod schemas                           | strict slugs/UUIDs                  | — (stable)              |
+| [`database`](packages/database/src/service.ts)       | `DatabaseService`                            | `postgres` + Drizzle                | managed Postgres        |
+| [`auth`](packages/auth/src/index.ts)                 | sessions + keys                              | scrypt + JWT + sha256 keys          | OAuth, rotation         |
+| [`storage`](packages/storage/src/index.ts)           | `StorageService`                             | local filesystem                    | S3-compatible           |
+| [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`                            | in-memory pub/sub                   | Redis + WS gateway      |
+| [`cache`](packages/cache/src/index.ts)               | `CacheService`                               | memory (+ `ioredis` ready)          | Redis                   |
+| [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService`                        | Docker provider (+ host modes)      | Railway/VPS/K8s drivers |
+| [`api-core`](packages/api-core/src/index.ts)         | envelope + guards                            | shared by both apps                 | — (stable)              |
+| [`api-engine`](packages/api-engine/src/index.ts)     | introspection + CRUD engine + keys + OpenAPI | live Postgres via provider backends | RLS, nested resources   |
 
 ## API
 
@@ -229,48 +232,57 @@ Base path: `/api/v1` — identical envelope in both runtimes.
 ```bash
 curl http://localhost:3001/api/v1/health
 curl -H "Authorization: Bearer <JWT>" http://localhost:3001/api/v1/projects
+curl -H "apikey: cn_…" "http://localhost:3001/api/v1/projects/<id>/users?limit=20"
 ```
 
-| Method | Path               | Auth   | Notes                                      |
-| ------ | ------------------ | ------ | ------------------------------------------ |
-| `GET`  | `/api/v1/health`   | none   | Liveness + version envelope                |
-| `GET`  | `/api/v1/projects` | Bearer | Tenant-scoped stub (DB listing in Phase 2) |
-| `POST` | `/api/v1/projects` | Bearer | Validates `{ name, slug, organizationId }` |
+Control plane (Bearer session): orgs, projects, database lifecycle, connection,
+SQL console, schema, metrics, jobs — see [`docs/api.md`](docs/api.md).
+
+Data plane (session JWT or project `apikey`): auto-generated per-table REST —
+`GET/POST /:table`, `GET/PATCH/DELETE /:table/:id` with filter/sort/pagination,
+plus per-project `keys` management and live `openapi.json`. Try it in the
+dashboard: project page → **Open API console**.
 
 Contract details: [`docs/api.md`](docs/api.md).
 
 ## Error catalog
 
-| Code                               | Status | When                                        |
-| ---------------------------------- | ------ | ------------------------------------------- |
-| `VALIDATION_ERROR` / `BAD_REQUEST` | 400    | Zod body/query failure, field-level details |
-| `UNAUTHORIZED`                     | 401    | Missing/invalid Bearer token or session     |
-| `FORBIDDEN` / `TENANT_FORBIDDEN`   | 403    | Cross-org access or insufficient role       |
-| `NOT_FOUND`                        | 404    | Unknown route or resource                   |
-| `CONFLICT`                         | 409    | Slug/unique collisions (Phase 2 live)       |
-| `RATE_LIMITED`                     | 429    | Over 120 req/min/IP default                 |
-| `INTERNAL`                         | 500    | Message redacted, `requestId` preserved     |
+| Code                               | Status | When                                              |
+| ---------------------------------- | ------ | ------------------------------------------------- |
+| `VALIDATION_ERROR` / `BAD_REQUEST` | 400    | Zod body/query failure, field-level details       |
+| `MALFORMED_JSON`                   | 400    | Request body is not valid JSON                    |
+| `UNAUTHORIZED` / `INVALID_KEY`     | 401    | Missing/invalid session, key, or expired key      |
+| `FORBIDDEN` / `TENANT_FORBIDDEN`   | 403    | Cross-org/project access, wrong role, revoked key |
+| `NOT_FOUND`                        | 404    | Unknown route, table, row, or job                 |
+| `CONFLICT`                         | 409    | Slug/unique collisions                            |
+| `PAYLOAD_TOO_LARGE`                | 413    | Body over 256 KB (data) / 1 MB (global)           |
+| `RATE_LIMITED`                     | 429    | IP, per-key, or per-project budget exceeded       |
+| `PROVISION_FAILED`                 | 502    | Infra op failed (detail logged, not returned)     |
+| `INFRA_UNAVAILABLE`                | 503    | Docker unreachable — retry later                  |
+| `INTERNAL`                         | 500    | Message redacted, `requestId` preserved           |
 
 ## Tenancy and security
 
 `User → Organization → Project → Infrastructure`. Memberships are the only access grant; `assertSameTenant()` + `can(role, permission)` run server-side on every request. See `docs/security.md` and `docs/database.md`.
 
-- [x] Bearer JWT sessions + hash-only API keys (`cn_…` shown once, stored as sha256)
+- [x] Bearer JWT sessions + project API keys (`public`/`service`, hash-only, expiring, revocable, usage-counted)
 - [x] Zod at every boundary — client IDs/roles never trusted
-- [x] Fail-closed CORS allowlist + per-IP rate limiting (120/min)
+- [x] Fail-closed CORS allowlist + IP, per-key, and per-project rate limiting
+- [x] Allow-listed SQL identifiers + `$n` values only; bodies capped; secrets never in URLs
 - [x] Redacting JSON logger (`requestId`, no secrets/PII)
 - [x] `X-Request-Id` + HSTS / frame / CSP / referrer headers
-- [x] Append-only org-scoped audit logs
-- [ ] Row-Level Security, key rotation, OAuth, WS auth (scheduled post-Phase 2)
+- [x] Append-only org-scoped audit logs (incl. key + data-mutation events)
+- [ ] Row-Level Security, KMS-encrypted credentials, OAuth, WS auth (later phases)
 
 ## Testing
 
-| Command             | What it proves                                                                                                                          |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`      | ESLint flat config, zero warnings                                                                                                       |
-| `npm run typecheck` | `tsc --noEmit` across all 12 workspaces                                                                                                 |
-| `npm test`          | Vitest: 41 tests — tenant isolation, RBAC, auth, validation, envelopes, storage traversal, realtime channel auth, live HTTP 401/400/404 |
-| `npm run build`     | All packages `tsc` emit + `apps/api` + `next build` (9 routes)                                                                          |
+| Command             | What it proves                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`      | ESLint flat config, zero warnings                                                                              |
+| `npm run typecheck` | `tsc --noEmit` across all 13 workspaces                                                                        |
+| `npm test`          | Vitest: engine + keys + full data-plane E2E (CRUD, isolation, injection matrix, rate limits), all prior suites |
+| `npm run build`     | All packages `tsc` emit + `apps/api` + `next build`                                                            |
+| `DOCKER_TESTS=1`    | Real-Postgres integration (provision → CRUD → delete) where Docker exists                                      |
 
 ## Production build report
 
@@ -310,7 +322,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 2: migrations + seed, real auth/org/project/key persistence, audit writes, live dashboard data, Playwright smoke. Phase 3: Redis realtime/WS + S3 storage + auto data APIs. Phase 4: cloud provisioning + functions + usage/CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md).
+Phase 3 (this release): generated data APIs, project keys, live OpenAPI, API console, Railway/Docker deploy. Phase 4: durable Drizzle stores, signup/login, Playwright smoke. Phase 5: realtime gateway + S3 storage. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

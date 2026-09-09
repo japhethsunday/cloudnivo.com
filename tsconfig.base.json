@@ -40,7 +40,9 @@
       "@cloudnivo/provisioning": ["./packages/provisioning/src/index.ts"],
       "@cloudnivo/provisioning/*": ["./packages/provisioning/src/*"],
       "@cloudnivo/api-core": ["./packages/api-core/src/index.ts"],
-      "@cloudnivo/api-core/*": ["./packages/api-core/src/*"]
+      "@cloudnivo/api-core/*": ["./packages/api-core/src/*"],
+      "@cloudnivo/api-engine": ["./packages/api-engine/src/index.ts"],
+      "@cloudnivo/api-engine/*": ["./packages/api-engine/src/*"]
     }
   }
 }

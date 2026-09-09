@@ -59,4 +59,12 @@ describe('loadConfig', () => {
       loadConfig({ ...base, PROVISION_MAX_DATABASES: '0' } as NodeJS.ProcessEnv),
     ).toThrow(ConfigError);
   });
+
+  it('provides data-plane defaults (public URL, rate limits, cache TTL)', () => {
+    const cfg = loadConfig({ ...base } as NodeJS.ProcessEnv);
+    expect(cfg.PUBLIC_API_URL).toBe('http://localhost:3001');
+    expect(cfg.DATA_API_KEY_MAX).toBe(300);
+    expect(cfg.DATA_API_PROJECT_MAX).toBe(1000);
+    expect(cfg.INTROSPECTION_TTL_MS).toBe(30_000);
+  });
 });

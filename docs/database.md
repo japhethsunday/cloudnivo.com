@@ -50,9 +50,17 @@ lifecycle status by the API on every read.
 - `checkProjectDbHealth()` — refused/unreachable → `unavailable`, auth errors → `unhealthy`.
 - `executeProjectSql()` — single statement only, `statement_timeout`, SELECT
   row-capping, bounded length. Writes execute exactly once.
+- `queryProjectDb()` — parameterized executor for the API engine (text +
+  `$n` params; identifiers must be pre-validated by the query builder).
 - `inspectProjectSchema()` — tables, columns, PKs, FKs, indexes from
   `information_schema`/`pg_catalog`.
 - `getProjectDbMetrics()` — `version()`, `pg_database_size`, `pg_stat_activity`.
+
+## Project API keys → `api_keys` mapping
+
+Runtime key records (`MemoryKeyStore`, Phase 4 → Drizzle) mirror the Phase 1
+`api_keys` table: `{ prefix, sha256 hash }`, project FK, scopes array,
+expiry/revocation timestamps. Raw secrets exist only in the issue response.
 
 ## Provisioning jobs
 

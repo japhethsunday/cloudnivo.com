@@ -121,7 +121,14 @@ npm run dev:api              # standalone API on :3001
 ## Future infrastructure strategy
 
 Phase 2 delivered local Docker provisioning behind the provider interface.
-Phase 3 adds the Realtime gateway (Redis pub/sub) and S3-compatible storage.
-Phase 4 adds cloud provisioning (Terraform/cloud APIs) as a new
-`DatabaseProvisioner` + Drizzle-backed metadata. None of these change the API
-envelope or tenancy model established here.
+Phase 3 delivered the data plane (`@cloudnivo/api-engine` + generated REST)
+which talks only to `DatabaseProvisioner` / parameterized SQL — identical on
+Docker, Railway, or VPS. Phase 4 adds Drizzle-backed metadata; later phases
+add cloud provisioners, realtime gateway, and S3 storage. None of these change
+the API envelope or tenancy model established here.
+
+## Deploy targets
+
+Local compose (`postgres` + `redis`, optional `api` profile), host-run API +
+dashboard (`npm run dev:api` / `npm run dev`), Railway (`Dockerfile.api` +
+`railway.json`), any VPS (same image + env). See `docs/deploy-railway.md`.

@@ -65,5 +65,10 @@ export const DB_AUDIT_EVENTS = [
   'database.deleted',
   'database.credentials.accessed',
   'database.query.executed',
+  'api_key.created',
+  'api_key.revoked',
+  'data.created',
+  'data.updated',
+  'data.deleted',
 ] as const;
 export type DbAuditEvent = (typeof DB_AUDIT_EVENTS)[number];
