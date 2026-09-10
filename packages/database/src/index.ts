@@ -5,3 +5,4 @@ export * from './service.js';
 export * from './lifecycle.js';
 export * from './project-db.js';
 export * from './realtime-cdc.js';
+export * from './backup.js';

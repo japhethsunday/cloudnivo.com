@@ -83,8 +83,59 @@ export async function provisionProjectDatabase(
     version: input.version ?? '16',
     region: input.region ?? 'local',
   };
-  const job = opts.resumeJobId
-    ? await jobs.findById(opts.resumeJobId).then(j => {
+  // In-flight drives by org+key: concurrent same-key storms collapse onto one
+  // driver instead of each driving the same row (and the provider) twice.
+  // The store-level pending map covers row creation; this covers the drive.
+  const scope = `${input.organizationId}\n${input.idempotencyKey}`;
+  if (!opts.resumeJobId) {
+    const inflight = provisionInflight.get(scope);
+    if (inflight) {
+      const first = await inflight;
+      return { ...first, deduplicated: true };
+    }
+  }
+  const drive = driveProvision(
+    provider,
+    jobs,
+    audit,
+    input,
+    req,
+    maxAttempts,
+    sleep,
+    opts.resumeJobId,
+  );
+  if (!opts.resumeJobId) {
+    provisionInflight.set(scope, drive);
+    try {
+      return await drive;
+    } finally {
+      if (provisionInflight.get(scope) === drive) provisionInflight.delete(scope);
+    }
+  }
+  return drive;
+}
+
+const provisionInflight = new Map<string, Promise<ProvisionOutcome>>();
+
+async function driveProvision(
+  provider: DatabaseProvisioner,
+  jobs: JobStore,
+  audit: AuditSink,
+  input: {
+    projectId: string;
+    organizationId: string;
+    userId: string;
+    slug: string;
+    password: string;
+    idempotencyKey: string;
+  },
+  req: ProvisionRequest,
+  maxAttempts: number,
+  sleep: (ms: number) => Promise<void>,
+  resumeJobId?: string,
+): Promise<ProvisionOutcome> {
+  const job = resumeJobId
+    ? await jobs.findById(resumeJobId).then(j => {
         if (!j) throw new Error('Provisioning job not found');
         return j;
       })

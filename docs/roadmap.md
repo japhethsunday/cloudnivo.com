@@ -146,6 +146,10 @@ versioned API envelope, dashboard shell, docs, green
   (`/health/live`, `/health/ready`), API graceful shutdown.
 - `tests/smoke-prod.mjs`: 16/16-step production journey green against
   production builds; `docs/deployment.md` + operations/runbook updates.
+- Phase 11 hardening: concurrent-storm race tests closed a real same-key
+  duplication race (in-flight collapse in store + orchestrator) — 10/50/100
+  project storms green; automated backup + verify tooling (`db:backup`,
+  `db:verify-backup`, CI-verified) with tamper-evident manifests.
 
 ## Non-goals for Phase 1
 

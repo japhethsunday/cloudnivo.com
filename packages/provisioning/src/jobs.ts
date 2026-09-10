@@ -46,6 +46,14 @@ let counter = 0;
 
 export class MemoryJobStore implements JobStore {
   private readonly jobs = new Map<string, ProvisioningJob>();
+  /**
+   * In-flight inserts by org+key. The findByKey check above cannot see a
+   * sibling `create` that is still awaiting between check and insert, so
+   * concurrent same-key storms would each insert. Collapsing on the pending
+   * promise closes the race within this process; across processes the table
+   * unique constraint backs the same guarantee (see DrizzleJobStore).
+   */
+  private readonly pending = new Map<string, Promise<ProvisioningJob>>();
 
   async create(
     job: Omit<ProvisioningJob, 'id' | 'createdAt' | 'updatedAt'>,
@@ -54,7 +62,21 @@ export class MemoryJobStore implements JobStore {
     if (job.idempotencyKey) {
       const existing = await this.findByKey(job.organizationId, job.idempotencyKey);
       if (existing && existing.status !== 'failed') return existing;
+      const scope = `${job.organizationId}\n${job.idempotencyKey}`;
+      const inflight = this.pending.get(scope);
+      if (inflight) return inflight;
+      const insert = this.insert(job).finally(() => {
+        if (this.pending.get(scope) === insert) this.pending.delete(scope);
+      });
+      this.pending.set(scope, insert);
+      return insert;
     }
+    return this.insert(job);
+  }
+
+  private async insert(
+    job: Omit<ProvisioningJob, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<ProvisioningJob> {
     counter += 1;
     const now = new Date().toISOString();
     const full: ProvisioningJob = { ...job, id: `job_${counter}`, createdAt: now, updatedAt: now };

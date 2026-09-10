@@ -33,9 +33,25 @@ Provisioning and function deploys are idempotent by key (`findByKey` wins,
 unique constraint backs the race); retries apply only to recoverable failures
 within budget; terminal states (`completed`/`failed`) are never re-driven.
 
-## Backups and recovery (current state)
+## Backups and recovery
 
-No automated backup verification is claimed. Recovery paths today:
+Automated backup + verification (`packages/database/src/backup.ts`,
+`db:backup` / `db:verify-backup`, exercised in CI against real Postgres):
+
+```bash
+npm run db:backup --workspace=packages/database \
+  -- --url "$DATABASE_URL" --out ./backups
+npm run db:verify-backup --workspace=packages/database \
+  -- --dump ./backups/<file>.dump \
+     --manifest ./backups/<file>.dump.manifest.json \
+     --scratch "$SCRATCH_DATABASE_URL"
+```
+
+Backups are `pg_dump` custom-format plus a manifest (table inventory, row
+counts, sha256 — never credentials or row contents). Verification restores
+into an empty scratch database (refuses the source database outright) and
+fails honestly on checksum drift, size drift, missing tables, or row-count
+drift. Recovery paths:
 
 - **Control database**: standard `pg_dump`/`pg_restore` against `DATABASE_URL`
   (migrations are replayable via `npm run db:migrate`; RBAC catalog via
