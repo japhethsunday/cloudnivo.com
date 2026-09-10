@@ -1,0 +1,20 @@
+# CloudNivo CI-only compose overrides (used by .github/workflows/ci.yml).
+#
+# The base file intentionally keeps deployment secrets OUT of `environment:`
+# so local dev keeps working from `.env` via `env_file` (compose
+# `environment:` entries would shadow `.env` values, even when empty).
+# CI has no `.env`; it exports ephemeral values in the step shell instead,
+# and this file maps exactly those into the container. Missing values fail
+# fast with a clear message instead of a mysterious unhealthy container.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml \
+#          --profile api up -d --build api
+# No secrets live in this file — only variable references.
+
+services:
+  api:
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PROVISION_DRIVER: ${PROVISION_DRIVER:-fake}
+      CONTROL_STORE: ${CONTROL_STORE:-memory}
+      CACHE_DRIVER: ${CACHE_DRIVER:-memory}

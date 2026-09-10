@@ -68,7 +68,7 @@ jobs:
           done
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
-          docker compose --profile api up -d --build api
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml --profile api up -d --build api
           for i in $(seq 1 24); do
             curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
           done
