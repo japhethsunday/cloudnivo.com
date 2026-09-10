@@ -20,6 +20,7 @@ import {
   assertSlug,
   dbNameFor,
   dbUserFor,
+  quoteLiteral,
 } from './validation.js';
 
 export interface ManagedPostgresOptions {
@@ -77,7 +78,9 @@ function parseAdminUrl(connectionString: string): { controlDb: string } {
  * - start/stop toggle `datallowconn` (+ backend termination on stop);
  *   restart = stop + start. Status reads the flag + a live probe.
  * - No shell, no Docker, no host mounts. Identifiers are allow-listed;
- *   the password travels as a `$1` bind parameter only.
+ *   the password travels as a `$1` bind parameter wherever the server accepts
+ *   one; `CREATE ROLE ... PASSWORD` accepts no parameters, so that single
+ *   statement uses an escaped literal (see quoteLiteral).
  */
 export class ManagedPostgresProvider implements DatabaseProvisioner {
   readonly provider = 'managed';
@@ -166,7 +169,9 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
     const existing = await this.describeIfExists(dbName, dbUser, req.password);
     if (existing) return existing;
 
-    await this.adminQuery(`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD $1`, [req.password]);
+    await this.adminQuery(
+      `CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD ${quoteLiteral(req.password)}`,
+    );
     try {
       await this.adminQuery(`CREATE DATABASE "${dbName}" OWNER "${dbUser}"`);
     } catch (err) {

@@ -50,6 +50,17 @@ export function assertDbPassword(password: string): string {
   return password;
 }
 
+/**
+ * Quote a password as a SQL string literal. PostgreSQL utility statements
+ * (`CREATE ROLE ... PASSWORD`, `ALTER ROLE ...`) accept no bind parameters,
+ * so the value must be inlined — single quotes are doubled, the only escape
+ * the server interprets inside a standard string. The literal never reaches
+ * logs or error surfaces (see redactError in @cloudnivo/database).
+ */
+export function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 /** Deterministic, collision-resistant provider handle. Random suffix, no user data. */
 export function containerNameFor(slug: string, randHex: string): string {
   assertSlug(slug);
