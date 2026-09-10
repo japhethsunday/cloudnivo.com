@@ -120,3 +120,7 @@ volumes. Drizzle is the schema authority.
 pools with `max: 10`, and exposes `healthCheck()` that returns
 `{ ok, latencyMs }` instead of throwing — readiness probes and `/health`
 stay safe when Postgres is down.
+
+## AI-generated migrations (Phase 9)
+
+AI plans produce ordered, checksummed DDL via packages/ai migrate.ts (identifiers allow-listed, single statements) and execute through the guarded project-DB executor after approval. Inverse DROP statements roll back when only the migration ran. See docs/ai-builder.md.

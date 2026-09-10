@@ -81,6 +81,11 @@ SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
   `REDIS_URL`, and the `FUNCTION_*` budgets (`FUNCTION_EXECUTION_TIMEOUT_MS`,
   `FUNCTION_MEMORY_MB`, `FUNCTION_MAX_CONCURRENCY`). Tune
   `FUNCTION_INVOKE_RATE_MAX` per plan.
+- AI Builder: served in-process (local planner is CPU-trivial). Frontier
+  models need `AI_PROVIDER=openai-compatible` + `AI_MODEL` + `AI_API_KEY` in
+  Railway env (never committed). Provider calls are timeout-bounded
+  (`AI_REQUEST_TIMEOUT_MS`) and rate-limited (`AI_RATE_MAX`); a dedicated AI
+  worker can reuse the same builder later.
 - Run `npm run db:migrate` against the control database on deploy.
 - No `.env`, keys, or `*.pem` in images or git (`.dockerignore`-equivalent:
   the Dockerfile copies only `package*.json`, `packages/`, `apps/api/`).

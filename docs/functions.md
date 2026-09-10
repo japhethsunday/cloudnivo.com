@@ -158,3 +158,7 @@ Same image serves functions in-process; for independent scaling run a worker
 service with `FUNCTION_RUNTIME`, `DATABASE_URL`, `REDIS_URL`, and the
 `FUNCTION_*` budgets set. No localhost/filesystem/single-memory dependence in
 runtime paths.
+
+## AI-generated functions (Phase 9)
+
+Trigger specs become scaffolded handlers that pass the safety scanner and deploy through the standard pipeline. See docs/ai-builder.md.

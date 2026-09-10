@@ -1,0 +1,26 @@
+{
+  "name": "@cloudnivo/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "cloudnivo": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src --max-warnings=0"
+  },
+  "dependencies": {
+    "@cloudnivo/sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0"
+  }
+}
+

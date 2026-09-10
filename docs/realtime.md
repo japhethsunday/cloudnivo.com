@@ -219,3 +219,7 @@ crashing; malformed frames/payloads are rejected with error envelopes; shutdown
 drains connections with a bounded timeout. Metrics (`/stats`) and structured
 `realtime.request` logs expose volume, errors, and latency. Tokens, passwords,
 payloads, and secrets are never logged.
+
+## AI-generated channels (Phase 9)
+
+Plans declare table/broadcast/presence channel intents; table channels install the standard CDC trigger on apply. Channels remain structural (project-bound) � see docs/ai-builder.md.

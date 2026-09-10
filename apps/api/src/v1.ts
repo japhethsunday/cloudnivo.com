@@ -50,6 +50,7 @@ import {
 import { handleStorageRoutes, isStorageRoute } from './storage.js';
 import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
+import { handleAiRoutes, isAiRoute } from './ai.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
 
 /**
@@ -279,6 +280,7 @@ export async function handleRequest(
           isCustomerAuthRoute(rest, req.method ?? 'GET') ||
           isStorageRoute(rest, req.method ?? 'GET') ||
           isFunctionRoute(rest, req.method ?? 'GET') ||
+          isAiRoute(rest, req.method ?? 'GET') ||
           isRealtimeRoute(rest, req.method ?? 'GET'))
           ? await projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
           : baseHeaders;
@@ -328,6 +330,11 @@ export async function handleRequest(
           url,
           async () => readJson(req),
         );
+        if (handled) return;
+      }
+      // AI Builder: plan (never executes) + approve/reject/apply.
+      if (isAiRoute(rest, req.method ?? 'GET')) {
+        const handled = await handleAiRoutes(req, res, ctx, logger, routeHeaders, requestId, rest);
         if (handled) return;
       }
       // Realtime management (session members; WS upgrades handled separately).

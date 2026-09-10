@@ -100,3 +100,7 @@ Local: `STORAGE_DRIVER=local`, bytes under `STORAGE_LOCAL_DIR` (git-ignored,
 ephemeral — back up or use S3 for anything durable). Production/Railway: set
 `STORAGE_DRIVER=s3` + `STORAGE_S3_*`; see `docs/deploy-railway.md`. Never
 commit credentials.
+
+## AI-generated buckets (Phase 9)
+
+The AI Builder proposes visibility/MIME/size-capped buckets as plan data; creation goes through the standard bucket API after approval. See docs/ai-builder.md.

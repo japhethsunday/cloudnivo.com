@@ -59,6 +59,18 @@ export default defineConfig({
         find: '@cloudnivo/functions',
         replacement: resolve(rootDir, 'packages/functions/src/index.ts'),
       },
+      {
+        find: '@cloudnivo/ai',
+        replacement: resolve(rootDir, 'packages/ai/src/index.ts'),
+      },
+      {
+        find: '@cloudnivo/sdk',
+        replacement: resolve(rootDir, 'packages/sdk/src/index.ts'),
+      },
+      {
+        find: '@cloudnivo/cli',
+        replacement: resolve(rootDir, 'packages/cli/src/index.ts'),
+      },
     ],
   },
 });

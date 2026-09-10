@@ -18,6 +18,10 @@ packages/auth        Passwords (scrypt), sessions (JWT via jose), API keys (hash
 packages/storage     Object-storage abstraction (local driver today, S3 later).
 packages/realtime    Realtime engine (RFC 6455 codec, gateway, memory/Redis
                        bus + presence, raw-socket server, service facade, client).
+packages/ai          AI Backend Builder (strict plans, local + HTTP providers,
+                       migrations, approvals, tools, scanner, audit, usage).
+packages/sdk         Typed server-side HTTP client (projects, functions, storage, AI).
+packages/cli         `cloudnivo` CLI (same backend services as the dashboard).
 packages/cache       Cache abstraction (memory today, Redis via ioredis later).
 packages/provisioning Local-only provision planner (Terraform/cloud driver later).
 packages/api-core    Versioned envelope, validation, CORS, headers, rate-limit.
@@ -120,6 +124,44 @@ apps/dashboard       + projects/[id]/functions console (overview, editor,
                        deployments, invoke tester, logs, env, versions)
 docs/functions.md (format, lifecycle, auth, limits, sandboxing, Railway)
 ```
+
+Phase 9 additions (same layout, no rebuild):
+
+```text
+packages/ai          + plan.ts (strict zod schema) + validate.ts + provider.ts
+                       (local planner + OpenAI-compatible HTTP provider)
+                     + planner.ts (AIBackendBuilder: generate/validate/apply,
+                       stop-on-failure, rollback) + migrate.ts (DDL builder)
+                     + preview.ts (diff) + approvals.ts (lifecycle, destructive
+                       confirmations, permission levels) + tools.ts (permission-
+                       checked tool boundary) + scanner.ts + audit.ts + openapi.ts
+packages/sdk         + CloudNivoClient (typed fetch client, AI methods)
+packages/cli         + cloudnivo bin (ai plan/approve/apply/status/usage)
+packages/config      + AI_* provider/rate/size budgets
+apps/api             + ai.ts (plan/preview/approve/reject/apply/usage/history
+                       routes bound to real services) + ai.test.ts (E2E)
+apps/dashboard       + projects/[id]/ai console (prompt → plan → preview →
+                       approve → result)
+docs/ai-builder.md, docs/ai-security.md, docs/cli.md, docs/sdk.md
+```
+
+## AI Builder architecture
+
+```text
+Developer ──► Dashboard / CLI / SDK ──► AI API ──► AIBackendBuilder ──► validated plan
+                                                              │
+                                        approve ──► apply ──► project-bound tools ──► real services
+```
+
+- **Generation ≠ execution.** The model produces JSON that must parse via the
+  strict plan schema and pass semantic validation; unvalidated output can never
+  enter the pipeline, and partially streamed output never executes.
+- **Approval-gated apply.** Plans move pending → approved → applying →
+  applied/failed/rolled_back; destructive ops need explicit per-operation
+  confirmations; failures stop the pipeline and report honestly.
+- **Project-bound tools.** Six named tools with independent permission checks
+  operate through injected adapters scoped to one project — the AI holds no
+  more permission than the initiating caller.
 
 ## Functions architecture
 

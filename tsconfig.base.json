@@ -44,7 +44,13 @@
       "@cloudnivo/api-engine": ["./packages/api-engine/src/index.ts"],
       "@cloudnivo/api-engine/*": ["./packages/api-engine/src/*"],
       "@cloudnivo/functions": ["./packages/functions/src/index.ts"],
-      "@cloudnivo/functions/*": ["./packages/functions/src/*"]
+      "@cloudnivo/functions/*": ["./packages/functions/src/*"],
+      "@cloudnivo/ai": ["./packages/ai/src/index.ts"],
+      "@cloudnivo/ai/*": ["./packages/ai/src/*"],
+      "@cloudnivo/cli": ["./packages/cli/src/index.ts"],
+      "@cloudnivo/cli/*": ["./packages/cli/src/*"],
+      "@cloudnivo/sdk": ["./packages/sdk/src/index.ts"],
+      "@cloudnivo/sdk/*": ["./packages/sdk/src/*"]
     }
   }
 }

@@ -32,6 +32,9 @@ export default function ProjectDetailPage({
         </Link>{' '}
         <Link className="btn" href={`/projects/${id}/functions`}>
           Functions
+        </Link>{' '}
+        <Link className="btn btn-primary" href={`/projects/${id}/ai`}>
+          AI Builder
         </Link>
       </p>
       <TokenBar onChange={() => undefined} />

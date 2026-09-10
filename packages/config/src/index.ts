@@ -127,6 +127,18 @@ const EnvSchema = z.object({
   FUNCTION_INVOKE_RATE_MAX: z.coerce.number().int().min(1).max(10_000).default(60),
   // Public base URL served to developers (never hardcode prod domains).
   FUNCTION_BASE_URL: z.string().default(''),
+
+  // ── AI Backend Builder (Phase 9) ──
+  // local = deterministic offline planner (default); openai-compatible =
+  // frontier models via chat-completions when AI_API_KEY is configured.
+  // Provider credentials live in env only — never in code, logs, or responses.
+  AI_PROVIDER: z.enum(['local', 'openai-compatible']).default('local'),
+  AI_MODEL: z.string().max(200).default('local-planner-v1'),
+  AI_API_KEY: z.string().default(''),
+  AI_BASE_URL: z.string().default('https://api.openai.com/v1'),
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300_000).default(60_000),
+  AI_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(20),
+  AI_MAX_PROMPT_CHARS: z.coerce.number().int().min(100).max(50_000).default(8000),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

@@ -103,16 +103,27 @@ versioned API envelope, dashboard shell, docs, green
   project-bound publishes (unit + HTTP E2E incl. denials).
 - Green `lint → typecheck → test → build` (199+ unit/integration, gated skips).
 
-## Phase 9 — CLI + SDKs (next)
+## Phase 9 — AI Backend Builder (DONE)
 
-- CLI + language SDKs on the stable envelope (functions SDK data-plane next).
-- Dashboard wires to live data (loading/empty/error states stay).
+- `@cloudnivo/ai`: strict plan schema, semantic validation, local deterministic
+  planner + OpenAI-compatible provider abstraction, DDL migration builder with
+  checksums + rollback inverses, live-state diff, approval lifecycle with
+  destructive confirmations, permission-checked tools, code/SQL scanner, redacted
+  audit log, honest usage tracking.
+- AI API (`/ai/plan|plans|usage|history`, approve/reject/apply) wired to real
+  services (migrations via guarded executor, buckets, scanned function deploys,
+  CDC feeds); dashboard AI Builder (prompt → plan → preview → approve → result);
+  `packages/cli` (`cloudnivo ai …`) + `packages/sdk` on the same backend.
+- 40+ new tests (planner, validation, destructive gates, scanner, tools, audit
+  honesty, CLI/SDK, full E2E incl. rollback + injection + rate limits); green
+  `lint → typecheck → test → build`.
 
-## Phase 10 — Provisioning & scale
+## Phase 10 — Security, Performance & Load Testing (next)
 
+- Adversarial security pass over auth, AI, and function boundaries.
+- Load testing (realtime fan-out, function concurrency, AI apply pipeline).
 - `ProvisioningService` cloud driver (Terraform/API) per project env.
-- Usage metering + billing on top of function/realtime/storage metrics.
-- AI backend generation on top of the stable envelope.
+- Usage metering + billing on top of function/realtime/storage/AI metrics.
 
 ## Non-goals for Phase 1
 

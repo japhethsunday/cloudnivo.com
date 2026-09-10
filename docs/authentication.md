@@ -114,3 +114,7 @@ curl -H "Authorization: Bearer $ACCESS" $API/api/v1/projects/$PID/posts
 curl -X POST $API/api/v1/projects/$PID/auth/refresh -d '{"refresh_token":"'$REF'"}'
 curl -X POST $API/api/v1/projects/$PID/auth/logout -d '{"refresh_token":"'$REF2'"}'
 ```
+
+## AI-generated auth (Phase 9)
+
+The AI Builder drafts roles and owner-scoped policies as structured plan data; enforcement stays in the existing engine/RLS layer � never in model output. See docs/ai-builder.md.

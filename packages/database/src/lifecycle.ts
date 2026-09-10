@@ -87,5 +87,12 @@ export const DB_AUDIT_EVENTS = [
   'platform.login_failed',
   'org.invite.created',
   'org.invite.accepted',
+  'ai.plan.requested',
+  'ai.plan.generated',
+  'ai.plan.approved',
+  'ai.plan.rejected',
+  'ai.plan.applied',
+  'ai.plan.failed',
+  'ai.plan.rolled_back',
 ] as const;
 export type DbAuditEvent = (typeof DB_AUDIT_EVENTS)[number];
