@@ -59,20 +59,30 @@ jobs:
         run: docker build -f Dockerfile.worker -t cloudnivo-worker:ci .
       - name: Build realtime image
         run: docker build -f Dockerfile.realtime -t cloudnivo-realtime:ci .
-      - name: Boot postgres + redis + API, probe health
+      - name: Boot postgres + redis
         run: |
           set -euo pipefail
           docker compose up -d postgres redis
-          for i in $(seq 1 24); do
-            docker compose exec -T postgres pg_isready -U cloudnivo && break || sleep 5
-          done
+          timeout 120 bash -c 'until docker compose exec -T postgres pg_isready -U cloudnivo; do sleep 5; done'
+      - name: Build + start API
+        run: |
+          set -euo pipefail
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
           docker compose -f docker-compose.yml -f docker-compose.ci.yml --profile api up -d --build api
+          docker compose ps
+      - name: Probe API health
+        run: |
+          set -euo pipefail
           for i in $(seq 1 24); do
             curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
           done
-          curl -fsS http://127.0.0.1:3001/api/v1/health/ready | grep -q '"ready"'
+          curl -fsS http://127.0.0.1:3001/api/v1/health/ready | tee /tmp/cn-ready.json | grep -q '"ready"'
+      - name: Dump compose diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail=40 api postgres redis || true
       - name: Migrate control database (validates journal end-to-end)
         run: |
           set -euo pipefail
