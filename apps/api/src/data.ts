@@ -26,6 +26,7 @@ import { storageOpenApiPaths } from '@cloudnivo/storage';
 import { realtimeOpenApiPaths } from '@cloudnivo/realtime';
 import { functionsOpenApiPaths } from '@cloudnivo/functions';
 import { aiOpenApiPaths } from '@cloudnivo/ai';
+import { billingOpenApiPaths } from '@cloudnivo/billing';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
@@ -598,6 +599,7 @@ export async function handleDataRoutes(
         ...realtimeOpenApiPaths(),
         ...functionsOpenApiPaths(),
         ...aiOpenApiPaths(),
+        ...billingOpenApiPaths(),
       };
       return finish(200, doc, { caller: caller.kind });
     }

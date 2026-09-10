@@ -47,6 +47,8 @@
       "@cloudnivo/functions/*": ["./packages/functions/src/*"],
       "@cloudnivo/ai": ["./packages/ai/src/index.ts"],
       "@cloudnivo/ai/*": ["./packages/ai/src/*"],
+      "@cloudnivo/billing": ["./packages/billing/src/index.ts"],
+      "@cloudnivo/billing/*": ["./packages/billing/src/*"],
       "@cloudnivo/cli": ["./packages/cli/src/index.ts"],
       "@cloudnivo/cli/*": ["./packages/cli/src/*"],
       "@cloudnivo/sdk": ["./packages/sdk/src/index.ts"],

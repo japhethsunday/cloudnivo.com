@@ -17,7 +17,7 @@
     "dev": "npm run dev --workspace=apps/dashboard",
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:realtime": "npm run dev:realtime --workspace=apps/api",
-    "build:packages": "npm run build --workspace=packages/config --workspace=packages/logging --workspace=packages/validation --workspace=packages/database --workspace=packages/auth --workspace=packages/storage --workspace=packages/realtime --workspace=packages/functions --workspace=packages/ai --workspace=packages/sdk --workspace=packages/cli --workspace=packages/cache --workspace=packages/provisioning --workspace=packages/api-core --workspace=packages/api-engine --if-present",
+    "build:packages": "npm run build --workspace=packages/config --workspace=packages/logging --workspace=packages/validation --workspace=packages/database --workspace=packages/auth --workspace=packages/storage --workspace=packages/realtime --workspace=packages/functions --workspace=packages/ai --workspace=packages/billing --workspace=packages/sdk --workspace=packages/cli --workspace=packages/cache --workspace=packages/provisioning --workspace=packages/api-core --workspace=packages/api-engine --if-present",
     "build": "npm run build:packages && npm run build --workspace=apps/api --workspace=apps/dashboard --if-present",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",

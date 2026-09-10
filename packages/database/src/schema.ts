@@ -1,4 +1,5 @@
 import {
+  bigint,
   index,
   integer,
   jsonb,
@@ -500,4 +501,185 @@ export const storageUsage = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   t => [index('storage_usage_org_idx').on(t.organizationId)],
+);
+
+/**
+ * Phase 12 — billing + usage metering.
+ *
+ * Billing belongs to organizations; usage is measured per organization,
+ * project (`''` project id = org-level rollup row in aggregates), service,
+ * and metric, bucketed by UTC `YYYY-MM` period. Raw events are retention-
+ * bounded (see BILLING_RAW_RETENTION_DAYS); aggregates are the read path.
+ * No payment credentials are ever stored — only provider references.
+ */
+
+export const billingSubscriptions = pgTable(
+  'billing_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' })
+      .unique(),
+    planId: varchar('plan_id', { length: 20 }).notNull().default('free'),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+    currentPeriodStart: timestamp('current_period_start', { withTimezone: true }).notNull(),
+    currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
+    renewsAt: timestamp('renews_at', { withTimezone: true }),
+    canceledAt: timestamp('canceled_at', { withTimezone: true }),
+    provider: varchar('provider', { length: 40 }).notNull().default('manual'),
+    providerCustomerId: text('provider_customer_id'),
+    providerSubscriptionId: text('provider_subscription_id'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('billing_subs_status_idx').on(t.status)],
+);
+
+export const billingInvoices = pgTable(
+  'billing_invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    number: varchar('number', { length: 40 }).notNull().unique(),
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    /** Line items: [{ label, quantity, unitCents, amountCents }]. No PII. */
+    lines: jsonb('lines')
+      .$type<{ label: string; quantity: number; unitCents: number; amountCents: number }[]>()
+      .notNull()
+      .default([]),
+    amountCents: integer('amount_cents').notNull().default(0),
+    currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+    status: varchar('status', { length: 20 }).notNull().default('open'),
+    provider: varchar('provider', { length: 40 }).notNull().default('manual'),
+    providerInvoiceId: text('provider_invoice_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('billing_invoices_org_idx').on(t.organizationId)],
+);
+
+export const billingPayments = pgTable(
+  'billing_payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    invoiceId: uuid('invoice_id').references(() => billingInvoices.id, { onDelete: 'set null' }),
+    amountCents: integer('amount_cents').notNull(),
+    currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    provider: varchar('provider', { length: 40 }).notNull().default('manual'),
+    providerPaymentId: text('provider_payment_id').unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('billing_payments_org_idx').on(t.organizationId)],
+);
+
+export const billingEvents = pgTable(
+  'billing_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    provider: varchar('provider', { length: 40 }).notNull(),
+    eventId: varchar('event_id', { length: 200 }).notNull(),
+    type: varchar('type', { length: 100 }).notNull(),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
+    /** Redacted at write time: ids + status only, never payloads with secrets. */
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('billing_events_provider_event_unique').on(t.provider, t.eventId),
+    index('billing_events_org_idx').on(t.organizationId),
+  ],
+);
+
+export const usageRecords = pgTable(
+  'usage_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Empty string = org-level event (no single project). Plain text on purpose. */
+    projectId: varchar('project_id', { length: 64 }).notNull().default(''),
+    service: varchar('service', { length: 40 }).notNull(),
+    metric: varchar('metric', { length: 40 }).notNull(),
+    value: bigint('value', { mode: 'number' }).notNull(),
+    period: varchar('period', { length: 7 }).notNull(),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('usage_records_org_period_idx').on(t.organizationId, t.period, t.service, t.metric),
+    index('usage_records_recorded_idx').on(t.recordedAt),
+  ],
+);
+
+export const usageAggregates = pgTable(
+  'usage_aggregates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull().default(''),
+    service: varchar('service', { length: 40 }).notNull(),
+    metric: varchar('metric', { length: 40 }).notNull(),
+    period: varchar('period', { length: 7 }).notNull(),
+    total: bigint('total', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('usage_agg_org_proj_svc_metric_period_unique').on(
+      t.organizationId,
+      t.projectId,
+      t.service,
+      t.metric,
+      t.period,
+    ),
+    index('usage_agg_period_idx').on(t.period),
+  ],
+);
+
+export const billingWarnings = pgTable(
+  'billing_warnings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    resource: varchar('resource', { length: 60 }).notNull(),
+    period: varchar('period', { length: 7 }).notNull(),
+    thresholds: text('thresholds').array().notNull().default([]),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('billing_warnings_org_resource_period_unique').on(
+      t.organizationId,
+      t.resource,
+      t.period,
+    ),
+  ],
+);
+
+export const billingCredits = pgTable(
+  'billing_credits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    amountCents: integer('amount_cents').notNull(),
+    reason: varchar('reason', { length: 200 }).notNull().default(''),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('billing_credits_org_idx').on(t.organizationId)],
 );

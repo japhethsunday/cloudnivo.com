@@ -35,6 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
+          : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           railway link --project "$RAILWAY_PROJECT_ID" --environment staging
           railway run --service cloudnivo-api -- npm run db:migrate
           railway run --service cloudnivo-api -- npm run db:seed
@@ -74,6 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
+          : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           railway link --project "$RAILWAY_PROJECT_ID" --environment production
           railway run --service cloudnivo-api -- npm run db:migrate
           railway run --service cloudnivo-api -- npm run db:seed
@@ -87,6 +89,8 @@ jobs:
         run: |
           set -euo pipefail
           : "${VERCEL_TOKEN:?VERCEL_TOKEN secret is not set}"
+          : "${VERCEL_ORG_ID:?VERCEL_ORG_ID secret is not set}"
+          : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID secret is not set}"
           vercel --prod --token="$VERCEL_TOKEN" --yes
       - name: Readiness gate
         run: |

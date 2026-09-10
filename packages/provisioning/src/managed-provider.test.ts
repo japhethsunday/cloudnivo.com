@@ -60,16 +60,19 @@ describe('managed postgres provider (no live server)', () => {
 
   it('never leaks passwords in errors', async () => {
     const provider = new ManagedPostgresProvider({ connectionString: UNREACHABLE });
-    const err = await provider
-      .createDatabase({
+    let message = '';
+    try {
+      await provider.createDatabase({
         projectId: 'p1',
         organizationId: 'o1',
         slug: 'shop',
         password: 'super-secret-password-1',
         version: '16',
         region: 'local',
-      })
-      .catch(e => e as Error);
-    expect(String(err?.message ?? '')).not.toContain('super-secret-password-1');
+      });
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    expect(message).not.toContain('super-secret-password-1');
   });
 });

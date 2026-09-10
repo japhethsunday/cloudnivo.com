@@ -73,6 +73,8 @@ export interface Registry {
   createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg>;
   listOrganizations(userId: string): Promise<OrganizationRecord[]>;
   membershipsFor(userId: string): Promise<MembershipRecord[]>;
+  /** All memberships of one organization (member counts, billing visibility). */
+  listOrganizationMembers(organizationId: string): Promise<MembershipRecord[]>;
   /** Grant a membership (invites, fixtures). Duplicate memberships are ignored. */
   addMembership(organizationId: string, userId: string, role: string): Promise<void>;
   createProject(input: {
@@ -147,6 +149,10 @@ export class MemoryRegistry implements Registry {
 
   async membershipsFor(userId: string): Promise<MembershipRecord[]> {
     return this.memberships.filter(m => m.userId === userId);
+  }
+
+  async listOrganizationMembers(organizationId: string): Promise<MembershipRecord[]> {
+    return this.memberships.filter(m => m.organizationId === organizationId);
   }
 
   async addMembership(organizationId: string, userId: string, role: string): Promise<void> {

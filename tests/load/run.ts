@@ -20,7 +20,10 @@ import type { Server } from 'node:http';
 import { runPool, summarize, type ScenarioResult } from './budgets.js';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = 'postgres://u:p@localhost:5432/db';
+// NOTE: no credentials here on purpose — the secret-scan CI job fails on any
+// password-shaped connection string, and this harness needs none (fake
+// provider, nothing dials Postgres).
+process.env.DATABASE_URL = 'postgres://localhost:5432/db';
 process.env.JWT_SECRET = 'l'.repeat(48);
 process.env.CORS_ORIGINS = 'http://localhost:3000';
 process.env.CACHE_DRIVER = 'memory';

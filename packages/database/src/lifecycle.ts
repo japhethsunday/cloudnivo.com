@@ -94,5 +94,13 @@ export const DB_AUDIT_EVENTS = [
   'ai.plan.applied',
   'ai.plan.failed',
   'ai.plan.rolled_back',
+  'billing.plan.changed',
+  'billing.subscription.canceled',
+  'billing.invoice.generated',
+  'billing.invoice.voided',
+  'billing.payment.recorded',
+  'billing.webhook.processed',
+  'billing.credit.granted',
+  'billing.quota.warning',
 ] as const;
 export type DbAuditEvent = (typeof DB_AUDIT_EVENTS)[number];

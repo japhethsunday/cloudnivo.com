@@ -202,6 +202,33 @@ export async function handleProjectRoutes(
       if ((await ctx.registry.countDatabases()) >= config.PROVISION_MAX_DATABASES) {
         throw new ApiError('LIMIT_EXCEEDED', 'Maximum number of databases reached', 403);
       }
+      // Plan quota: project count is a gauge limit (free=3, pro=15, ...).
+      // Enforced here so the plan catalog is real — upgrade to raise it.
+      try {
+        const owned = await ctx.registry.listProjects(session.sub);
+        const used = owned.filter(p => p.organizationId === body.organizationId).length;
+        const quota = await ctx.billing.checkLimit(
+          body.organizationId,
+          'api',
+          'projects',
+          used,
+          1,
+          'hard',
+        );
+        if (!quota.allowed) {
+          throw new ApiError(
+            'LIMIT_EXCEEDED',
+            `Project limit reached for this plan (used ${quota.check?.used ?? used} of ${quota.check?.limit ?? '?'}). Upgrade to create more.`,
+            403,
+          );
+        }
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'LIMIT_EXCEEDED') throw err;
+        // Billing must never wedge provisioning on transient errors — log and allow.
+        logger.warn('projects.billing_check_failed', {
+          error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+        });
+      }
       const key = idempotencyKey(
         req.headers['idempotency-key'],
         `create-project:${body.organizationId}:${body.slug}`,

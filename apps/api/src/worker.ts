@@ -12,6 +12,12 @@ export interface DrainResult {
   failed: number;
 }
 
+export interface BillingDrainResult {
+  reconciled: number;
+  pruned: number;
+  errors: { organizationId: string; error: string }[];
+}
+
 const STALE_STATUSES: JobStatus[] = ['pending', 'retrying'];
 
 /**
@@ -118,6 +124,32 @@ export async function drainOnce(ctx: ApiContext, now = Date.now()): Promise<Drai
   return result;
 }
 
+/**
+ * Billing maintenance: reconcile time-driven subscription transitions and
+ * prune raw usage past retention. Pruning is global (no org enumeration
+ * needed); reconciliation covers orgs the caller lists — the API reconciles
+ * lazily on read, so the worker's prune is the critical scheduled work.
+ * Every step is idempotent; failures are reported, never thrown.
+ */
+export async function drainBillingOnce(
+  ctx: ApiContext,
+  organizationIds: string[] = [],
+): Promise<BillingDrainResult> {
+  try {
+    return await ctx.billing.runMaintenance(organizationIds, {
+      rawRetentionDays: ctx.config.BILLING_RAW_RETENTION_DAYS,
+    });
+  } catch (err) {
+    return {
+      reconciled: 0,
+      pruned: 0,
+      errors: [
+        { organizationId: '', error: err instanceof Error ? err.message.slice(0, 200) : 'unknown' },
+      ],
+    };
+  }
+}
+
 export interface WorkerHandle {
   close: () => Promise<void>;
   port: number;
@@ -145,6 +177,14 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
           resumed: result.resumed,
           reaped: result.reaped,
           failed: result.failed,
+        });
+      }
+      const billing = await drainBillingOnce(ctx);
+      if (billing.pruned + billing.reconciled + billing.errors.length > 0) {
+        logger.info('worker.billing_drain', {
+          reconciled: billing.reconciled,
+          pruned: billing.pruned,
+          errors: billing.errors.length,
         });
       }
     } catch (err) {

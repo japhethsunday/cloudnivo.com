@@ -145,13 +145,21 @@ export class DrizzleRegistry implements Registry {
       .where(eq(organizationMemberships.userId, uid));
     return rows.map(r => ({ organizationId: r.organizationId, userId: r.userId, role: r.role }));
   }
-
   async addMembership(organizationId: string, userId: string, role: string): Promise<void> {
     if (!uuidOrNull(organizationId) || !uuidOrNull(userId)) return;
     await this.db
       .insert(organizationMemberships)
       .values({ organizationId, userId, role: asOrgRole(role) })
       .onConflictDoNothing();
+  }
+
+  async listOrganizationMembers(organizationId: string): Promise<MembershipRecord[]> {
+    if (!uuidOrNull(organizationId)) return [];
+    const rows = await this.db
+      .select()
+      .from(organizationMemberships)
+      .where(eq(organizationMemberships.organizationId, organizationId));
+    return rows.map(r => ({ organizationId: r.organizationId, userId: r.userId, role: r.role }));
   }
 
   async createProject(input: {

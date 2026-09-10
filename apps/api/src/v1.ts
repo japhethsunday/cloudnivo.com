@@ -24,6 +24,7 @@ import {
 } from '@cloudnivo/provisioning';
 import { MemoryKeyStore, type KeyStore } from '@cloudnivo/api-engine';
 import { DrizzleKeyStore } from '@cloudnivo/api-engine';
+import { BillingService, DrizzleBillingStore, MemoryBillingStore } from '@cloudnivo/billing';
 import { createDatabaseService, type DatabaseService } from '@cloudnivo/database';
 import { DrizzleJobStore } from '@cloudnivo/provisioning';
 import { MemoryRegistry, type Registry } from './registry.js';
@@ -52,6 +53,7 @@ import { handleStorageRoutes, isStorageRoute } from './storage.js';
 import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 import { handleAiRoutes, isAiRoute } from './ai.js';
+import { handleBillingRoutes, isBillingRoute } from './billing.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
 
 /**
@@ -71,6 +73,8 @@ export interface ApiContext {
   keys: KeyStore;
   jobs: JobStore;
   audit: AuditSink;
+  /** Central billing + usage metering (memory or drizzle, mirrors the other stores). */
+  billing: BillingService;
   /** Durable control-plane connection (CONTROL_STORE=drizzle only). */
   controlDb: DatabaseService | null;
   /** Per-project customer-auth handles (service + dev outbox), cached. */
@@ -105,6 +109,7 @@ export function createContext(config: AppConfig): ApiContext {
   const data: DataBackend = isFake ? new FakeDataBackend() : RealDataBackend;
   const keys = new MemoryKeyStore();
   const jobs = new MemoryJobStore();
+  const billing = new BillingService(new MemoryBillingStore());
   const audit: AuditSink = {
     record: (event, fields) => {
       void registry
@@ -130,6 +135,7 @@ export function createContext(config: AppConfig): ApiContext {
     keys,
     jobs,
     audit,
+    billing,
     controlDb: null,
     customerAuth: new Map(),
   };
@@ -154,6 +160,7 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
   ctx.registry = new DrizzleRegistry(svc.db);
   ctx.keys = new DrizzleKeyStore(svc.db);
   ctx.jobs = new DrizzleJobStore(svc.db);
+  ctx.billing = new BillingService(new DrizzleBillingStore(svc.db));
   const { DrizzleStorageMetadataStore } = await import('@cloudnivo/storage');
   (ctx as unknown as { __storageMeta?: unknown }).__storageMeta = new DrizzleStorageMetadataStore(
     svc.db,
@@ -298,6 +305,13 @@ export async function handleRequest(
     // Platform auth (developer signup/login/me + org invites — no project yet).
     if (isPlatformAuthRoute(url.pathname, req.method ?? 'GET')) {
       const handled = await handlePlatformAuthRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
+    // Billing + usage metering (org-scoped reads/mutations + HMAC webhooks).
+    // Webhooks read the raw body themselves, so this runs BEFORE any readJson.
+    if (isBillingRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handleBillingRoutes(req, res, ctx, logger, baseHeaders, requestId);
       if (handled) return;
     }
 

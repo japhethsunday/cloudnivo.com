@@ -164,6 +164,16 @@ const EnvSchema = z.object({
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300_000).default(60_000),
   AI_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(20),
   AI_MAX_PROMPT_CHARS: z.coerce.number().int().min(100).max(50_000).default(8000),
+
+  // ── Billing (Phase 12) ──
+  // manual = plan administration without a payment rail (default); named
+  // providers resolve when their credentials + SDK wiring land.
+  // Webhook secrets live in env only — never code, logs, or responses.
+  BILLING_PROVIDER: z.string().max(40).default('manual'),
+  BILLING_WEBHOOK_SECRET: z.string().default(''),
+  BILLING_DEFAULT_PLAN: z.enum(['free', 'pro', 'business', 'enterprise']).default('free'),
+  BILLING_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(60),
+  BILLING_RAW_RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(90),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {
