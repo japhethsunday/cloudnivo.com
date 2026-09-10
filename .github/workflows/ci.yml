@@ -64,13 +64,19 @@ jobs:
           set -euo pipefail
           docker compose up -d postgres redis
           timeout 120 bash -c 'until docker compose exec -T postgres pg_isready -U cloudnivo; do sleep 5; done'
-      - name: Build + start API
+      - name: Start API container (prebuilt image)
         run: |
           set -euo pipefail
-          JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
-          PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml --profile api up -d --build api
-          docker compose ps
+          # Runs the exact cloudnivo-api:ci image built above on the compose
+          # network with explicit env (no compose interpolation involved).
+          JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))")
+          docker run -d --name cn-api --network cloudnivo -p 3001:3001 \
+            -e "JWT_SECRET=$JWT_SECRET" \
+            -e PROVISION_DRIVER=fake -e CONTROL_STORE=memory -e CACHE_DRIVER=memory \
+            -e DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@postgres:5432/cloudnivo \
+            -e REDIS_URL=redis://redis:6379 -e API_PORT=3001 -e PROVISION_HOST_MODE=container \
+            cloudnivo-api:ci
+          docker ps --filter name=cn-api
       - name: Probe API health
         run: |
           set -euo pipefail
@@ -83,6 +89,7 @@ jobs:
         run: |
           docker compose ps || true
           docker compose logs --tail=40 api postgres redis || true
+          docker logs --tail=40 cn-api || true
       - name: Migrate control database (validates journal end-to-end)
         run: |
           set -euo pipefail
@@ -97,6 +104,7 @@ jobs:
           npm run db:backup --workspace=packages/database -- --url "$DATABASE_URL" --out /tmp/cn-backups
           DUMP=$(ls -t /tmp/cn-backups/*.dump | head -n 1)
           npm run db:verify-backup --workspace=packages/database -- --dump "$DUMP" --manifest "${DUMP}.manifest.json" --scratch "$SCRATCH_DATABASE_URL"
+          docker rm -f cn-api || true
           docker compose down -v
 
   e2e:
