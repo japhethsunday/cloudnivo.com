@@ -1,4 +1,5 @@
-import { AuthError, hashPassword, verifyPassword } from '../index.js';
+import { hashPassword, verifyPassword } from '../index.js';
+import { AuthError } from '../errors.js';
 import type { EmailService } from './email.js';
 import { sanitizeAppMetadata, sanitizeUserMetadata } from './metadata.js';
 import type { CustomerAuthStore } from './store.js';

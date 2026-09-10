@@ -34,14 +34,10 @@ export interface ApiKeyPair {
   hash: string;
 }
 
-export class AuthError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'AuthError';
-    this.code = code;
-  }
-}
+// Single AuthError definition lives in the leaf module so customer/* can
+// extend it without a package-level import cycle (see errors.ts).
+import { AuthError } from './errors.js';
+export { AuthError } from './errors.js';
 
 function secretKey(secret: string): Uint8Array {
   if (secret.length < 32) throw new AuthError('WEAK_SECRET', 'JWT secret is too short');

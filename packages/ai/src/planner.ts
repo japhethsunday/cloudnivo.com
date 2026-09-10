@@ -323,6 +323,36 @@ export class AIBackendBuilder {
     return diffPlan(plan, existing);
   }
 
+  // ── Public plan/audit/usage accessors (API layer must not reach into privates) ──
+
+  getPlan(projectId: string, planId: string): StoredPlan {
+    return this.opts.plans.get(projectId, planId);
+  }
+
+  listPlans(projectId: string): StoredPlan[] {
+    return this.opts.plans.list(projectId);
+  }
+
+  approvePlan(projectId: string, planId: string, level: PermissionLevel, confirmations: DestructiveOp[]): StoredPlan {
+    return this.opts.plans.approve(projectId, planId, level, confirmations);
+  }
+
+  rejectPlan(projectId: string, planId: string): StoredPlan {
+    return this.opts.plans.reject(projectId, planId);
+  }
+
+  getUsage(projectId: string): ReturnType<AIUsageTracker['get']> {
+    return this.opts.usage.get(projectId);
+  }
+
+  getHistory(projectId: string, limit = 100): ReturnType<AIAuditLog['history']> {
+    return this.opts.audit.history(projectId, limit);
+  }
+
+  recordAudit(entry: Parameters<AIAuditLog['record']>[0]): ReturnType<AIAuditLog['record']> {
+    return this.opts.audit.record(entry);
+  }
+
   migrationPreview(plan: AIPlan, planId: string, projectId: string): string[] {
     return buildMigration(plan, planId, projectId).statements.map(s => s.slice(0, 500));
   }

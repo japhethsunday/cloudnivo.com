@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { z } from 'zod';
-import { AuthError } from '../index.js';
+import { AuthError } from '../errors.js';
 
 /**
  * Customer token material.

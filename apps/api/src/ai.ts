@@ -174,7 +174,7 @@ async function buildProjectContext(
   }
   let recentChanges: string[] = [];
   try {
-    recentChanges = (await aiFor(ctx).builder['opts'].audit.history(projectId, 10)).map(
+    recentChanges = (await aiFor(ctx).builder.getHistory(projectId, 10)).map(
       e => `${e.action} ${e.resource} (${e.result})`,
     );
   } catch {
@@ -407,24 +407,24 @@ export async function handleAiRoutes(
 
     // GET /ai/plans — list.
     if (head === 'plans' && extra.length === 0 && req.method === 'GET') {
-      const plans = state.builder['opts'].plans.list(projectId);
+      const plans = state.builder.listPlans(projectId);
       return finish(200, ok({ plans: plans.map(exposePlan) }, requestId));
     }
 
     // GET /ai/usage, GET /ai/history.
     if (head === 'usage' && extra.length === 0 && req.method === 'GET') {
-      return finish(200, ok({ usage: state.builder['opts'].usage.get(projectId) }, requestId));
+      return finish(200, ok({ usage: state.builder.getUsage(projectId) }, requestId));
     }
     if (head === 'history' && extra.length === 0 && req.method === 'GET') {
       return finish(
         200,
-        ok({ history: state.builder['opts'].audit.history(projectId) }, requestId),
+        ok({ history: state.builder.getHistory(projectId) }, requestId),
       );
     }
 
     // GET /ai/plans/:id — detail with preview + migration SQL.
     if (head === 'plans' && extra.length === 1 && extra[0] && req.method === 'GET') {
-      const stored = state.builder['opts'].plans.get(projectId, extra[0]);
+      const stored = state.builder.getPlan(projectId, extra[0]);
       return finish(200, ok({ plan: exposePlanDetail(stored) }, requestId));
     }
 
@@ -438,7 +438,7 @@ export async function handleAiRoutes(
     ) {
       requireAdmin(member.role);
       const parsed = ApproveBody.parse((await readJson()) ?? {});
-      const stored = state.builder['opts'].plans.approve(
+      const stored = state.builder.approvePlan(
         projectId,
         extra[0],
         level,
@@ -453,7 +453,7 @@ export async function handleAiRoutes(
           ].includes(c),
         ),
       );
-      state.builder['opts'].audit.record({
+      state.builder.recordAudit({
         projectId,
         organizationId: member.organizationId,
         userId: member.userId,
@@ -477,8 +477,8 @@ export async function handleAiRoutes(
       req.method === 'POST'
     ) {
       requireAdmin(member.role);
-      const stored = state.builder['opts'].plans.reject(projectId, extra[0]);
-      state.builder['opts'].audit.record({
+      const stored = state.builder.rejectPlan(projectId, extra[0]);
+      state.builder.recordAudit({
         projectId,
         organizationId: member.organizationId,
         userId: member.userId,
@@ -504,7 +504,7 @@ export async function handleAiRoutes(
       req.method === 'POST'
     ) {
       requireAdmin(member.role);
-      const stored = state.builder['opts'].plans.get(projectId, extra[0]);
+      const stored = state.builder.getPlan(projectId, extra[0]);
       if (stored.status !== 'approved') {
         throw new ApiError('CONFLICT', 'Only approved plans can be applied', 409);
       }
@@ -584,3 +584,4 @@ function exposePlanDetail(p: StoredPlanT): Record<string, unknown> {
     steps: p.appliedSteps,
   };
 }
+

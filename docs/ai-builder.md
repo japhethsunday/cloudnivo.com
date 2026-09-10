@@ -92,6 +92,16 @@ Per-project requests, generated/applied/failed plans, provider-reported token
 counts (null-safe — local runs report none, never fabricated), latency. Ready
 for billing aggregation.
 
+## Testing
+
+| Suite | Gate | Covers |
+| ----- | ---- | ------ |
+| `packages/ai` unit (planner, validation, scanner, tools, audit) | none — always runs | deterministic planning, destructive gates, honesty |
+| `provider.http.test.ts` | none — local stub server | frontier transport: parse, usage, errors, timeout, secret hygiene |
+| `provider.live.test.ts` | `AI_LIVE_TESTS=1` + `AI_API_KEY` | real provider call, schema-valid plan |
+| `apps/api ai.test.ts` | none (fake provider) | plan → approve → apply → verify, destructive 428, rollback, injection, rates |
+| `tests/e2e/ai.spec.ts` | running stack (`npm run test:e2e`) | same flow over HTTP + dashboard console pass |
+
 ## Local development
 
 ```bash
