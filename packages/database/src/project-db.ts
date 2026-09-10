@@ -142,7 +142,7 @@ export async function executeProjectSql(
   const start = Date.now();
   const sql = clientFor(info, guards.maxStatementMs + 5000);
   try {
-    await sql`select set_config('statement_timeout', ${String(guards.maxStatementMs)}, true)`.simple();
+    await sql`select set_config('statement_timeout', ${String(guards.maxStatementMs)}, true)`;
     const finalSql =
       READ_LIKE.test(statement) && !/\blimit\b/i.test(statement)
         ? `SELECT * FROM (${statement}) AS cnq LIMIT ${guards.maxRows + 1}`
@@ -311,7 +311,7 @@ export async function queryProjectDb(
   if (params.length > 100) throw new SqlRejectedError('Too many bind parameters');
   const sql = clientFor(info, timeoutMs);
   try {
-    await sql`select set_config('statement_timeout', ${String(timeoutMs)}, true)`.simple();
+    await sql`select set_config('statement_timeout', ${String(timeoutMs)}, true)`;
     const rows = (await sql.unsafe(text, params as never[])) as Record<string, unknown>[];
     return rows;
   } catch (err) {

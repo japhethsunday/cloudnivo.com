@@ -124,8 +124,13 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
       return new ProvisionerError(err.message, false);
     }
     const msg = err instanceof Error ? err.message : String(err);
+    // NOTE: bare `timeout` is deliberately absent — server rejections mention
+    // `statement_timeout` (e.g. set_config failures), which is a query error,
+    // not an unreachable server. Only transport-level markers map here.
     if (
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|timeout|password authentication failed|no pg_hba/i.test(msg)
+      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|connect timeout|connection timeout|password authentication failed|no pg_hba/i.test(
+        msg,
+      )
     ) {
       return new ProviderUnavailableError('Managed Postgres is unreachable');
     }
