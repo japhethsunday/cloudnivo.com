@@ -22,6 +22,13 @@ target of the `DatabaseProvisioner` / Dockerfile abstraction.
    - For managed Postgres per project, implement `RailwayProvider` against the
      `DatabaseProvisioner` interface (same 8 methods) and select it via env —
      no route or dashboard changes needed.
+5. Realtime scales independently: deploy the same image as a second Railway
+   service with `REALTIME_STANDALONE=true`, `REALTIME_DRIVER=redis`,
+   `REDIS_URL` (shared with the API service), `DATABASE_URL`, JWT/CORS
+   settings, and the `REALTIME_*` budgets (`REALTIME_PORT`, heartbeat, per-
+   project/per-socket caps). Both services share the registry/stores, so
+   subscribers on either instance receive every event via Redis pub/sub
+   (health check stays `GET /api/v1/health`).
 
 ## Option B — Docker Compose (local / VPS)
 
@@ -61,6 +68,9 @@ SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
   Tune `STORAGE_MAX_FILE_MB`, `STORAGE_PROJECT_QUOTA_MB`, `STORAGE_RATE_MAX`,
   and set a persistent `STORAGE_SIGNING_SECRET` so signed URLs survive restarts.
 - `REDIS_PASSWORD` set; `DATABASE_URL` points at managed Postgres.
+- Realtime: `REALTIME_DRIVER=redis` + shared `REDIS_URL` for multi-instance
+  fan-out; standalone service sets `REALTIME_STANDALONE=true` and exposes
+  `REALTIME_PORT`. Single-instance deploys can stay on `memory`.
 - Run `npm run db:migrate` against the control database on deploy.
 - No `.env`, keys, or `*.pem` in images or git (`.dockerignore`-equivalent:
   the Dockerfile copies only `package*.json`, `packages/`, `apps/api/`).

@@ -73,6 +73,26 @@ hostile and the client is lying — now including infrastructure operations.
   blocked; signed-URL + upload/download/list/delete budgets rate-limited;
   responses never carry storage keys or secrets; Docker-socket mounting (compose
   `api` profile) documented as a local-dev-only tradeoff.
+- **Realtime (Phase 6):** upgrade auth reuses data-plane caller resolution
+  (customer JWT with live revocation check, platform session with membership
+  check, project key with scope/expiry/revocation check — all over query params
+  since browsers cannot set WS headers; tokens never logged). Channels bind the
+  project structurally (`project:<uuid>:<topic>` — cross-project subscribe and
+  broadcast rejected by shape and re-checked per message). Viewers/anonymous/
+  public keys listen but never broadcast; presence requires an identity and is
+  removed on disconnect/unsubscribe (Redis TTL garbage-collects the rest).
+  Table events re-apply owner-scoped delivery per subscriber (engine RLS twin)
+  plus validated equality filters (allow-listed keys, primitive values, ≤8
+  entries — never SQL). Expired credentials are rejected at upgrade and swept
+  mid-connection (`expiresAt` from JWT `exp`/key expiry). Floods capped
+  (upgrade budget per IP, 20 msg/s per socket, 60 broadcasts/min per sender,
+  50 subs/socket, 500 conns/project, 64 KB frames/payloads, 4 KB presence
+  metadata); violations return error envelopes without dropping honest
+  connections, while malformed frames close safely. Redis pub/sub carries only
+  `{channel, kind, event}` with an origin id (no echo, malformed bus payloads
+  dropped); outages degrade to local-only delivery, never a hard outage.
+  Metrics/logs expose counts and latency only — no tokens, passwords, payloads,
+  or infra internals.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,
@@ -90,7 +110,7 @@ hostile and the client is lying — now including infrastructure operations.
 ## What Phase 2 does NOT yet do
 
 Row-Level Security (RLS) policies, KMS envelope encryption for stored DB
-passwords, key rotation, OAuth, WebSocket auth, or per-project network
+passwords, key rotation, OAuth, or per-project network
 isolation — tracked in `roadmap.md`. Audit coverage for provisioning events
 (`project.created` … `database.query.executed`) is implemented; review the
 audit store before relying on it for compliance.

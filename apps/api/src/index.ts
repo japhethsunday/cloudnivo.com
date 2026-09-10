@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, handleRequest } from './v1.js';
+import { realtimeFor } from './realtime.js';
 
 export async function start(port?: number): Promise<{ server: Server; port: number }> {
   await loadDotEnv();
@@ -19,6 +20,8 @@ export async function start(port?: number): Promise<{ server: Server; port: numb
       }
     });
   });
+  // Realtime upgrades share the API port (same auth, same envelope semantics).
+  realtimeFor(ctx).server.attach(server);
   const listenPort = port ?? config.API_PORT;
   await new Promise<void>(resolve => server.listen(listenPort, resolve));
   const addr = server.address();

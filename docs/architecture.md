@@ -16,7 +16,8 @@ packages/validation  Shared Zod primitives (slugs, UUIDs, pagination, entities).
 packages/database    Control-plane schema (Drizzle) + tenant + RBAC + DatabaseService.
 packages/auth        Passwords (scrypt), sessions (JWT via jose), API keys (hash-only).
 packages/storage     Object-storage abstraction (local driver today, S3 later).
-packages/realtime    Pub/sub abstraction (in-memory today, Redis/WS later).
+packages/realtime    Realtime engine (RFC 6455 codec, gateway, memory/Redis
+                       bus + presence, raw-socket server, service facade, client).
 packages/cache       Cache abstraction (memory today, Redis via ioredis later).
 packages/provisioning Local-only provision planner (Terraform/cloud driver later).
 packages/api-core    Versioned envelope, validation, CORS, headers, rate-limit.
@@ -79,6 +80,52 @@ apps/dashboard       + projects/[id]/storage console (buckets, browser,
                        upload, previews, usage, settings/policies)
 docs/storage.md (providers, buckets, signed URLs, quotas, security)
 ```
+
+Phase 6 additions (same layout, no rebuild):
+
+```text
+packages/realtime    + protocol.ts (RFC 6455 codec, no deps) + types.ts
+                       (channel grammar, DbChangeEvent, safe filters)
+                     + authz.ts (pure server-side policy) + bus.ts
+                       (memory + Redis pub/sub) + presence.ts (memory + Redis)
+                     + gateway.ts (routing, fan-out, limits, metrics, sweep)
+                     + server.ts (raw-socket WS) + service.ts (facade)
+                     + client.ts (SDK sketch) + openapi.ts
+packages/database    + realtime-cdc.ts (LISTEN/NOTIFY triggers + listener)
+packages/config      + REALTIME_* budgets/ports/drivers
+apps/api             + realtime.ts (upgrade auth, lazy CDC, management routes)
+                     + realtime-standalone.ts (independent service)
+                     + realtime.test.ts (raw-socket E2E)
+apps/dashboard       + projects/[id]/realtime console (overview, connections,
+                       channels, events, usage, settings, smoke test)
+docs/realtime.md (protocol, channels, CDC, auth, limits, scaling, Railway)
+```
+
+## Realtime architecture
+
+```text
+Client ──► WebSocket ──► RealtimeServer ──► RealtimeGateway ──► EventBus ──► sibling instances
+                          (transport)        (authz/routing/      (memory local,
+                                              fan-out/limits)     Redis pub/sub prod)
+                                │                    ├── PresenceManager (memory/Redis)
+                                │                    └── CDC listener ──► PostgreSQL LISTEN
+                                └── upgrade auth (session | customer JWT | key)
+```
+
+- **Transport-agnostic gateway.** Sockets adapt in (`server.ts` for TCP, fakes
+  in tests); auth, routing, fan-out, presence, limits, and metrics live in one
+  place and behave identically in-process and standalone.
+- **Project binding is structural.** Channels look like
+  `project:<uuid>:<topic>`; cross-project subscribe/broadcast is rejected by
+  shape and re-checked per message. Table topics (`table:<name>`) add lazy CDC
+  trigger installs plus per-subscriber owner-scoped delivery and validated
+  equality filters (never SQL).
+- **Multi-instance by construction.** Local events publish to Redis pub/sub
+  with an origin id; presence unions via Redis hashes. Redis loss degrades to
+  local-only delivery — never a hard outage.
+- **Expiry is enforced.** JWT `exp` / key `expiresAt` rides the connection
+  context; the heartbeat sweep drops expired credentials. Re-authenticate,
+  then reconnect.
 
 ## Storage architecture
 
@@ -143,11 +190,11 @@ Poll jobs + database status (5s)
 - **Control plane** (`apps/dashboard`, `packages/database`): users, orgs,
   memberships, projects, environments, API keys, roles, audit logs. This is the
   source of truth for tenancy. Deployed to **Vercel** (zero infra cost).
-- **Data plane** (future): per-project Postgres, storage buckets, realtime
-  gateways, serverless functions. In Phase 1 only the _interfaces_ exist
-  (`StorageService`, `RealtimeService`, `ProvisioningService`); local drivers
-  back them. Migrating to paid cloud later means adding a driver, not rewriting
-  callers.
+- **Data plane:** per-project Postgres, storage buckets, realtime
+  gateways, serverless functions. Phase 6 delivered the realtime gateway
+  (WS + CDC + presence) against the same envelope and tenancy model; only
+  serverless functions remain interface-only (`ProvisioningService` keeps a
+  local driver until a cloud provisioner lands).
 
 ## Key decisions
 
@@ -183,8 +230,8 @@ npm run dev:api              # standalone API on :3001
 Phase 2 delivered local Docker provisioning behind the provider interface.
 Phase 3 delivered the data plane (`@cloudnivo/api-engine` + generated REST)
 which talks only to `DatabaseProvisioner` / parameterized SQL — identical on
-Docker, Railway, or VPS. Phase 4 adds Drizzle-backed metadata; later phases
-add cloud provisioners, realtime gateway, and S3 storage. None of these change
+Docker, Railway, or VPS. Phase 4 adds Drizzle-backed metadata; Phase 5 added
+S3-capable storage; Phase 6 added the realtime gateway and CDC. None of these change
 the API envelope or tenancy model established here.
 
 ## Deploy targets

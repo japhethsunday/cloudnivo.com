@@ -44,6 +44,7 @@ import {
   type DataBackend,
 } from './data.js';
 import { handleStorageRoutes, isStorageRoute } from './storage.js';
+import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -233,7 +234,8 @@ export async function handleRequest(
         rest[0] &&
         (isDataRoute(rest, req.method ?? 'GET') ||
           isCustomerAuthRoute(rest, req.method ?? 'GET') ||
-          isStorageRoute(rest, req.method ?? 'GET'))
+          isStorageRoute(rest, req.method ?? 'GET') ||
+          isRealtimeRoute(rest, req.method ?? 'GET'))
           ? projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
           : baseHeaders;
       // Customer auth namespace — public signup/login live here (no session yet).
@@ -266,6 +268,19 @@ export async function handleRequest(
           rest,
           url.searchParams,
           async () => readJson(req),
+        );
+        if (handled) return;
+      }
+      // Realtime management (session members; WS upgrades handled separately).
+      if (isRealtimeRoute(rest, req.method ?? 'GET')) {
+        const handled = await handleRealtimeRoutes(
+          req,
+          res,
+          ctx,
+          logger,
+          routeHeaders,
+          requestId,
+          rest,
         );
         if (handled) return;
       }

@@ -51,15 +51,28 @@ versioned API envelope, dashboard shell, docs, green
   Storage console in the dashboard (buckets, browser, upload, previews,
   usage, settings). 30+ new tests, all green.
 
-## Phase 6 — Durable control plane (next)
+## Phase 6 — Realtime infrastructure (DONE)
 
-- Drizzle migrations + seed (roles/permissions) applied at deploy.
-- Drizzle-backed registry/key/job/customer stores (replace memory adapters).
-- Platform signup/login/session cookies + `GET /me`, org invites.
-- Dashboard wires to live data (loading/empty/error states stay).
-- Playwright smoke: signup → org → project → key → data CRUD → 403 cross-org.
+- `@cloudnivo/realtime`: RFC 6455 codec (no deps), project-bound channels
+  (`project:<uuid>:<topic>`, `table:<name>`), pure server-side authz
+  (`canSubscribe/Broadcast/Receive/TrackPresence/WatchTable` + safe equality
+  filters), memory + Redis event bus (degrade-to-local, no echo), memory +
+  Redis presence (TTL, no permanent rows), transport-agnostic gateway
+  (limits, metrics, heartbeat + credential-expiry sweep), raw-socket server,
+  `RealtimeService` facade, framework-independent client with reconnect.
+- PostgreSQL CDC over LISTEN/NOTIFY (idempotent per-table triggers, multiplexed
+  listener, bounded reconnects, no polling) + lazy trigger installs on first
+  table subscribe; per-subscriber owner-scoped delivery at fan-out.
+- WS upgrades in-process on the API port + standalone on `REALTIME_PORT`
+  (same factory/auth); HTTP management (`/realtime`, `/stats`, `/channels`,
+  `/presence`) + OpenAPI paths; dashboard Realtime console (overview,
+  connections, channels, events, usage, settings, live smoke test).
+- 30+ new tests (codec, authz matrix, filters, fan-out INSERT/UPDATE/DELETE,
+  presence, heartbeats, expiry, rate/size limits, raw-socket E2E incl.
+  expired-token + oversized-payload + upgrade-flood cases); green
+  `lint → typecheck → test → build`.
 
-## Phase 6 — Durable control plane (next)
+## Phase 7 — Durable control plane (next)
 
 - Drizzle migrations + seed (roles/permissions) applied at deploy.
 - Drizzle-backed registry/key/job/customer/storage stores (replace memory adapters).
@@ -67,14 +80,13 @@ versioned API envelope, dashboard shell, docs, green
 - Dashboard wires to live data (loading/empty/error states stay).
 - Playwright smoke: signup → org → project → key → data CRUD → file upload → 403 cross-org.
 
-## Phase 7 — Data-plane primitives
+## Phase 8 — Data-plane primitives
 
-- Redis-backed `CacheService`/`RealtimeService` in prod; WS gateway with
-  channel auth (`canSubscribe`).
+- Redis-backed `CacheService` in prod (realtime already Redis-capable).
 - Storage webhooks/realtime events + multipart/resumable dashboard uploads.
 - Automatic per-project REST (`/api/v1/data/:table` with RLS).
 
-## Phase 8 — Provisioning & serverless
+## Phase 9 — Provisioning & serverless
 
 - `ProvisioningService` cloud driver (Terraform/API) per project env.
 - Serverless functions + logs + usage metering + CLI/SDKs.

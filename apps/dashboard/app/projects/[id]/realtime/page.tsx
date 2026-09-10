@@ -2,30 +2,30 @@
 
 import Link from 'next/link';
 import { use } from 'react';
-import { StoragePanel } from '../../../../components/StoragePanel';
+import { RealtimePanel } from '../../../../components/RealtimePanel';
 import { TokenBar } from '../../../../components/ProjectForms';
 
-export default function ProjectStoragePage({
+export default function ProjectRealtimePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): React.JSX.Element {
   const { id } = use(params);
   return (
-    <section aria-labelledby="storage-title">
+    <section aria-labelledby="realtime-title">
       <p>
         <Link href={`/projects/${id}`}>← Project database</Link> ·{' '}
         <Link href={`/projects/${id}/api`}>API console</Link> ·{' '}
         <Link href={`/projects/${id}/auth`}>Authentication</Link> ·{' '}
-        <Link href={`/projects/${id}/realtime`}>Realtime</Link>
+        <Link href={`/projects/${id}/storage`}>Storage</Link>
       </p>
-      <h1 id="storage-title">Storage</h1>
+      <h1 id="realtime-title">Realtime</h1>
       <p className="muted">
-        Buckets, files, usage, and policies. Bytes persist through the configured provider; metadata
-        stays tenant-scoped.
+        Live connections, channels, events, presence, and usage. Events travel over real WebSocket
+        connections scoped to this project — never across projects.
       </p>
       <TokenBar onChange={() => undefined} />
-      <StoragePanel projectId={id} />
+      <RealtimePanel projectId={id} />
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryRealtimeService, canSubscribe } from './index.js';
+import { InMemoryRealtimeService, canSubscribe } from './legacy.js';
 
 describe('realtime', () => {
   it('publishes within an org channel and enforces channel auth', async () => {

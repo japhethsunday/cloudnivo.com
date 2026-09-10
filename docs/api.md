@@ -126,6 +126,26 @@ Paths with slashes must be percent-encoded per segment. Uploads stream with a
 limits) are enforced pre- and post-write. Storage paths ship inside
 `openapi.json` alongside table routes.
 
+## Realtime plane (Phase 6)
+
+WebSocket at `/api/v1/projects/:id/realtime/ws` (`?token=<session|customer JWT>`
+or `?apikey=<key>`; `101` on success, `401/403/404/429` otherwise — never
+upgraded on failure). Frames are JSON text (`subscribe/unsubscribe/broadcast/
+presence.set/presence.remove/ping` → `subscribed/unsubscribed/event/broadcast/
+presence/pong/error`); channels are `project:<uuid>:<topic>` with
+`table:<name>` topics for row changes and optional equality `filter` objects.
+Full wire reference in `docs/realtime.md`.
+
+| Method | Path                                     | Auth   | Description                                                                    |
+| ------ | ---------------------------------------- | ------ | ------------------------------------------------------------------------------ |
+| `GET`  | `/api/v1/projects/:id/realtime`          | Bearer | WS URL, bus/presence drivers, `degraded` flag                                  |
+| `GET`  | `/api/v1/projects/:id/realtime/stats`    | Bearer | metrics snapshot (connections, channels, published/delivered/dropped, latency) |
+| `GET`  | `/api/v1/projects/:id/realtime/channels` | Bearer | active channels + subscriber counts                                            |
+| `GET`  | `/api/v1/projects/:id/realtime/presence` | Bearer | presence state (≤50 channels)                                                  |
+
+Reserved word: a table literally named `realtime` stays unreachable via data
+routes (documented collision, same class as `database`/`jobs`/`auth`/`storage`).
+
 ## Auth
 
 `Authorization: Bearer <JWT>` → `verifySession()` (issuer-checked). Missing or

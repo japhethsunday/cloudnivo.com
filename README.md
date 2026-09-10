@@ -77,15 +77,15 @@
 
 Every project gets isolated infrastructure per environment — Postgres, auth, storage, realtime, and versioned APIs — behind one coherent control plane:
 
-| Capability                                            | Status (Phase 5)                                          | Next                                  |
+| Capability                                            | Status (Phase 6)                                          | Next                                  |
 | ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------- |
-| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 6) | Durable Drizzle stores, signup/login  |
-| Versioned REST envelope (`/api/v1`)                   | Done — control + data + storage APIs share it             | Stable (v2 only for breaking changes) |
+| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 7) | Durable Drizzle stores, signup/login  |
+| Versioned REST envelope (`/api/v1`)                   | Done — control + data + storage + realtime APIs share it  | Stable (v2 only for breaking changes) |
 | Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI           | RLS policies, nested resources        |
 | Storage (buckets, objects, signed URLs)               | Done — streaming local driver + SigV4 S3 driver           | Webhooks, multipart dashboard uploads |
-| Realtime / Cache abstractions                         | Done — local/memory drivers                               | Redis/WS drivers (Phase 7)            |
+| Realtime (WS, CDC, broadcast, presence)               | Done — gateway + LISTEN/NOTIFY CDC + memory/Redis bus     | Storage webhooks → realtime events    |
 | Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)            | Cloud drivers (Railway/VPS/K8s)       |
-| Dashboard                                             | Database, API, Auth + Storage consoles                    | Live data wiring (Phase 6)            |
+| Dashboard                                             | Database, API, Auth, Storage + Realtime consoles          | Live data wiring (Phase 7)            |
 
 ## At a glance
 
@@ -152,7 +152,7 @@ flowchart TB
 ```
 
 - **Control plane** (`apps/dashboard`, `packages/database`): users, orgs, memberships, projects, environments, keys, roles, audit logs. Source of truth for tenancy.
-- **Data plane** (future): per-project Postgres, buckets, realtime gateways, functions. Phase 1 ships the interfaces + local drivers only.
+- **Data plane:** per-project Postgres, buckets, realtime gateways, functions. Phases 2–6 delivered provisioning, auto REST, customer auth, storage, and the realtime gateway against the same envelope; serverless functions remain next.
 - Full decision log: [`docs/architecture.md`](docs/architecture.md).
 
 ## Data model
@@ -200,7 +200,7 @@ packages/config, logging, validation, database, auth,
          storage, realtime, cache, provisioning, api-core,
          api-engine
 infrastructure/  Docker + Postgres bootstrap
-docs/            architecture.md, security.md, database.md, api.md, roadmap.md
+docs/            architecture.md, security.md, database.md, api.md, realtime.md, roadmap.md
 tests/           Cross-package integration tests
 ```
 
@@ -208,7 +208,7 @@ tests/           Cross-package integration tests
 - `apps/api` — framework-free Node API (same envelope)
 - `packages/{config,logging,validation,database,auth,storage,realtime,cache,provisioning,api-core,api-engine}` — shared foundation
 - `infrastructure/` — Docker + Postgres bootstrap
-- `docs/` — `architecture.md`, `security.md`, `database.md`, `api.md`, `roadmap.md`, `deploy-railway.md`
+- `docs/` — `architecture.md`, `security.md`, `database.md`, `api.md`, `realtime.md`, `roadmap.md`, `deploy-railway.md`
 - `tests/` — cross-package integration tests
 
 ## Service catalog
@@ -221,7 +221,7 @@ tests/           Cross-package integration tests
 | [`database`](packages/database/src/service.ts)       | `DatabaseService`                            | `postgres` + Drizzle                | managed Postgres        |
 | [`auth`](packages/auth/src/index.ts)                 | platform sessions + keys + customer plane    | scrypt + JWT + rotation + RLS       | OAuth, Magic Link       |
 | [`storage`](packages/storage/src/index.ts)           | buckets, objects, signed URLs, quotas        | streaming local FS + SigV4 S3       | webhooks, multipart UI  |
-| [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`                            | in-memory pub/sub                   | Redis + WS gateway      |
+| [`realtime`](packages/realtime/src/index.ts)         | `RealtimeService`                            | WS gateway + CDC + memory/Redis bus | storage webhooks        |
 | [`cache`](packages/cache/src/index.ts)               | `CacheService`                               | memory (+ `ioredis` ready)          | Redis                   |
 | [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService`                        | Docker provider (+ host modes)      | Railway/VPS/K8s drivers |
 | [`api-core`](packages/api-core/src/index.ts)         | envelope + guards                            | shared by both apps                 | — (stable)              |
@@ -328,7 +328,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 5 (this release): storage buckets/objects, signed URLs, quotas, Storage console, S3-compatible driver. Phase 6: durable Drizzle stores, platform signup/login, Playwright smoke. Details: [`docs/roadmap.md`](docs/roadmap.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 6 (this release): realtime WebSocket gateway, PostgreSQL CDC (INSERT/UPDATE/DELETE), broadcast, presence, Redis multi-instance bus, Realtime console. Phase 7: durable Drizzle stores, platform signup/login, Playwright smoke. Details: [`docs/roadmap.md`](docs/roadmap.md). Realtime reference: [`docs/realtime.md`](docs/realtime.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

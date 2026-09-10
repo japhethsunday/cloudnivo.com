@@ -62,6 +62,19 @@ const EnvSchema = z.object({
 
   REALTIME_DRIVER: z.enum(['memory', 'redis']).default('memory'),
 
+  // ── Realtime gateway (Phase 6) ──
+  // Standalone WS port (independent Railway service). In-process upgrade on
+  // the API port works regardless; set REALTIME_STANDALONE=false to disable.
+  REALTIME_PORT: z.coerce.number().int().min(1).max(65535).default(3002),
+  REALTIME_STANDALONE: z.enum(['true', 'false']).default('false'),
+  REALTIME_HEARTBEAT_MS: z.coerce.number().int().min(5000).max(300_000).default(25_000),
+  REALTIME_HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(60_000),
+  REALTIME_MAX_CONNS_PER_PROJECT: z.coerce.number().int().min(1).max(100_000).default(500),
+  REALTIME_MAX_SUBS_PER_CONN: z.coerce.number().int().min(1).max(1000).default(50),
+  REALTIME_MAX_PAYLOAD_BYTES: z.coerce.number().int().min(1024).max(4_194_304).default(65_536),
+  REALTIME_MAX_MSG_PER_SECOND: z.coerce.number().int().min(1).max(1000).default(20),
+  REALTIME_MAX_BROADCASTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(60),
+
   // ── Provisioning (Phase 2: local Docker database engine) ──
   PROVISION_DRIVER: z.enum(['docker', 'fake']).default('docker'),
   POSTGRES_IMAGE: z.string().default('postgres:16-alpine'),
