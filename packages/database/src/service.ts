@@ -1,4 +1,6 @@
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { existsSync } from 'node:fs';
 import postgres from 'postgres';
 import * as schema from './schema.js';
 
@@ -63,4 +65,30 @@ export function createDatabaseService(connectionString: string): DatabaseService
       await client.end({ timeout: 5 });
     },
   };
+}
+
+/**
+ * Apply pending control-plane migrations (drizzle journal, ordered).
+ * Used by `MIGRATE_ON_BOOT=true` deploys and one-off release commands —
+ * never implicitly. Throws with a credential-free message on failure so
+ * boot halts instead of serving against a stale schema.
+ */
+export async function runControlMigrations(
+  connectionString: string,
+  migrationsFolder: string,
+): Promise<void> {
+  parseDatabaseUrl(connectionString);
+  if (!existsSync(migrationsFolder)) {
+    throw new Error(`Migrations folder not found: ${migrationsFolder}`);
+  }
+  const client = postgres(connectionString, { max: 1 });
+  try {
+    const db = drizzle(client, { schema });
+    await migrate(db, { migrationsFolder });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Control-plane migration failed: ${msg.slice(0, 300)}`);
+  } finally {
+    await client.end({ timeout: 5 }).catch(() => undefined);
+  }
 }

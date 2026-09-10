@@ -54,6 +54,25 @@ describe('job store', () => {
     expect(b.projectId).toBe('p1');
   });
 
+  it('lists jobs by status oldest-first with a bounded limit', async () => {
+    const store = new MemoryJobStore();
+    const base = {
+      projectId: 'p1',
+      organizationId: 'o1',
+      kind: 'provision' as const,
+      attempts: 0,
+      maxAttempts: 3,
+      lastError: null,
+      logs: [],
+    };
+    await store.create({ ...base, status: 'completed', idempotencyKey: 'a' });
+    const pending = await store.create({ ...base, status: 'pending', idempotencyKey: 'b' });
+    const listed = await store.listByStatus('pending');
+    expect(listed.map(j => j.id)).toEqual([pending.id]);
+    expect(await store.listByStatus('pending', 0)).toHaveLength(1);
+    expect(await store.listByStatus('failed')).toEqual([]);
+  });
+
   it('retries only recoverable failures within budget', () => {
     expect(shouldRetry(1, 3, true)).toBe(true);
     expect(shouldRetry(3, 3, true)).toBe(false);

@@ -18,11 +18,11 @@ target of the `DatabaseProvisioner` / Dockerfile abstraction.
 3. Deploy the dashboard to Vercel with `NEXT_PUBLIC_API_URL` pointing at the
    Railway API URL.
 4. On Railway, project databases are provisioned per the active provider:
+   - `PROVISION_DRIVER=managed` (use this on Railway): one database +
+     locked-down role per project inside the Postgres plugin
+     (`MANAGED_PG_URL`). No Docker daemon needed.
    - `PROVISION_DRIVER=docker` only works where a Docker engine is reachable
      (Railway services do not expose one by default).
-   - For managed Postgres per project, implement `RailwayProvider` against the
-     `DatabaseProvisioner` interface (same 8 methods) and select it via env —
-     no route or dashboard changes needed.
 5. Realtime scales independently: deploy the same image as a second Railway
    service with `REALTIME_STANDALONE=true`, `REALTIME_DRIVER=redis`,
    `REDIS_URL` (shared with the API service), `DATABASE_URL`, JWT/CORS

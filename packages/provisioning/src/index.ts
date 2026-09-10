@@ -83,6 +83,7 @@ export * from './provisioner.js';
 export * from './validation.js';
 export * from './fake.js';
 export * from './docker-provider.js';
+export * from './managed-provider.js';
 export * from './jobs.js';
 export * from './jobs-drizzle.js';
 export * from './orchestrator.js';

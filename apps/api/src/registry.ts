@@ -89,9 +89,7 @@ export interface Registry {
   saveDatabase(rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>): Promise<ProjectDbRecord>;
   getDatabaseByProject(projectId: string): Promise<ProjectDbRecord | null>;
   /** Batch database+credential read for list views (avoids N+1 on durable stores). */
-  listProjectDatabases(
-    projectIds: string[],
-  ): Promise<
+  listProjectDatabases(projectIds: string[]): Promise<
     {
       projectId: string;
       db: ProjectDbRecord | null;
@@ -228,9 +226,7 @@ export class MemoryRegistry implements Registry {
     return this.databases.get(projectId) ?? null;
   }
 
-  async listProjectDatabases(
-    projectIds: string[],
-  ): Promise<
+  async listProjectDatabases(projectIds: string[]): Promise<
     {
       projectId: string;
       db: ProjectDbRecord | null;

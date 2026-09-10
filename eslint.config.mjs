@@ -39,7 +39,7 @@ export default tseslint.config(
   {
     // Tests are allowed to use non-null assertions and any-typed fixtures sparingly,
     // but keep explicit-any banned to force intentional fixture typing.
-    files: ['**/*.test.ts', '**/*.spec.ts', 'tests/**/*.ts'],
+    files: ['**/*.test.ts', '**/*.spec.ts', 'tests/**/*.ts', 'tests/**/*.mjs'],
     rules: {
       'no-console': 'off',
     },

@@ -33,6 +33,8 @@ export interface JobStore {
   findById(id: string): Promise<ProvisioningJob | null>;
   findByKey(organizationId: string, key: string): Promise<ProvisioningJob | null>;
   listByProject(projectId: string): Promise<ProvisioningJob[]>;
+  /** Worker drain: jobs in a given status, oldest first (bounded). */
+  listByStatus(status: JobStatus, limit?: number): Promise<ProvisioningJob[]>;
   update(
     id: string,
     patch: Partial<Pick<ProvisioningJob, 'status' | 'attempts' | 'lastError'>>,
@@ -75,6 +77,13 @@ export class MemoryJobStore implements JobStore {
     return [...this.jobs.values()]
       .filter(j => j.projectId === projectId)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async listByStatus(status: JobStatus, limit = 100): Promise<ProvisioningJob[]> {
+    return [...this.jobs.values()]
+      .filter(j => j.status === status)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, Math.max(1, Math.min(limit, 1000)));
   }
 
   async update(

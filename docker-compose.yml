@@ -51,7 +51,8 @@ services:
       dockerfile: Dockerfile.api
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-cloudnivo}:${POSTGRES_PASSWORD:-cloudnivo_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-cloudnivo}
       REDIS_URL: redis://redis:6379
@@ -70,6 +71,59 @@ services:
       - cloudnivo
     profiles:
       - api
+
+  # Background worker: drains orphaned provisioning jobs from the shared
+  # store. Needs CONTROL_STORE=drizzle to share state with the API.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cloudnivo}:${POSTGRES_PASSWORD:-cloudnivo_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-cloudnivo}
+      REDIS_URL: redis://redis:6379
+      WORKER_PORT: 3003
+    ports:
+      - '${WORKER_PORT:-3003}:3003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudnivo
+    profiles:
+      - api
+      - worker
+
+  # Standalone realtime gateway: same code as in-process upgrades, own port.
+  realtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.realtime
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cloudnivo}:${POSTGRES_PASSWORD:-cloudnivo_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-cloudnivo}
+      REDIS_URL: redis://redis:6379
+      REALTIME_PORT: 3002
+    ports:
+      - '${REALTIME_PORT:-3002}:3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudnivo
+    profiles:
+      - api
+      - realtime
 
 networks:
   cloudnivo:

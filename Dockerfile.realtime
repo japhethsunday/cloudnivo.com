@@ -1,6 +1,7 @@
-# CloudNivo standalone API image (Railway / Docker / VPS).
-# Build from the repo root:  docker build -f Dockerfile.api -t cloudnivo-api .
-# Run: docker run -p 3001:3001 --env-file .env cloudnivo-api
+# CloudNivo standalone realtime image (Railway / Docker / VPS).
+# Same gateway/auth/bus code as the in-process upgrade path, on its own port
+# (REALTIME_PORT, default 3002). Shares registry/stores with the API service.
+# Build from the repo root:  docker build -f Dockerfile.realtime -t cloudnivo-realtime .
 # No secrets are baked in — every value arrives via environment at runtime.
 FROM node:20-alpine AS build
 WORKDIR /app
@@ -21,7 +22,7 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 RUN chown -R node:node /app
 USER node
-EXPOSE 3001
+EXPOSE 3002
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3001/api/v1/health/live || exit 1
-CMD ["node", "apps/api/dist/index.js"]
+  CMD wget -qO- http://127.0.0.1:3002/api/v1/health || exit 1
+CMD ["node", "apps/api/dist/realtime-standalone.js"]

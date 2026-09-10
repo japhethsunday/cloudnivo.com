@@ -16,6 +16,7 @@ import { createLogger, type Logger } from '@cloudnivo/logging';
 import {
   DockerDatabaseProvider,
   FakeDatabaseProvider,
+  ManagedPostgresProvider,
   MemoryJobStore,
   type AuditSink,
   type DatabaseProvisioner,
@@ -81,15 +82,25 @@ export function createContext(config: AppConfig): ApiContext {
   const cache = createCacheService(config.REDIS_URL);
   const registry = new MemoryRegistry();
   const isFake = config.PROVISION_DRIVER === 'fake';
+  const isManaged = config.PROVISION_DRIVER === 'managed';
+  if (isManaged && !config.MANAGED_PG_URL) {
+    // Fail fast with an actionable message (never echo the URL itself).
+    throw new Error('MANAGED_PG_URL is required when PROVISION_DRIVER=managed');
+  }
   const provider: DatabaseProvisioner = isFake
     ? new FakeDatabaseProvider()
-    : new DockerDatabaseProvider({
-        image: config.POSTGRES_IMAGE,
-        network: config.PROVISION_NETWORK,
-        basePort: config.PROVISION_BASE_PORT,
-        healthTimeoutMs: config.PROVISION_HEALTH_TIMEOUT_MS,
-        hostMode: config.PROVISION_HOST_MODE,
-      });
+    : isManaged
+      ? new ManagedPostgresProvider({
+          connectionString: config.MANAGED_PG_URL,
+          healthTimeoutMs: config.PROVISION_HEALTH_TIMEOUT_MS,
+        })
+      : new DockerDatabaseProvider({
+          image: config.POSTGRES_IMAGE,
+          network: config.PROVISION_NETWORK,
+          basePort: config.PROVISION_BASE_PORT,
+          healthTimeoutMs: config.PROVISION_HEALTH_TIMEOUT_MS,
+          hostMode: config.PROVISION_HOST_MODE,
+        });
   const gateway: ProjectDbGateway = isFake ? new FakeProjectDbGateway() : RealProjectDbGateway;
   const data: DataBackend = isFake ? new FakeDataBackend() : RealDataBackend;
   const keys = new MemoryKeyStore();

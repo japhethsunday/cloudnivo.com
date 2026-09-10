@@ -263,9 +263,7 @@ export class DrizzleRegistry implements Registry {
     return row ? toDbRecord(row) : null;
   }
 
-  async listProjectDatabases(
-    projectIds: string[],
-  ): Promise<
+  async listProjectDatabases(projectIds: string[]): Promise<
     {
       projectId: string;
       db: ProjectDbRecord | null;

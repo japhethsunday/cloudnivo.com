@@ -14,6 +14,9 @@ build/
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.staging.example
+!.env.production.example
 *.key
 *.pem
 *.p12
@@ -31,6 +34,9 @@ Thumbs.db
 coverage/
 playwright-report/
 test-results/
+
+# Local storage-driver bytes (ephemeral dev/test residue, never commit)
+.data/
 
 # Vercel
 .vercel

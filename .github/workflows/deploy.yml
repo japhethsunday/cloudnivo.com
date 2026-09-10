@@ -1,0 +1,98 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Where to deploy'
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+# Staging deploys automatically on main. Production deploys ONLY via manual
+# dispatch against the `production` environment (required reviewers configured
+# in repo settings). Tokens live in GitHub secrets — never in this file.
+# Required secrets: RAILWAY_TOKEN, RAILWAY_PROJECT_ID,
+# VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+
+jobs:
+  deploy-staging:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+      - name: Migrate control database
+        run: |
+          set -euo pipefail
+          : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
+          railway link --project "$RAILWAY_PROJECT_ID" --environment staging
+          railway run --service cloudnivo-api -- npm run db:migrate
+          railway run --service cloudnivo-api -- npm run db:seed
+      - name: Deploy API, worker, realtime
+        run: |
+          set -euo pipefail
+          for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
+            railway up --service "$svc" --environment staging --detach
+          done
+      - name: Readiness gate
+        run: |
+          set -euo pipefail
+          test -n "${{ vars.STAGING_API_URL }}" || { echo 'STAGING_API_URL var is not set'; exit 1; }
+          for i in $(seq 1 36); do
+            curl -fsS "${{ vars.STAGING_API_URL }}/api/v1/health/ready" && break || sleep 10
+          done
+          curl -fsS "${{ vars.STAGING_API_URL }}/api/v1/health/ready" | grep -q '"ready"'
+
+  deploy-production:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CLIs
+        run: |
+          npm i -g @railway/cli
+          npm i -g vercel@latest
+      - name: Migrate control database
+        run: |
+          set -euo pipefail
+          : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
+          railway link --project "$RAILWAY_PROJECT_ID" --environment production
+          railway run --service cloudnivo-api -- npm run db:migrate
+          railway run --service cloudnivo-api -- npm run db:seed
+      - name: Deploy Railway services
+        run: |
+          set -euo pipefail
+          for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
+            railway up --service "$svc" --environment production --detach
+          done
+      - name: Deploy dashboard to Vercel
+        run: |
+          set -euo pipefail
+          : "${VERCEL_TOKEN:?VERCEL_TOKEN secret is not set}"
+          vercel --prod --token="$VERCEL_TOKEN" --yes
+      - name: Readiness gate
+        run: |
+          set -euo pipefail
+          test -n "${{ vars.PRODUCTION_API_URL }}" || { echo 'PRODUCTION_API_URL var is not set'; exit 1; }
+          for i in $(seq 1 36); do
+            curl -fsS "${{ vars.PRODUCTION_API_URL }}/api/v1/health/ready" && break || sleep 10
+          done
+          curl -fsS "${{ vars.PRODUCTION_API_URL }}/api/v1/health/ready" | grep -q '"ready"'

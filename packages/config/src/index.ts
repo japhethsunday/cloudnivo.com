@@ -76,7 +76,16 @@ const EnvSchema = z.object({
   REALTIME_MAX_BROADCASTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(60),
 
   // ── Provisioning (Phase 2: local Docker database engine) ──
-  PROVISION_DRIVER: z.enum(['docker', 'fake']).default('docker'),
+  // docker = per-project containers (needs a Docker engine);
+  // managed = per-project database+role inside one shared Postgres server
+  //   (Railway PG plugin / RDS / compose postgres — no Docker needed);
+  // fake = test-only in-memory provider (never in prod).
+  PROVISION_DRIVER: z.enum(['docker', 'managed', 'fake']).default('docker'),
+  // Privileged connection string for the shared server. Required when
+  // PROVISION_DRIVER=managed. On Railway this is the Postgres plugin URL
+  // (same value as DATABASE_URL is fine — project roles are locked down
+  // to their own databases). Never exposed to customers.
+  MANAGED_PG_URL: z.string().default(''),
   POSTGRES_IMAGE: z.string().default('postgres:16-alpine'),
   PROVISION_BASE_PORT: z.coerce.number().int().min(1024).max(60000).default(15432),
   PROVISION_NETWORK: z.string().default('cloudnivo'),
@@ -109,6 +118,22 @@ const EnvSchema = z.object({
   // memory = dev/test default (zero friction); drizzle = Postgres-backed
   // registry/keys/jobs/storage metadata (needs migrations + seed at deploy).
   CONTROL_STORE: z.enum(['memory', 'drizzle']).default('memory'),
+  // Opt-in boot migration for container deploys (Railway release step
+  // alternative). Default OFF: migrations run explicitly via db:migrate.
+  // Drizzle journal applies pending files in order; failures halt boot.
+  MIGRATE_ON_BOOT: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform(v => v === 'true'),
+
+  // ── Background worker (Phase 11) ──
+  // Drains orphaned provisioning jobs (stuck pending/retrying after an API
+  // restart) from the shared job store. With CONTROL_STORE=memory the worker
+  // shares nothing and exits idle; with drizzle it provides restart safety.
+  WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(3003),
+  WORKER_POLL_MS: z.coerce.number().int().min(1000).max(600_000).default(15_000),
+  WORKER_STALE_MS: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
+  WORKER_DRAIN_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
 
   // ── Serverless functions (Phase 7) ──
   // worker = in-process isolates (dev/test/small prod); docker = per-version

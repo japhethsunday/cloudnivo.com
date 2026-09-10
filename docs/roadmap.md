@@ -131,9 +131,21 @@ versioned API envelope, dashboard shell, docs, green
 - `tests/load` harness (12/12 scenarios green) + `docs/performance.md` +
   `docs/operations.md` (health, failure table, jobs, backup posture).
 
-## Phase 11 — Production Infrastructure & Scaling (next)
+## Phase 11 — Production Infrastructure & Deployment (DONE)
 
-- Usage metering + billing on top of function/realtime/storage/AI metrics.
+- `ManagedPostgresProvider` (per-project database+role in shared PG; the
+  Railway story where Docker is absent) with lockdown, lifecycle, and
+  idempotent adopt; `PROVISION_DRIVER=managed` + `MANAGED_PG_URL` wiring.
+- Background `worker` service (orphan-drain with stale threshold, graceful
+  shutdown, own health endpoints); `listByStatus` on both job stores.
+- Hardened Dockerfiles (non-root, healthchecks), compose worker/realtime
+  services, per-service Railway settings, `vercel.json`, env-per-environment
+  examples, GitHub CI (lint/typecheck/test/build/docker/smoke/secrets) +
+  staging-auto / production-manual deploy pipeline.
+- `MIGRATE_ON_BOOT` (opt-in, fail-fast), split health endpoints
+  (`/health/live`, `/health/ready`), API graceful shutdown.
+- `tests/smoke-prod.mjs`: 16/16-step production journey green against
+  production builds; `docs/deployment.md` + operations/runbook updates.
 
 ## Non-goals for Phase 1
 

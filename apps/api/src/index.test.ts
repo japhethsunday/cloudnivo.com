@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import { signSession } from '@cloudnivo/auth';
+import { start } from './index.js';
 
 const JWT_SECRET = 't'.repeat(48);
 
@@ -80,4 +81,18 @@ describe('apps/api v1', () => {
     const res = await fetch(`${base}/api/v1/nope`);
     expect(res.status).toBe(404);
   });
+
+  it('MIGRATE_ON_BOOT with unreachable DB fails fast without leaking the URL', async () => {
+    process.env.MIGRATE_ON_BOOT = 'true';
+    process.env.DATABASE_URL = 'postgres://u:pw-secret-9@127.0.0.1:1/db';
+    try {
+      await expect(start(0)).rejects.toThrow(/migration failed|Migrations folder not found/);
+    } catch (err) {
+      expect(String((err as Error)?.message ?? err)).not.toContain('pw-secret-9');
+      throw err;
+    } finally {
+      delete process.env.MIGRATE_ON_BOOT;
+      process.env.DATABASE_URL = 'postgres://u:p@localhost:5432/db';
+    }
+  }, 30_000);
 });

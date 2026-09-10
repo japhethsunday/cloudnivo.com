@@ -102,6 +102,16 @@ export class DrizzleJobStore implements JobStore {
     return rows.map(rowToJob);
   }
 
+  async listByStatus(status: JobStatus, limit = 100): Promise<ProvisioningJob[]> {
+    const rows = await this.db
+      .select()
+      .from(provisioningJobs)
+      .where(eq(provisioningJobs.status, status))
+      .orderBy(desc(provisioningJobs.createdAt))
+      .limit(Math.max(1, Math.min(limit, 1000)));
+    return rows.map(rowToJob);
+  }
+
   async update(
     id: string,
     patch: Partial<Pick<ProvisioningJob, 'status' | 'attempts' | 'lastError'>>,

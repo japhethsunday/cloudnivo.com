@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit + integration tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (tracked files + history)
+        run: |
+          set -euo pipefail
+          # Fail on anything that looks like a real credential. Test fixtures
+          # use obviously-fake sentinels and are allow-listed inline below.
+          ! git grep -n -E '(sk-live-[A-Za-z0-9]{10,}|AKIA[0-9A-Z]{16}|xox[bap]-[A-Za-z0-9-]+|-----BEGIN (RSA )?PRIVATE KEY-----)' -- ':!*.test.ts' ':!*.spec.ts' || (echo 'possible secret committed' && exit 1)
+          ! git grep -n -E 'postgres(ql)?://[^/\s]*:[^@\s/]+@' -- '*.ts' '*.tsx' '*.mjs' ':!*.test.ts' ':!*.spec.ts' ':!*.example' ':!docs' || (echo 'possible connection string committed' && exit 1)
+          echo 'secret scan clean'
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [validate, secrets]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        run: docker build -f Dockerfile.api -t cloudnivo-api:ci .
+      - name: Build worker image
+        run: docker build -f Dockerfile.worker -t cloudnivo-worker:ci .
+      - name: Build realtime image
+        run: docker build -f Dockerfile.realtime -t cloudnivo-realtime:ci .
+      - name: Boot postgres + redis + API, probe health
+        run: |
+          set -euo pipefail
+          docker compose up -d postgres redis
+          for i in $(seq 1 24); do
+            docker compose exec -T postgres pg_isready -U cloudnivo && break || sleep 5
+          done
+          JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
+          PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
+          docker compose --profile api up -d --build api
+          for i in $(seq 1 24); do
+            curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
+          done
+          curl -fsS http://127.0.0.1:3001/api/v1/health/ready | grep -q '"ready"'
+          docker compose down -v
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [validate, secrets]
+    env:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Build
+        run: npm run build
+      - name: Boot API + dashboard
+        run: |
+          set -euo pipefail
+          JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
+          DATABASE_URL=postgres://u:p@localhost:5432/db \
+          CORS_ORIGINS=http://localhost:3000 API_PORT=3001 \
+          PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
+          nohup node apps/api/dist/index.js > /tmp/cn-api.log 2>&1 &
+          echo $! > /tmp/cn-api.pid
+          (cd apps/dashboard && nohup npx next start -p 3000 > /tmp/cn-dash.log 2>&1 & echo $! > /tmp/cn-dash.pid)
+          for i in $(seq 1 24); do
+            curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
+          done
+          for i in $(seq 1 24); do
+            curl -fsS http://127.0.0.1:3000/ > /dev/null && break || sleep 5
+          done
+      - name: Playwright E2E
+        run: npx playwright test --config tests/e2e/playwright.config.ts
+        env:
+          API_URL: http://127.0.0.1:3001
+          DASHBOARD_URL: http://127.0.0.1:3000
+      - name: Production smoke (built dist API)
+        run: |
+          set -euo pipefail
+          JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
+          PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
+          DATABASE_URL=postgres://u:p@localhost:5432/db \
+          CORS_ORIGINS=http://localhost:3000 API_PORT=3001 \
+          nohup node apps/api/dist/index.js > /tmp/cn-smoke-api.log 2>&1 &
+          echo $! > /tmp/cn-smoke-api.pid
+          for i in $(seq 1 24); do
+            curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
+          done
+          node tests/smoke-prod.mjs
+      - name: Stop stack
+        if: always()
+        run: kill $(cat /tmp/cn-api.pid) $(cat /tmp/cn-dash.pid) $(cat /tmp/cn-smoke-api.pid) 2>/dev/null || true
