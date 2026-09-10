@@ -146,5 +146,5 @@ test('dashboard renders the live project', async ({ page, request }) => {
   const token: string = signup.json.data.token;
   await page.addInitScript(t => window.localStorage.setItem('cn_token', t), token);
   await page.goto('/projects');
-  await expect(page.getByRole('heading')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 });
 });
