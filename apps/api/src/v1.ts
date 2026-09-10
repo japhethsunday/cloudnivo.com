@@ -248,6 +248,42 @@ export async function handleRequest(
       return;
     }
 
+    // Liveness: the process serves traffic. No dependency checks.
+    if (url.pathname === '/api/v1/health/live' && req.method === 'GET') {
+      sendJson(res, 200, ok({ status: 'ok', service: 'api' }, requestId), baseHeaders);
+      return;
+    }
+
+    // Readiness: critical dependencies must answer. Degraded → 503 with
+    // component booleans only (never URLs, credentials, or stack traces).
+    if (url.pathname === '/api/v1/health/ready' && req.method === 'GET') {
+      const components: Record<string, boolean> = { http: true };
+      let ready = true;
+      if (ctx.controlDb) {
+        const health = await ctx.controlDb
+          .healthCheck()
+          .catch(() => ({ ok: false as const, latencyMs: -1 }));
+        components['controlDatabase'] = health.ok;
+        if (!health.ok) ready = false;
+      } else {
+        components['controlStore'] = true;
+      }
+      try {
+        await ctx.registry.countDatabases();
+        components['registry'] = true;
+      } catch {
+        components['registry'] = false;
+        ready = false;
+      }
+      sendJson(
+        res,
+        ready ? 200 : 503,
+        ok({ status: ready ? 'ready' : 'degraded', components }, requestId),
+        baseHeaders,
+      );
+      return;
+    }
+
     // Platform auth (developer signup/login/me + org invites — no project yet).
     if (isPlatformAuthRoute(url.pathname, req.method ?? 'GET')) {
       const handled = await handlePlatformAuthRoutes(req, res, ctx, logger, baseHeaders, requestId);

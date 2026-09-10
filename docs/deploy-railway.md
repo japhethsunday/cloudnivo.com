@@ -9,7 +9,8 @@ target of the `DatabaseProvisioner` / Dockerfile abstraction.
 1. Create a Railway project with a PostgreSQL plugin (control plane).
 2. Deploy the API from this repo:
    - Builder: `Dockerfile`, path `Dockerfile.api` (see `railway.json` —
-     health check is `GET /api/v1/health`).
+     health check is `GET /api/v1/health/ready`, so degraded instances
+     stop receiving traffic).
    - Set every variable from `.env.example` as Railway environment variables.
      Minimum: `DATABASE_URL` (plugin), `JWT_SECRET` (≥32 chars), `CORS_ORIGINS`,
      `PUBLIC_API_URL` (your Railway public domain, e.g.
@@ -28,7 +29,7 @@ target of the `DatabaseProvisioner` / Dockerfile abstraction.
    settings, and the `REALTIME_*` budgets (`REALTIME_PORT`, heartbeat, per-
    project/per-socket caps). Both services share the registry/stores, so
    subscribers on either instance receive every event via Redis pub/sub
-   (health check stays `GET /api/v1/health`).
+   (health check stays `GET /api/v1/health/ready`).
 
 ## Option B — Docker Compose (local / VPS)
 

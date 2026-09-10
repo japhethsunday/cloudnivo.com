@@ -34,3 +34,7 @@ test-results/
 
 # Vercel
 .vercel
+
+# Load-test results (machine-readable, regenerated per run)
+tests/load/results.json
+

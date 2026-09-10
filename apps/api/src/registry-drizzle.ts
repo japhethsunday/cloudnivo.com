@@ -1,4 +1,4 @@
-import { count, desc, eq } from 'drizzle-orm';
+import { count, desc, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   databaseCredentials,
@@ -261,6 +261,36 @@ export class DrizzleRegistry implements Registry {
       .limit(1);
     const row = rows[0];
     return row ? toDbRecord(row) : null;
+  }
+
+  async listProjectDatabases(
+    projectIds: string[],
+  ): Promise<
+    {
+      projectId: string;
+      db: ProjectDbRecord | null;
+      cred: { dbUser: string; password: string } | null;
+    }[]
+  > {
+    const ids = [...new Set(projectIds)].filter(id => uuidOrNull(id) !== null);
+    if (ids.length === 0) return projectIds.map(projectId => ({ projectId, db: null, cred: null }));
+    const dbRows = await this.db
+      .select()
+      .from(projectDatabases)
+      .where(inArray(projectDatabases.projectId, ids));
+    const credRows = await this.db
+      .select()
+      .from(databaseCredentials)
+      .where(inArray(databaseCredentials.projectId, ids));
+    const dbByProject = new Map(dbRows.map(r => [r.projectId, toDbRecord(r)]));
+    const credByProject = new Map(
+      credRows.map(r => [r.projectId, { dbUser: r.dbUser, password: r.dbPassword }]),
+    );
+    return projectIds.map(projectId => ({
+      projectId,
+      db: dbByProject.get(projectId) ?? null,
+      cred: credByProject.get(projectId) ?? null,
+    }));
   }
 
   async updateDatabaseStatus(

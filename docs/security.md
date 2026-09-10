@@ -137,3 +137,16 @@ passwords, key rotation, OAuth, or per-project network
 isolation — tracked in `roadmap.md`. Audit coverage for provisioning events
 (`project.created` … `database.query.executed`) is implemented; review the
 audit store before relying on it for compliance.
+
+## Phase 10 audit findings (severity-classified)
+
+- **HIGH � drizzle-orm SQL-injection advisory (GHSA-gpj5-g38j-94v9): FIXED.** Upgraded drizzle-orm 0.38.4 ? 0.45.2 across packages/database and pps/api; all db-dependent suites green. All repo identifiers reaching drizzle were already allow-listed, so exploitability was low � the upgrade removes the class.
+- **HIGH � postcss advisories (nested under Next 15.5.25, build-time only): ACCEPTED RISK (LOW).** The vulnerable path (attacker-controlled CSS/sourceMappingURL at build time) is unreachable: dashboard styles are first-party committed source. Fix requires Next 16 (breaking); tracked for the next major bump.
+- **MODERATE � vitest/esbuild dev-only advisories: ACCEPTED.** Test tooling only, never shipped or reachable at runtime.
+- **MEDIUM � dashboard session JWT in localStorage: DOCUMENTED.** No dangerouslySetInnerHTML, no eval, strict CSP/frame/referrer headers, short-lived sessions. Migration to httpOnly cookies tracked (needs same-origin backend session work).
+- **Auth circular import (AuthError TDZ crash on standalone boot): FIXED.** Moved to leaf errors.ts; verified
+  ode apps/api/dist/index.js boots and serves traffic. Previously only vitest's transform masked it � standalone, Railway, and Playwright runs all crashed.
+- **N+1 registry reads on project list: FIXED.** New batched listProjectDatabases (2 queries on durable stores); live Docker status checks remain per-project by nature (parallel, fail-open to unavailable).
+- **Secret scan: CLEAN.** No keys, passwords, private keys, or connection strings in source, tests (one intentional scanner-fixture fake), docs, or history.
+
+Critical: 0 open. High: 0 open (1 fixed, 1 accepted-risk dev-only).

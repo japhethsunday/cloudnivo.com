@@ -40,6 +40,19 @@ describe('apps/api v1', () => {
     expect(json.data.status).toBe('ok');
   });
 
+  it('liveness is unconditional; readiness reports components without secrets', async () => {
+    const live = await fetch(`${base}/api/v1/health/live`);
+    expect(live.status).toBe(200);
+    const ready = await fetch(`${base}/api/v1/health/ready`);
+    expect(ready.status).toBe(200);
+    const json = (await ready.json()) as {
+      data: { status: string; components: Record<string, boolean> };
+    };
+    expect(json.data.status).toBe('ready');
+    expect(json.data.components['http']).toBe(true);
+    expect(JSON.stringify(json)).not.toContain('postgres://');
+  });
+
   it('rejects unauthenticated project access (auth boundary)', async () => {
     const res = await fetch(`${base}/api/v1/projects`);
     expect(res.status).toBe(401);

@@ -118,11 +118,21 @@ versioned API envelope, dashboard shell, docs, green
   honesty, CLI/SDK, full E2E incl. rollback + injection + rate limits); green
   `lint → typecheck → test → build`.
 
-## Phase 10 — Security, Performance & Load Testing (next)
+## Phase 10 — Security, Performance & Load Testing (DONE)
 
-- Adversarial security pass over auth, AI, and function boundaries.
-- Load testing (realtime fan-out, function concurrency, AI apply pipeline).
-- `ProvisioningService` cloud driver (Terraform/API) per project env.
+- Dependency audit: drizzle-orm HIGH fixed (0.45.2, suites green); postcss +
+  vitest/esbuild findings triaged (build/dev-only, unreachable — documented).
+- Secret scan clean; new `security.test.ts` regression suite (forged sessions,
+  login brute-force 429, 13-path cross-project sweep, SQL stacking, traversal,
+  hostile-function containment); reliability suite (fail-fast control plane,
+  restart recovery); perf tripwires.
+- Fixed real bugs: auth ESM cycle crashing standalone boots, N+1 registry
+  reads (batched), Railway healthcheck now probes readiness.
+- `tests/load` harness (12/12 scenarios green) + `docs/performance.md` +
+  `docs/operations.md` (health, failure table, jobs, backup posture).
+
+## Phase 11 — Production Infrastructure & Scaling (next)
+
 - Usage metering + billing on top of function/realtime/storage/AI metrics.
 
 ## Non-goals for Phase 1

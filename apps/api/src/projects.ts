@@ -307,12 +307,16 @@ export async function handleProjectRoutes(
   // GET /api/v1/projects — tenant-scoped list with live database state.
   if (parts.length === 0 && req.method === 'GET') {
     const projects = await ctx.registry.listProjects(session.sub);
+    // Single batched read (2 queries on durable stores, not 2N).
+    const stored = await ctx.registry.listProjectDatabases(projects.map(p => p.id));
+    const byProject = new Map(stored.map(s => [s.projectId, s]));
     const items = await Promise.all(
       projects.map(async p => {
-        const db = await ctx.registry.getDatabaseByProject(p.id);
+        const entry = byProject.get(p.id);
+        const db = entry?.db ?? null;
         if (!db) return { ...p, database: null };
         try {
-          const cred = await ctx.registry.getCredential(p.id);
+          const cred = entry?.cred ?? null;
           const live = cred
             ? await ctx.provider.getStatus(db.databaseId, {
                 host: db.host,

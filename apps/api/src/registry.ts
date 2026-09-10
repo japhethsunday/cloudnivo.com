@@ -88,6 +88,16 @@ export interface Registry {
   countDatabases(): Promise<number>;
   saveDatabase(rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>): Promise<ProjectDbRecord>;
   getDatabaseByProject(projectId: string): Promise<ProjectDbRecord | null>;
+  /** Batch database+credential read for list views (avoids N+1 on durable stores). */
+  listProjectDatabases(
+    projectIds: string[],
+  ): Promise<
+    {
+      projectId: string;
+      db: ProjectDbRecord | null;
+      cred: { dbUser: string; password: string } | null;
+    }[]
+  >;
   updateDatabaseStatus(projectId: string, status: DatabaseStatus): Promise<ProjectDbRecord | null>;
   saveCredential(projectId: string, dbUser: string, password: string): Promise<void>;
   getCredential(projectId: string): Promise<{ dbUser: string; password: string } | null>;
@@ -216,6 +226,22 @@ export class MemoryRegistry implements Registry {
 
   async getDatabaseByProject(projectId: string): Promise<ProjectDbRecord | null> {
     return this.databases.get(projectId) ?? null;
+  }
+
+  async listProjectDatabases(
+    projectIds: string[],
+  ): Promise<
+    {
+      projectId: string;
+      db: ProjectDbRecord | null;
+      cred: { dbUser: string; password: string } | null;
+    }[]
+  > {
+    return projectIds.map(projectId => ({
+      projectId,
+      db: this.databases.get(projectId) ?? null,
+      cred: this.credentials.get(projectId) ?? null,
+    }));
   }
 
   async updateDatabaseStatus(
