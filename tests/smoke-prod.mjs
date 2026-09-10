@@ -211,6 +211,13 @@ await check('6. connection info via API (masked by default)', async () => {
   assert(r.status === 200, `connection HTTP ${r.status}`);
 });
 await check('7/8/9. data CRUD (create/read/update/delete)', async () => {
+  // Real databases start empty (the fake dev backend seeds `users`); create
+  // the table first so this smoke proves CRUD on every backend honestly.
+  let setup = await api('POST', `/api/v1/projects/${S.projectId}/database/query`, {
+    token: S.token,
+    body: { sql: 'create table if not exists users (id text primary key, email text not null)' },
+  });
+  assert([200, 201].includes(setup.status), `setup table HTTP ${setup.status}`);
   const table = `/api/v1/projects/${S.projectId}/users`;
   let r = await api('POST', table, { token: S.token, body: { id: 'u1', email: 'a@b.c' } });
   assert([200, 201].includes(r.status), `create HTTP ${r.status}`);
