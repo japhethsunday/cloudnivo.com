@@ -13,6 +13,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { connect } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 import { existsSync } from 'node:fs';
 
 const API = process.env.API_BASE ?? 'http://127.0.0.1:3001';
@@ -81,7 +82,12 @@ function maskWsFrame(obj) {
 function wsConnect(base, projectId, token) {
   return new Promise((resolve, reject) => {
     const url = new URL(base);
-    const socket = connect(Number(url.port), '127.0.0.1');
+    // Remote https targets need TLS + the real hostname; local http keeps the
+    // previous plaintext behavior byte-for-byte.
+    const secure = url.protocol === 'https:';
+    const port = Number(url.port) || (secure ? 443 : 80);
+    const host = url.hostname;
+    const socket = secure ? tlsConnect({ host, port, servername: host }) : connect(port, host);
     const received = [];
     let buf = Buffer.alloc(0);
     let settled = false;
@@ -143,11 +149,12 @@ function wsConnect(base, projectId, token) {
         reject(new Error(`ws upgrade rejected: ${text.split('\r\n')[0]}`));
       }
     });
-    socket.once('connect', () => {
+    // TLS sockets must wait for the handshake; plaintext uses TCP connect.
+    socket.once(secure ? 'secureConnect' : 'connect', () => {
       const key = randomBytes(16).toString('base64');
       socket.write(
         `GET /api/v1/projects/${projectId}/realtime/ws?token=${token} HTTP/1.1\r\n` +
-          `Host: 127.0.0.1:${url.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+          `Host: ${host}:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
           `Sec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
       );
     });
