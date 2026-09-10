@@ -55,6 +55,10 @@ export default defineConfig({
         find: '@cloudnivo/api-engine',
         replacement: resolve(rootDir, 'packages/api-engine/src/index.ts'),
       },
+      {
+        find: '@cloudnivo/functions',
+        replacement: resolve(rootDir, 'packages/functions/src/index.ts'),
+      },
     ],
   },
 });

@@ -42,7 +42,9 @@
       "@cloudnivo/api-core": ["./packages/api-core/src/index.ts"],
       "@cloudnivo/api-core/*": ["./packages/api-core/src/*"],
       "@cloudnivo/api-engine": ["./packages/api-engine/src/index.ts"],
-      "@cloudnivo/api-engine/*": ["./packages/api-engine/src/*"]
+      "@cloudnivo/api-engine/*": ["./packages/api-engine/src/*"],
+      "@cloudnivo/functions": ["./packages/functions/src/index.ts"],
+      "@cloudnivo/functions/*": ["./packages/functions/src/*"]
     }
   }
 }

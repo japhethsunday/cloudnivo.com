@@ -45,6 +45,7 @@ import {
 } from './data.js';
 import { handleStorageRoutes, isStorageRoute } from './storage.js';
 import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
+import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -235,6 +236,7 @@ export async function handleRequest(
         (isDataRoute(rest, req.method ?? 'GET') ||
           isCustomerAuthRoute(rest, req.method ?? 'GET') ||
           isStorageRoute(rest, req.method ?? 'GET') ||
+          isFunctionRoute(rest, req.method ?? 'GET') ||
           isRealtimeRoute(rest, req.method ?? 'GET'))
           ? projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
           : baseHeaders;
@@ -267,6 +269,21 @@ export async function handleRequest(
           requestId,
           rest,
           url.searchParams,
+          async () => readJson(req),
+        );
+        if (handled) return;
+      }
+      // Functions plane: management + invocation (reads its own body).
+      if (isFunctionRoute(rest, req.method ?? 'GET')) {
+        const handled = await handleFunctionRoutes(
+          req,
+          res,
+          ctx,
+          logger,
+          routeHeaders,
+          requestId,
+          rest,
+          url,
           async () => readJson(req),
         );
         if (handled) return;

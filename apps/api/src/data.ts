@@ -24,6 +24,7 @@ import {
 } from '@cloudnivo/api-engine';
 import { storageOpenApiPaths } from '@cloudnivo/storage';
 import { realtimeOpenApiPaths } from '@cloudnivo/realtime';
+import { functionsOpenApiPaths } from '@cloudnivo/functions';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
@@ -287,7 +288,7 @@ function cmp(a: unknown, op: string, b: unknown): boolean {
 
 // ── Routing ───────────────────────────────────────────────────────────
 
-const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage']);
+const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage', 'functions']);
 
 /** True when /projects/:id/<seg>... belongs to the data plane. */
 export function isDataRoute(rest: string[], method: string): boolean {
@@ -586,7 +587,12 @@ export async function handleDataRoutes(
         schema,
         maxRows: config.PROVISION_MAX_SQL_ROWS,
       }) as { paths?: Record<string, unknown> };
-      doc.paths = { ...(doc.paths ?? {}), ...storageOpenApiPaths(), ...realtimeOpenApiPaths() };
+      doc.paths = {
+        ...(doc.paths ?? {}),
+        ...storageOpenApiPaths(),
+        ...realtimeOpenApiPaths(),
+        ...functionsOpenApiPaths(),
+      };
       return finish(200, doc, { caller: caller.kind });
     }
 

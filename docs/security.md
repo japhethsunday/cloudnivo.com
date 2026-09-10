@@ -93,6 +93,22 @@ hostile and the client is lying — now including infrastructure operations.
   dropped); outages degrade to local-only delivery, never a hard outage.
   Metrics/logs expose counts and latency only — no tokens, passwords, payloads,
   or infra internals.
+- **Functions (Phase 7):** customer code is untrusted. Worker isolates run
+  source in a `vm` context with no `require`/`process`/`fetch`/`WebSocket`;
+  only the frozen `cloudnivo` SDK (identity + project + env), capturing
+  console, and timers exist. Containers bake source into images (no host
+  mounts) and run `--network none --cap-drop ALL --read-only --pids-limit 64`
+  with memory caps. Entrypoint segments `__proto__`/`constructor`/`prototype`
+  rejected; slugs/env keys allow-listed; source/env/body/response sizes capped
+  (413/502 past limits); timeouts terminate the isolate (504); concurrency
+  capped per function and invocations rate-limited per project (429).
+  Invocation strips `authorization`/`apikey`/`cookie`/`host` headers; the
+  handler receives identity only — never signing secrets, connection strings,
+  or other projects' data (project comes from the URL, every credential is
+  re-scoped; unknown and foreign functions both read 404). Secrets masked in
+  API responses and redacted from logs; reserved env keys unsettable. Build
+  verification proves the entrypoint exists without invoking the handler, so
+  `ready` never follows a failed build.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,

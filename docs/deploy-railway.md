@@ -71,6 +71,12 @@ SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
 - Realtime: `REALTIME_DRIVER=redis` + shared `REDIS_URL` for multi-instance
   fan-out; standalone service sets `REALTIME_STANDALONE=true` and exposes
   `REALTIME_PORT`. Single-instance deploys can stay on `memory`.
+- Functions: served in-process by default (`FUNCTION_RUNTIME=worker`). For
+  container isolation set `FUNCTION_RUNTIME=docker` on a host with a Docker
+  engine; for independent scaling run a worker service with `DATABASE_URL`,
+  `REDIS_URL`, and the `FUNCTION_*` budgets (`FUNCTION_EXECUTION_TIMEOUT_MS`,
+  `FUNCTION_MEMORY_MB`, `FUNCTION_MAX_CONCURRENCY`). Tune
+  `FUNCTION_INVOKE_RATE_MAX` per plan.
 - Run `npm run db:migrate` against the control database on deploy.
 - No `.env`, keys, or `*.pem` in images or git (`.dockerignore`-equivalent:
   the Dockerfile copies only `package*.json`, `packages/`, `apps/api/`).

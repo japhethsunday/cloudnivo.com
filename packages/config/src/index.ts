@@ -104,6 +104,24 @@ const EnvSchema = z.object({
   AUTH_VERIFY_TTL_S: z.coerce.number().int().min(3600).max(604_800).default(86_400),
   AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   EMAIL_DRIVER: z.enum(['memory']).default('memory'),
+
+  // ── Serverless functions (Phase 7) ──
+  // worker = in-process isolates (dev/test/small prod); docker = per-version
+  // container images executed with --network none + caps (needs an engine).
+  FUNCTION_RUNTIME: z.enum(['worker', 'docker']).default('worker'),
+  FUNCTION_EXECUTION_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(10_000),
+  FUNCTION_MEMORY_MB: z.coerce.number().int().min(64).max(4096).default(128),
+  FUNCTION_MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(8_388_608).default(262_144),
+  FUNCTION_MAX_RESPONSE_BYTES: z.coerce.number().int().min(1024).max(8_388_608).default(1_048_576),
+  FUNCTION_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(10),
+  FUNCTION_MAX_DEPLOY_BYTES: z.coerce.number().int().min(1024).max(52_428_800).default(5_242_880),
+  FUNCTION_MAX_FUNCTIONS_PER_PROJECT: z.coerce.number().int().min(1).max(1000).default(50),
+  FUNCTION_MAX_ENV_VALUE_BYTES: z.coerce.number().int().min(256).max(65_536).default(8192),
+  FUNCTION_MAX_LOG_ENTRIES: z.coerce.number().int().min(50).max(10_000).default(500),
+  FUNCTION_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  FUNCTION_INVOKE_RATE_MAX: z.coerce.number().int().min(1).max(10_000).default(60),
+  // Public base URL served to developers (never hardcode prod domains).
+  FUNCTION_BASE_URL: z.string().default(''),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

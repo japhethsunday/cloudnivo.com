@@ -146,6 +146,33 @@ Full wire reference in `docs/realtime.md`.
 Reserved word: a table literally named `realtime` stays unreachable via data
 routes (documented collision, same class as `database`/`jobs`/`auth`/`storage`).
 
+## Functions plane (Phase 7)
+
+`/api/v1/projects/:id/functions/*`. Management needs a platform session
+(admin/owner for writes); invocation accepts session members, `service`/`admin`
+project keys, and project customer JWTs. Deploys return `202` + job — poll the
+deployment until `ready`. Full reference in `docs/functions.md`.
+
+| Method                 | Path                                       | Auth                 | Description                                                      |
+| ---------------------- | ------------------------------------------ | -------------------- | ---------------------------------------------------------------- |
+| `GET`                  | `/functions`                               | Bearer               | list                                                             |
+| `POST`                 | `/functions`                               | Bearer admin         | create `{name, slug, description?, runtime?, entrypoint?}` → 201 |
+| `GET`/`PATCH`/`DELETE` | `/functions/:slug`                         | Bearer               | get / update / delete (204)                                      |
+| `POST`                 | `/functions/:slug/deploy`                  | Bearer admin         | deploy `{source, runtime?, entrypoint?}` → 202 + job             |
+| `POST`                 | `/functions/:slug/redeploy`                | Bearer admin         | redeploy latest source → 202 + job                               |
+| `GET`                  | `/functions/:slug/deployments`(+`/:jobId`) | Bearer               | deployment jobs                                                  |
+| `GET`                  | `/functions/:slug/status`                  | Bearer               | status + in-flight + active version                              |
+| `POST`                 | `/functions/:slug/invoke`                  | session/key/customer | run active version → envelope + version headers                  |
+| `GET`                  | `/functions/:slug/logs`                    | Bearer               | invocation logs (`?limit&level`)                                 |
+| `GET`                  | `/functions/:slug/versions`                | Bearer               | immutable version history                                        |
+| `POST`                 | `/functions/:slug/versions/:v/activate`    | Bearer admin         | rollback                                                         |
+| `GET`/`PUT`            | `/functions/:slug/env`                     | Bearer               | list (masked) / set `{key, value, secret?}`                      |
+| `DELETE`               | `/functions/:slug/env/:key`                | Bearer admin         | remove var                                                       |
+| `GET`                  | `/functions/:slug/metrics`                 | Bearer               | invocations, errors, latency, cold starts                        |
+
+Reserved word: a table literally named `functions` stays unreachable via data
+routes (same class as `database`/`jobs`/`auth`/`storage`/`realtime`).
+
 ## Auth
 
 `Authorization: Bearer <JWT>` → `verifySession()` (issuer-checked). Missing or

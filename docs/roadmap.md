@@ -72,24 +72,33 @@ versioned API envelope, dashboard shell, docs, green
   expired-token + oversized-payload + upgrade-flood cases); green
   `lint → typecheck → test → build`.
 
-## Phase 7 — Durable control plane (next)
+## Phase 7 — Serverless functions (DONE)
+
+- `@cloudnivo/functions`: records/versions/jobs/env model, frozen in-function
+  SDK, worker-isolate + container runtimes (timeouts, memory/concurrency/size
+  caps), async deploy pipeline with verified builds, invocation with caller
+  identity, secret-masked env, redacted logs, honest metrics + cold starts.
+- Function API (`/functions/*`: CRUD, deploy/redeploy jobs, invoke, logs,
+  versions + rollback, env, metrics) with session/key/customer auth and
+  project isolation; OpenAPI paths; dashboard Functions console (overview,
+  editor, deployments, invoke tester, logs, env, versions, settings).
+- 30+ new tests (validation, sandbox denials, timeouts, lifecycle, versions,
+  isolation, rate limits, raw-HTTP E2E incl. rollback + delete); green
+  `lint → typecheck → test → build`.
+
+## Phase 8 — Durable control plane + CLI/SDKs (next)
 
 - Drizzle migrations + seed (roles/permissions) applied at deploy.
-- Drizzle-backed registry/key/job/customer/storage stores (replace memory adapters).
+- Drizzle-backed registry/key/job/customer/storage/function stores (replace memory adapters).
 - Platform signup/login/session cookies + `GET /me`, org invites.
 - Dashboard wires to live data (loading/empty/error states stay).
 - Playwright smoke: signup → org → project → key → data CRUD → file upload → 403 cross-org.
+- CLI + language SDKs on the stable envelope (functions SDK data-plane next).
 
-## Phase 8 — Data-plane primitives
-
-- Redis-backed `CacheService` in prod (realtime already Redis-capable).
-- Storage webhooks/realtime events + multipart/resumable dashboard uploads.
-- Automatic per-project REST (`/api/v1/data/:table` with RLS).
-
-## Phase 9 — Provisioning & serverless
+## Phase 9 — Provisioning & scale
 
 - `ProvisioningService` cloud driver (Terraform/API) per project env.
-- Serverless functions + logs + usage metering + CLI/SDKs.
+- Usage metering + billing on top of function/realtime/storage metrics.
 - AI backend generation on top of the stable envelope.
 
 ## Non-goals for Phase 1

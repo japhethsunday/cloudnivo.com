@@ -29,6 +29,9 @@ export default function ProjectDetailPage({
         </Link>{' '}
         <Link className="btn" href={`/projects/${id}/realtime`}>
           Realtime
+        </Link>{' '}
+        <Link className="btn" href={`/projects/${id}/functions`}>
+          Functions
         </Link>
       </p>
       <TokenBar onChange={() => undefined} />

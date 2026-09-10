@@ -346,3 +346,87 @@ export const storageObjects = pgTable(
     index('storage_objects_project_idx').on(t.projectId),
   ],
 );
+
+/**
+ * Phase 7 — serverless functions (control plane; execution is isolated).
+ * Mirrors the in-memory `FunctionService` record shapes 1:1 so the durable
+ * adapter swaps in without touching routes. Source bytes live in versions
+ * (content-hashed); secret env values stay in `function_env_vars` and are
+ * masked on every read path.
+ */
+export const functions = pgTable(
+  'functions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    slug: varchar('slug', { length: 63 }).notNull(),
+    description: text('description').notNull().default(''),
+    runtime: varchar('runtime', { length: 20 }).notNull().default('node22'),
+    entrypoint: varchar('entrypoint', { length: 128 }).notNull().default('handler'),
+    status: varchar('status', { length: 20 }).notNull().default('creating'),
+    activeVersion: integer('active_version').notNull().default(0),
+    lastError: text('last_error'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deployedAt: timestamp('deployed_at', { withTimezone: true }),
+  },
+  t => [
+    unique('functions_project_slug_unique').on(t.projectId, t.slug),
+    index('functions_org_idx').on(t.organizationId),
+  ],
+);
+
+export const functionVersions = pgTable(
+  'function_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    functionId: uuid('function_id')
+      .notNull()
+      .references(() => functions.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    sourceHash: varchar('source_hash', { length: 64 }).notNull(),
+    sourceBytes: integer('source_bytes').notNull().default(0),
+    source: text('source').notNull(),
+    runtime: varchar('runtime', { length: 20 }).notNull().default('node22'),
+    entrypoint: varchar('entrypoint', { length: 128 }).notNull().default('handler'),
+    active: varchar('active', { length: 5 }).notNull().default('false'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('function_versions_fn_version_unique').on(t.functionId, t.version),
+    index('function_versions_fn_idx').on(t.functionId),
+  ],
+);
+
+export const functionEnvVars = pgTable(
+  'function_env_vars',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    functionId: uuid('function_id')
+      .notNull()
+      .references(() => functions.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    key: varchar('key', { length: 64 }).notNull(),
+    value: text('value').notNull(),
+    secret: varchar('secret', { length: 5 }).notNull().default('false'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('function_env_fn_key_unique').on(t.functionId, t.key),
+    index('function_env_fn_idx').on(t.functionId),
+  ],
+);

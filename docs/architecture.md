@@ -101,6 +101,48 @@ apps/dashboard       + projects/[id]/realtime console (overview, connections,
 docs/realtime.md (protocol, channels, CDC, auth, limits, scaling, Railway)
 ```
 
+Phase 7 additions (same layout, no rebuild):
+
+```text
+packages/functions     + types/validation (records, versions, jobs, env, caps)
+                     + sdk.ts (frozen in-function cloudnivo SDK)
+                     + runtime.ts (FunctionRuntime: worker isolates + docker
+                       containers, both vm-sandboxed, timeouts, caps)
+                     + service.ts (FunctionService: CRUD, async deploys,
+                       invoke, logs, metrics, rollback)
+                     + openapi.ts
+packages/database    + functions, function_versions, function_env_vars tables
+                       + migration + audit events
+packages/config      + FUNCTION_* budgets/runtime/ports
+apps/api             + functions.ts (management + invocation routes, caller
+                       auth, rate/size guards) + functions.test.ts (E2E)
+apps/dashboard       + projects/[id]/functions console (overview, editor,
+                       deployments, invoke tester, logs, env, versions)
+docs/functions.md (format, lifecycle, auth, limits, sandboxing, Railway)
+```
+
+## Functions architecture
+
+```text
+Developer ──► Dashboard ──► Function API ──► FunctionService ──► Runtime ──► handler(request)
+                                              (jobs, versions,    (isolate or
+                                               env, logs)          container)
+```
+
+- **Isolation boundary.** The control plane never executes customer code
+  itself: the worker runtime uses per-invocation isolates with a minimal
+  global set, and the container runtime bakes source into images run without
+  network, privileges, or mounts. Timeouts, memory, concurrency, and sizes
+  are enforced server-side from `FUNCTION_*` config.
+- **Versions are immutable.** Every deploy content-hashes source; identical
+  redeploys collapse, new code creates a version, activation is explicit
+  (rollback = reactivate). Invocation always resolves the active version
+  through project → function → version routing that rejects foreign, deleted,
+  and undeployed targets.
+- **Identity without credentials.** Invocation auth reuses data-plane caller
+  resolution; the handler gets `{ userId, email, role }` plus project/env —
+  never keys, secrets, or connection strings.
+
 ## Realtime architecture
 
 ```text
