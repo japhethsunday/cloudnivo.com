@@ -1,0 +1,1 @@
+ALTER TABLE "api_keys" ADD COLUMN "role" varchar(20) DEFAULT 'public' NOT NULL;

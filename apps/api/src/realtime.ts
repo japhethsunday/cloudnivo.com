@@ -93,18 +93,18 @@ export function realtimeFor(ctx: ApiContext): RealtimeState {
   return state;
 }
 
-function credsFor(
+async function credsFor(
   ctx: ApiContext,
   projectId: string,
-): {
+): Promise<{
   host: string;
   port: number;
   database: string;
   user: string;
   password: string;
-} {
-  const db = ctx.registry.getDatabaseByProject(projectId);
-  const cred = ctx.registry.getCredential(projectId);
+}> {
+  const db = await ctx.registry.getDatabaseByProject(projectId);
+  const cred = await ctx.registry.getCredential(projectId);
   if (!db || !cred) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
   return {
     host: db.host,
@@ -120,7 +120,7 @@ export async function ensureProjectFeed(ctx: ApiContext, projectId: string): Pro
   const state = realtimeFor(ctx);
   if (state.listeners.has(projectId)) return;
   if (ctx.provider.provider === 'fake') return;
-  const creds = credsFor(ctx, projectId);
+  const creds = await credsFor(ctx, projectId);
   const connStr = toConnectionString(creds);
   const listener = new PostgresNotifyListener(connStr, {
     onError: err =>
@@ -156,7 +156,7 @@ async function ensureTableFeed(ctx: ApiContext, projectId: string, table: string
     installed.add(table);
     return;
   }
-  const creds = credsFor(ctx, projectId);
+  const creds = await credsFor(ctx, projectId);
   for (const stmt of changeFeedDdl('public', table)) {
     await queryProjectDb(creds, stmt, [], 15_000);
   }
@@ -164,7 +164,7 @@ async function ensureTableFeed(ctx: ApiContext, projectId: string, table: string
 }
 
 async function tableColumns(ctx: ApiContext, projectId: string, table: string): Promise<string[]> {
-  const schema = await ctx.data.readSchema(credsFor(ctx, projectId));
+  const schema = await ctx.data.readSchema(await credsFor(ctx, projectId));
   return schema.tables.find(t => t.name === table)?.columns.map(c => c.name) ?? [];
 }
 
@@ -217,7 +217,7 @@ async function upgradeAuth(
     keyPrefix: 'rt-conn',
   });
   if (!rl.allowed) throw new ApiError('RATE_LIMITED', 'Too many connection attempts', 429);
-  const project = ctx.registry.getProject(projectId);
+  const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const { headers } = upgradeCredentials(req);
 
@@ -275,10 +275,10 @@ async function upgradeAuth(
     sub = null;
   }
   if (!sub) throw new ApiError('UNAUTHORIZED', 'Invalid or expired credentials', 401);
-  const owned = mustOwnProject(ctx.registry, sub, projectId);
+  const owned = await mustOwnProject(ctx.registry, sub, projectId);
   const role =
-    ctx.registry.membershipsFor(sub).find(m => m.organizationId === owned.organizationId)?.role ??
-    'viewer';
+    (await ctx.registry.membershipsFor(sub)).find(m => m.organizationId === owned.organizationId)
+      ?.role ?? 'viewer';
   return {
     userId: sub,
     role,
@@ -308,12 +308,13 @@ async function requireMember(
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
   });
-  const project = ctx.registry.getProject(projectId);
+  const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
-  const owned = mustOwnProject(ctx.registry, session.sub, projectId);
+  const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === owned.organizationId)
-      ?.role ?? 'viewer';
+    (await ctx.registry.membershipsFor(session.sub)).find(
+      m => m.organizationId === owned.organizationId,
+    )?.role ?? 'viewer';
   return { userId: session.sub, role, projectId: owned.id, organizationId: owned.organizationId };
 }
 

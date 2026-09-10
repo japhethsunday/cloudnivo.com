@@ -57,12 +57,13 @@ export interface ProjectDbGateway {
     conn: { host: string; port: number; database: string; user: string; password: string },
     sql: string,
     guards: { maxStatementMs: number; maxRows: number; maxLength: number },
+    params?: unknown[],
   ): Promise<SqlResult>;
 }
 
 export const RealProjectDbGateway: ProjectDbGateway = {
   inspect: conn => inspectProjectSchema(conn),
-  query: (conn, sql, guards) => executeProjectSql(conn, sql, guards),
+  query: (conn, sql, guards, params) => executeProjectSql(conn, sql, guards, params ?? []),
 };
 
 export class FakeProjectDbGateway implements ProjectDbGateway {
@@ -153,18 +154,18 @@ function idempotencyKey(header: string | string[] | undefined, fallback: string)
   return fallback;
 }
 
-function credsFor(
+async function credsFor(
   ctx: ApiContext,
   project: ProjectRecord,
-): {
+): Promise<{
   host: string;
   port: number;
   database: string;
   user: string;
   password: string;
-} {
-  const db = ctx.registry.getDatabaseByProject(project.id);
-  const cred = ctx.registry.getCredential(project.id);
+}> {
+  const db = await ctx.registry.getDatabaseByProject(project.id);
+  const cred = await ctx.registry.getCredential(project.id);
   if (!db || !cred) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
   return {
     host: db.host,
@@ -198,7 +199,7 @@ export async function handleProjectRoutes(
   if (parts.length === 0 && req.method === 'POST') {
     try {
       const body = parseBody(CreateProjectBody, await readJson());
-      if (ctx.registry.countDatabases() >= config.PROVISION_MAX_DATABASES) {
+      if ((await ctx.registry.countDatabases()) >= config.PROVISION_MAX_DATABASES) {
         throw new ApiError('LIMIT_EXCEEDED', 'Maximum number of databases reached', 403);
       }
       const key = idempotencyKey(
@@ -209,10 +210,10 @@ export async function handleProjectRoutes(
       // any writes, so no duplicate project or database can ever be created.
       const preexisting = await ctx.jobs.findByKey(body.organizationId, key);
       if (preexisting && preexisting.status !== 'failed') {
-        const peer = ctx.registry.getProject(preexisting.projectId);
+        const peer = await ctx.registry.getProject(preexisting.projectId);
         if (peer) {
           try {
-            mustOwnProject(ctx.registry, session.sub, peer.id);
+            await mustOwnProject(ctx.registry, session.sub, peer.id);
             logger.info('projects.create.deduplicated', { project: peer.id });
             sendJson(
               res,
@@ -227,14 +228,14 @@ export async function handleProjectRoutes(
           }
         }
       }
-      const project = ctx.registry.createProject({
+      const project = await ctx.registry.createProject({
         userId: session.sub,
         organizationId: body.organizationId,
         name: body.name,
         slug: body.slug,
         region: body.region ?? 'local',
       });
-      ctx.registry.recordAudit('project.created', {
+      await ctx.registry.recordAudit('project.created', {
         projectId: project.id,
         organizationId: project.organizationId,
         userId: session.sub,
@@ -276,7 +277,7 @@ export async function handleProjectRoutes(
             },
           );
           if (result.database) {
-            ctx.registry.saveDatabase({
+            await ctx.registry.saveDatabase({
               projectId: project.id,
               organizationId: project.organizationId,
               databaseId: result.database.databaseId,
@@ -288,7 +289,7 @@ export async function handleProjectRoutes(
               region: project.region,
               status: 'ready',
             });
-            ctx.registry.saveCredential(project.id, result.database.dbUser, password);
+            await ctx.registry.saveCredential(project.id, result.database.dbUser, password);
           }
         } catch {
           // Job record + audit already reflect the failure; never leak here.
@@ -305,13 +306,13 @@ export async function handleProjectRoutes(
 
   // GET /api/v1/projects — tenant-scoped list with live database state.
   if (parts.length === 0 && req.method === 'GET') {
-    const projects = ctx.registry.listProjects(session.sub);
+    const projects = await ctx.registry.listProjects(session.sub);
     const items = await Promise.all(
       projects.map(async p => {
-        const db = ctx.registry.getDatabaseByProject(p.id);
+        const db = await ctx.registry.getDatabaseByProject(p.id);
         if (!db) return { ...p, database: null };
         try {
-          const cred = ctx.registry.getCredential(p.id);
+          const cred = await ctx.registry.getCredential(p.id);
           const live = cred
             ? await ctx.provider.getStatus(db.databaseId, {
                 host: db.host,
@@ -335,11 +336,11 @@ export async function handleProjectRoutes(
   if (!projectId || projectId === '') return false;
 
   try {
-    const project = mustOwnProject(ctx.registry, session.sub, projectId);
+    const project = await mustOwnProject(ctx.registry, session.sub, projectId);
 
     // GET /api/v1/projects/:id
     if (rest.length === 0 && req.method === 'GET') {
-      const db = ctx.registry.getDatabaseByProject(project.id);
+      const db = await ctx.registry.getDatabaseByProject(project.id);
       const jobs = await ctx.jobs.listByProject(project.id);
       sendJson(
         res,
@@ -352,7 +353,7 @@ export async function handleProjectRoutes(
 
     // DELETE /api/v1/projects/:id — delete infra first, then metadata.
     if (rest.length === 0 && req.method === 'DELETE') {
-      const db = ctx.registry.getDatabaseByProject(project.id);
+      const db = await ctx.registry.getDatabaseByProject(project.id);
       let jobId: string | null = null;
       if (db && db.status !== 'deleted') {
         try {
@@ -370,7 +371,7 @@ export async function handleProjectRoutes(
           return true;
         }
       }
-      ctx.registry.deleteProject(project.id);
+      await ctx.registry.deleteProject(project.id);
       try {
         await storageFor(ctx).deleteProjectData(project.id);
       } catch (err) {
@@ -407,13 +408,13 @@ export async function handleProjectRoutes(
     }
 
     if (rest[0] !== 'database') return false;
-    const db = ctx.registry.getDatabaseByProject(project.id);
+    const db = await ctx.registry.getDatabaseByProject(project.id);
     if (!db) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
 
     // GET /:id/database — overview with REAL live status.
     if (rest.length === 1 && req.method === 'GET') {
       try {
-        const cred = ctx.registry.getCredential(project.id);
+        const cred = await ctx.registry.getCredential(project.id);
         const live = cred
           ? await ctx.provider.getStatus(db.databaseId, {
               host: db.host,
@@ -424,7 +425,7 @@ export async function handleProjectRoutes(
             })
           : null;
         if (live && live.status !== db.status) {
-          ctx.registry.updateDatabaseStatus(project.id, live.status as DatabaseStatus);
+          await ctx.registry.updateDatabaseStatus(project.id, live.status as DatabaseStatus);
         }
         sendJson(
           res,
@@ -449,9 +450,9 @@ export async function handleProjectRoutes(
 
     // GET /:id/database/connection[?reveal=true] — masked by default.
     if (rest.length === 2 && rest[1] === 'connection' && req.method === 'GET') {
-      const creds = credsFor(ctx, project);
+      const creds = await credsFor(ctx, project);
       if (query.get('reveal') === 'true') {
-        ctx.registry.recordAudit('database.credentials.accessed', {
+        await ctx.registry.recordAudit('database.credentials.accessed', {
           projectId: project.id,
           organizationId: project.organizationId,
           userId: session.sub,
@@ -509,7 +510,7 @@ export async function handleProjectRoutes(
         });
         const next: DatabaseStatus =
           body.action === 'stop' ? 'stopped' : body.action === 'start' ? 'running' : 'ready';
-        ctx.registry.updateDatabaseStatus(project.id, next);
+        await ctx.registry.updateDatabaseStatus(project.id, next);
         sendJson(res, 200, ok({ jobId, status: next }, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -521,7 +522,7 @@ export async function handleProjectRoutes(
     // GET /:id/database/schema — real information_schema inspection.
     if (rest.length === 2 && rest[1] === 'schema' && req.method === 'GET') {
       try {
-        const schema = await ctx.gateway.inspect(credsFor(ctx, project));
+        const schema = await ctx.gateway.inspect(await credsFor(ctx, project));
         sendJson(res, 200, ok(schema, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -536,12 +537,12 @@ export async function handleProjectRoutes(
         const body = parseBody(QueryBody, await readJson());
         // Guards enforced at the boundary for every gateway (defense in depth).
         assertSafeSql(body.sql, 20_000);
-        const result = await ctx.gateway.query(credsFor(ctx, project), body.sql, {
+        const result = await ctx.gateway.query(await credsFor(ctx, project), body.sql, {
           maxStatementMs: config.PROVISION_MAX_SQL_MS,
           maxRows: config.PROVISION_MAX_SQL_ROWS,
           maxLength: 20_000,
         });
-        ctx.registry.recordAudit('database.query.executed', {
+        await ctx.registry.recordAudit('database.query.executed', {
           projectId: project.id,
           organizationId: project.organizationId,
           userId: session.sub,
@@ -563,7 +564,7 @@ export async function handleProjectRoutes(
     // GET /:id/database/metrics — real pg statistics.
     if (rest.length === 2 && rest[1] === 'metrics' && req.method === 'GET') {
       try {
-        const metrics = await ctx.provider.getMetrics(credsFor(ctx, project));
+        const metrics = await ctx.provider.getMetrics(await credsFor(ctx, project));
         sendJson(res, 200, ok(metrics, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -594,7 +595,7 @@ export async function handleOrgRoutes(
   if (req.method === 'POST') {
     try {
       const body = parseBody(CreateOrgBody, await readJson());
-      const { org } = ctx.registry.createOrganization(session.sub, body.name, body.slug);
+      const { org } = await ctx.registry.createOrganization(session.sub, body.name, body.slug);
       logger.info('orgs.create', { org: org.id });
       sendJson(res, 201, ok({ organization: org }, requestId), baseHeaders);
     } catch (err) {
@@ -607,7 +608,7 @@ export async function handleOrgRoutes(
     sendJson(
       res,
       200,
-      ok({ organizations: ctx.registry.listOrganizations(session.sub) }, requestId),
+      ok({ organizations: await ctx.registry.listOrganizations(session.sub) }, requestId),
       baseHeaders,
     );
     return true;

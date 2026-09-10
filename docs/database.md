@@ -1,4 +1,4 @@
-# CloudNivo database architecture (Phase 2)
+# CloudNivo database architecture (Phase 2 + Phase 8 durable plane)
 
 ## Engine
 
@@ -9,6 +9,32 @@ PostgreSQL 16 (Docker locally, managed Postgres later). Access only via
 Two strictly separated planes: the **control database** (platform metadata)
 and **project databases** (one Postgres per project, customer data). Never mix
 them — see below.
+
+## Durable control plane (Phase 8)
+
+Memory adapters stay the dev/test default (`CONTROL_STORE=memory`). Production
+sets `CONTROL_STORE=drizzle` with migrations + seed applied at deploy:
+
+```bash
+npm run db:migrate   # drizzle migrations on DATABASE_URL
+npm run db:seed      # idempotent roles/permissions catalog
+```
+
+| Store                                                                       | Memory                                | Drizzle                                                | Tables                                                                                                                                     |
+| --------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Registry (orgs, projects, memberships, databases, credentials, audit, CORS) | `MemoryRegistry`                      | `DrizzleRegistry` (`apps/api/src/registry-drizzle.ts`) | `organizations`, `organization_memberships`, `projects`, `project_databases`, `database_credentials`, `audit_logs`, `project_auth_configs` |
+| Project keys                                                                | `MemoryKeyStore`                      | `DrizzleKeyStore`                                      | `api_keys`                                                                                                                                 |
+| Provisioning jobs                                                           | `MemoryJobStore`                      | `DrizzleJobStore`                                      | `provisioning_jobs`                                                                                                                        |
+| Storage metadata                                                            | `MemoryStorageMetadataStore`          | `DrizzleStorageMetadataStore`                          | `storage_buckets`, `storage_objects`, `storage_usage`                                                                                      |
+| Platform users/invites                                                      | `MemoryPlatformUsers`/`MemoryInvites` | `DrizzlePlatformUsers`/`DrizzleInvites`                | `users`, `organization_invites`                                                                                                            |
+| Customer auth                                                               | memory (fake/test)                    | `PgCustomerAuthStore` (per-project DB schema)          | `auth.*` in project DBs                                                                                                                    |
+
+The `Registry` interface is async so both adapters satisfy it; unique
+violations map to the same 409s, unknown ids read 404 on both. Boot with
+`CONTROL_STORE=drizzle` fails fast when the control database is unreachable.
+Live-Postgres/Redis/Docker coverage is gated (`LIVE_PG_URL`, `LIVE_REDIS_URL`,
+`DOCKER_TESTS=1`) — see `docs/functions.md` testing notes and `tests/e2e`
+for the Playwright smoke.
 
 ## Control-plane tables
 

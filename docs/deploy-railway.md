@@ -68,6 +68,10 @@ SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
   Tune `STORAGE_MAX_FILE_MB`, `STORAGE_PROJECT_QUOTA_MB`, `STORAGE_RATE_MAX`,
   and set a persistent `STORAGE_SIGNING_SECRET` so signed URLs survive restarts.
 - `REDIS_PASSWORD` set; `DATABASE_URL` points at managed Postgres.
+- Run `npm run db:migrate` (and `npm run db:seed` for the RBAC catalog) against
+  the control database on every deploy, then set `CONTROL_STORE=drizzle` so the
+  API serves registry/keys/jobs/storage metadata from Postgres instead of
+  process memory (required for multi-replica and for data to survive restarts).
 - Realtime: `REALTIME_DRIVER=redis` + shared `REDIS_URL` for multi-instance
   fan-out; standalone service sets `REALTIME_STANDALONE=true` and exposes
   `REALTIME_PORT`. Single-instance deploys can stay on `memory`.

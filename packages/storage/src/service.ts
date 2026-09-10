@@ -557,9 +557,7 @@ export class ObjectStorageService {
     return { bucket: claims.bucket, path: claims.path };
   }
 
-  async usage(
-    caller: StorageCaller,
-  ): Promise<{
+  async usage(caller: StorageCaller): Promise<{
     files: number;
     bytes: number;
     uploads: number;

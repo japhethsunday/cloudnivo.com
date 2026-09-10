@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { createLogger } from '@cloudnivo/logging';
-import { createContext } from './v1.js';
+import { createContext, initControlPlane } from './v1.js';
 import { realtimeFor } from './realtime.js';
 
 /**
@@ -11,21 +11,29 @@ import { realtimeFor } from './realtime.js';
  * dedicated realtime service). Control-plane data still resolves through the
  * shared registry/stores; durable stores (Phase 7) make this multi-replica.
  */
-export async function startRealtime(port?: number): Promise<{ close: () => Promise<void>; port: number }> {
+export async function startRealtime(
+  port?: number,
+): Promise<{ close: () => Promise<void>; port: number }> {
   await loadDotEnv();
   const config = loadConfig();
   const logger = createLogger({ service: 'realtime' });
   const ctx = createContext(config);
+  await initControlPlane(ctx);
   const state = realtimeFor(ctx);
   const server = createServer((_req, res) => {
     if (_req.url === '/api/v1/health' && _req.method === 'GET') {
       const payload = JSON.stringify({ data: { status: 'ok', service: 'realtime' } });
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) });
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      });
       res.end(payload);
       return;
     }
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Use the WebSocket endpoint' } }));
+    res.end(
+      JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Use the WebSocket endpoint' } }),
+    );
   });
   state.server.attach(server);
   const listenPort = port ?? config.REALTIME_PORT;
@@ -47,7 +55,9 @@ export async function startRealtime(port?: number): Promise<{ close: () => Promi
   return { close: shutdown, port: actual };
 }
 
-const isMain = process.argv[1]?.endsWith('realtime-standalone.ts') || process.argv[1]?.endsWith('realtime-standalone.js');
+const isMain =
+  process.argv[1]?.endsWith('realtime-standalone.ts') ||
+  process.argv[1]?.endsWith('realtime-standalone.js');
 if (isMain) {
   startRealtime().catch(err => {
     const logger = createLogger({ service: 'realtime' });

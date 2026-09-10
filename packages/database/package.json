@@ -13,13 +13,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --max-warnings=0",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.4",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.30.1"
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.1"
   }
 }

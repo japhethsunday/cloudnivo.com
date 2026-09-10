@@ -22,7 +22,11 @@ import {
   type JobStore,
 } from '@cloudnivo/provisioning';
 import { MemoryKeyStore, type KeyStore } from '@cloudnivo/api-engine';
+import { DrizzleKeyStore } from '@cloudnivo/api-engine';
+import { createDatabaseService, type DatabaseService } from '@cloudnivo/database';
+import { DrizzleJobStore } from '@cloudnivo/provisioning';
 import { MemoryRegistry, type Registry } from './registry.js';
+import { DrizzleRegistry } from './registry-drizzle.js';
 import {
   FakeProjectDbGateway,
   RealProjectDbGateway,
@@ -46,6 +50,7 @@ import {
 import { handleStorageRoutes, isStorageRoute } from './storage.js';
 import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
+import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -64,6 +69,8 @@ export interface ApiContext {
   keys: KeyStore;
   jobs: JobStore;
   audit: AuditSink;
+  /** Durable control-plane connection (CONTROL_STORE=drizzle only). */
+  controlDb: DatabaseService | null;
   /** Per-project customer-auth handles (service + dev outbox), cached. */
   customerAuth: Map<string, CustomerAuthHandle>;
 }
@@ -88,12 +95,14 @@ export function createContext(config: AppConfig): ApiContext {
   const jobs = new MemoryJobStore();
   const audit: AuditSink = {
     record: (event, fields) => {
-      registry.recordAudit(event, {
-        projectId: typeof fields['projectId'] === 'string' ? fields['projectId'] : undefined,
-        organizationId:
-          typeof fields['organizationId'] === 'string' ? fields['organizationId'] : undefined,
-        userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
-      });
+      void registry
+        .recordAudit(event, {
+          projectId: typeof fields['projectId'] === 'string' ? fields['projectId'] : undefined,
+          organizationId:
+            typeof fields['organizationId'] === 'string' ? fields['organizationId'] : undefined,
+          userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
+        })
+        .catch(err => logger.warn('audit failed', { error: String(err).slice(0, 120) }));
       logger.info('audit', { event, ...fields });
     },
   };
@@ -109,8 +118,35 @@ export function createContext(config: AppConfig): ApiContext {
     keys,
     jobs,
     audit,
+    controlDb: null,
     customerAuth: new Map(),
   };
+}
+
+/**
+ * Durable control-plane upgrade: swap memory adapters for Drizzle-backed
+ * stores on the migrated control database. Runs once at boot (and never in
+ * tests, which pin memory). Fails fast when the database is unreachable —
+ * a durable deployment without its database is a misconfiguration, not a
+ * degraded mode. Storage metadata swaps lazily via the stashed factory.
+ */
+export async function initControlPlane(ctx: ApiContext): Promise<void> {
+  if (ctx.config.CONTROL_STORE !== 'drizzle' || ctx.config.NODE_ENV === 'test') return;
+  const svc = createDatabaseService(ctx.config.DATABASE_URL);
+  const health = await svc.healthCheck();
+  if (!health.ok) {
+    await svc.close().catch(() => undefined);
+    throw new Error(`Control database unreachable: ${health.error ?? 'unknown'} (run db:migrate)`);
+  }
+  ctx.controlDb = svc;
+  ctx.registry = new DrizzleRegistry(svc.db);
+  ctx.keys = new DrizzleKeyStore(svc.db);
+  ctx.jobs = new DrizzleJobStore(svc.db);
+  const { DrizzleStorageMetadataStore } = await import('@cloudnivo/storage');
+  (ctx as unknown as { __storageMeta?: unknown }).__storageMeta = new DrizzleStorageMetadataStore(
+    svc.db,
+  );
+  ctx.logger.info('control plane durable', { store: 'drizzle' });
 }
 
 function requestIdOf(req: IncomingMessage): string {
@@ -211,6 +247,12 @@ export async function handleRequest(
       return;
     }
 
+    // Platform auth (developer signup/login/me + org invites — no project yet).
+    if (isPlatformAuthRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handlePlatformAuthRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
     // Phase 2: project + database provisioning routes (tenant-enforced).
     if (url.pathname === '/api/v1/organizations') {
       const session = await requireSession(req, ctx);
@@ -238,7 +280,7 @@ export async function handleRequest(
           isStorageRoute(rest, req.method ?? 'GET') ||
           isFunctionRoute(rest, req.method ?? 'GET') ||
           isRealtimeRoute(rest, req.method ?? 'GET'))
-          ? projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
+          ? await projectCorsHeaders(ctx, rest[0], origin, baseHeaders)
           : baseHeaders;
       // Customer auth namespace — public signup/login live here (no session yet).
       if (isCustomerAuthRoute(rest, req.method ?? 'GET')) {

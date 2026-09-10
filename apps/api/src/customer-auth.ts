@@ -127,9 +127,9 @@ export interface CustomerAuthHandle {
   email: MemoryEmailService;
 }
 
-function runnerFor(ctx: ApiContext, project: ProjectRecord) {
-  const db = ctx.registry.getDatabaseByProject(project.id);
-  const cred = ctx.registry.getCredential(project.id);
+async function runnerFor(ctx: ApiContext, project: ProjectRecord) {
+  const db = await ctx.registry.getDatabaseByProject(project.id);
+  const cred = await ctx.registry.getCredential(project.id);
   if (!db || !cred) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
   const conn = {
     host: db.host,
@@ -158,18 +158,20 @@ export async function authServiceFor(
     issuer: ctx.config.JWT_ISSUER,
   };
   const audit = (event: CustomerAuditEvent, fields: Record<string, unknown>): void => {
-    ctx.registry.recordAudit(event, {
-      projectId: project.id,
-      organizationId: project.organizationId,
-      userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
-    });
+    void ctx.registry
+      .recordAudit(event, {
+        projectId: project.id,
+        organizationId: project.organizationId,
+        userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
+      })
+      .catch(err => ctx.logger.warn('audit failed', { error: String(err).slice(0, 120) }));
     ctx.logger.info('audit', { event, project: project.id });
   };
   let store: CustomerAuthStore;
   if (ctx.provider instanceof FakeDatabaseProvider) {
     store = new MemoryCustomerAuthStore();
   } else {
-    const run = runnerFor(ctx, project);
+    const run = await runnerFor(ctx, project);
     await ensureAuthSchema({ query: run });
     store = new PgCustomerAuthAdapter(
       new PostgresCustomerAuthStore({ query: run }, project.id),
@@ -234,15 +236,15 @@ export function isCustomerAuthRoute(rest: string[], method: string): boolean {
 }
 
 /** Project CORS override: project allowlist wins over global when set. */
-export function projectCorsHeaders(
+export async function projectCorsHeaders(
   ctx: ApiContext,
   projectId: string,
   origin: string | null,
   base: Record<string, string>,
-): Record<string, string> {
+): Promise<Record<string, string>> {
   if (!origin) return base;
   try {
-    const cfg = ctx.registry.getAuthConfig(projectId);
+    const cfg = await ctx.registry.getAuthConfig(projectId);
     if (cfg && cfg.allowedOrigins.length > 0 && cfg.allowedOrigins.includes(origin)) {
       return { ...base, 'Access-Control-Allow-Origin': origin, Vary: 'Origin' };
     }
@@ -309,10 +311,11 @@ async function platformAdmin(
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
   });
-  mustOwnProject(ctx.registry, session.sub, project.id);
+  await mustOwnProject(ctx.registry, session.sub, project.id);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === project.organizationId)
-      ?.role ?? 'viewer';
+    (await ctx.registry.membershipsFor(session.sub)).find(
+      m => m.organizationId === project.organizationId,
+    )?.role ?? 'viewer';
   if (role !== 'owner' && role !== 'admin') {
     throw new ApiError('FORBIDDEN', 'Project admin required', 403);
   }
@@ -367,7 +370,7 @@ export async function handleCustomerAuthRoutes(
   const key = (suffix: string): string => `p:${projectId}:${suffix}`;
 
   try {
-    const project = ctx.registry.getProject(projectId);
+    const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
     const { service, email } = await authServiceFor(ctx, project);
     const meta = clientMeta(req);
@@ -543,9 +546,9 @@ export async function handleCustomerAuthRoutes(
           jwtSecret: ctx.config.JWT_SECRET,
           issuer: ctx.config.JWT_ISSUER,
         });
-        mustOwnProject(ctx.registry, session.sub, project.id);
+        await mustOwnProject(ctx.registry, session.sub, project.id);
       });
-      const cfg = ctx.registry.getAuthConfig(project.id);
+      const cfg = await ctx.registry.getAuthConfig(project.id);
       return finish(
         200,
         ok({ config: cfg ?? { projectId: project.id, allowedOrigins: [] } }, requestId),
@@ -554,7 +557,7 @@ export async function handleCustomerAuthRoutes(
     if (head === 'config' && (req.method === 'PATCH' || req.method === 'PUT')) {
       await platformAdmin(ctx, req, project);
       const parsed = parseBody(ConfigBody, await readJson());
-      const cfg = ctx.registry.setAuthConfig(project.id, parsed.allowedOrigins);
+      const cfg = await ctx.registry.setAuthConfig(project.id, parsed.allowedOrigins);
       return finish(200, ok({ config: cfg }, requestId));
     }
 

@@ -1,4 +1,4 @@
-# CloudNivo authentication & authorization (Phase 4)
+# CloudNivo authentication & authorization (Phase 4 + Phase 8 platform plane)
 
 Per-project application auth: email/password today, provider-ready
 architecture (OAuth, Magic Link, OTP) tomorrow with no core rewrite.
@@ -13,6 +13,25 @@ architecture (OAuth, Magic Link, OTP) tomorrow with no core rewrite.
 A platform session is meaningless on customer routes and vice versa: customer
 tokens carry an audience binding verified on every request, and platform
 membership checks reject customer identities (they hold no memberships).
+
+## Platform accounts (Phase 8)
+
+Developer signup/login against the control `users` table (scrypt, per-user
+salt; unknown-email logins do equalizing dummy work):
+
+| Method | Path                                | Auth        | Notes                                             |
+| ------ | ----------------------------------- | ----------- | ------------------------------------------------- |
+| POST   | `/api/v1/auth/signup`               | none        | `{email, password, displayName?}` → 201 + session |
+| POST   | `/api/v1/auth/login`                | none        | 401 enumeration-safe, strict rate limit           |
+| GET    | `/api/v1/me`                        | session     | user + organizations with roles                   |
+| POST   | `/api/v1/organizations/:id/invites` | owner/admin | `{email, role}` → invite + one-time token         |
+| GET    | `/api/v1/invites/:token`            | none        | public invite preview (404 for bad/expired/used)  |
+| POST   | `/api/v1/invites/:token/accept`     | session     | grants membership, marks invite used              |
+
+Sessions are JWTs (`JWT_EXPIRES_IN`) returned as JSON and an httpOnly
+`cn_session` cookie (`SameSite=Lax`, `Secure` on https). Invite tokens are
+opaque (`inv_…`, 7-day expiry); only sha256 is stored. Only owners can invite
+owners. Invite lookup/accept never enumerates membership.
 
 ## Token model
 

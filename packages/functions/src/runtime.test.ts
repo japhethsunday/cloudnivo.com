@@ -140,6 +140,107 @@ describe('worker runtime execution', () => {
       }),
     ).rejects.toMatchObject({ code: 'EXECUTION_ERROR' });
   });
+
+  it('denies SDK access when no hooks are injected', async () => {
+    await expect(
+      rt.execute({
+        source: `module.exports.handler = async () => { await cloudnivo.database.query('select 1'); };`,
+        entrypoint: 'handler',
+        request: req(),
+        auth: { ...auth() },
+        env: {},
+        timeoutMs: 5000,
+        memoryMb: 128,
+        maxResponseBytes: 1_048_576,
+      }),
+    ).rejects.toMatchObject({ code: 'EXECUTION_ERROR' });
+  });
+});
+
+describe('worker runtime SDK capabilities', () => {
+  const rt = new NodeWorkerRuntime();
+  const base = {
+    entrypoint: 'handler',
+    request: req(),
+    auth: { ...auth() },
+    env: {},
+    timeoutMs: 5000,
+    memoryMb: 128,
+    maxResponseBytes: 1_048_576,
+  };
+
+  it('runs guarded database queries through injected hooks', async () => {
+    const seen: { sql: string; params: unknown[] }[] = [];
+    const out = await rt.execute({
+      ...base,
+      source: `module.exports.handler = async () => ({ body: await cloudnivo.database.query('select * from notes where id = 1', [1]) });`,
+      sdk: {
+        databaseQuery: async (sql, params) => {
+          seen.push({ sql, params });
+          return [{ id: 1 }];
+        },
+      },
+    });
+    expect(out.body).toEqual([{ id: 1 }]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('rejects non-SELECT statements before any hook runs', async () => {
+    let called = false;
+    await expect(
+      rt.execute({
+        ...base,
+        source: `module.exports.handler = async () => { await cloudnivo.database.query('DROP TABLE notes'); };`,
+        sdk: {
+          databaseQuery: async () => {
+            called = true;
+            return [];
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'EXECUTION_ERROR' });
+    expect(called).toBe(false);
+  });
+
+  it('binds realtime publish to the function project', async () => {
+    const published: { channel: string; event: string }[] = [];
+    const out = await rt.execute({
+      ...base,
+      source: `module.exports.handler = async () => { await cloudnivo.realtime.publish('project:p1:chat', 'msg', { n: 1 }); return { body: 'sent' }; };`,
+      sdk: {
+        realtimePublish: async (channel, event) => {
+          published.push({ channel, event });
+        },
+      },
+    });
+    expect(out.body).toBe('sent');
+    expect(published).toEqual([{ channel: 'project:p1:chat', event: 'msg' }]);
+    await expect(
+      rt.execute({
+        ...base,
+        source: `module.exports.handler = async () => { await cloudnivo.realtime.publish('project:other:chat', 'msg'); };`,
+        sdk: { realtimePublish: async () => undefined },
+      }),
+    ).rejects.toMatchObject({ code: 'EXECUTION_ERROR' });
+  });
+
+  it('reads storage objects through injected hooks', async () => {
+    const out = await rt.execute({
+      ...base,
+      source: `module.exports.handler = async () => ({ body: await cloudnivo.storage.read('docs', 'a.txt') });`,
+      sdk: {
+        storageRead: async (bucket, path) => ({
+          bucket,
+          path,
+          mimeType: 'text/plain',
+          size: 5,
+          body: 'hello',
+          encoding: 'utf8' as const,
+        }),
+      },
+    });
+    expect(out.body).toMatchObject({ body: 'hello' });
+  });
 });
 
 describe('docker runtime contract', () => {

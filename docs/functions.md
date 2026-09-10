@@ -72,11 +72,15 @@ project over the shared store.
 
 Handlers receive `{ userId, email, role }` plus `project.id` and function env
 through the frozen `cloudnivo` object (`auth`, `project`, `env`, `database`,
-`storage`, `realtime`). Data-plane namespaces are capability stubs in v1 —
-they expose the project binding and throw a clear error directing callers to
-the REST API with a project key — so the interface stays stable when real
-service boundaries land in Phase 8. Signing secrets, connection strings, and
-other projects' data are never visible inside the isolate.
+`storage`, `realtime`). Service namespaces execute through a per-invocation
+capability channel back to the control plane: `database.query` runs guarded
+single-SELECT statements against the project's database (capped rows, short
+timeout; non-admin customers are denied raw SQL and use RLS-shaped REST
+instead), `storage.read` downloads one project-scoped object (bytes capped,
+utf8/base64), and `realtime.publish` fans out to channels of the function's
+own project (prefix-enforced both ends, counted in realtime metrics).
+`storage.write` stays on the REST API. Signing secrets, connection strings,
+and other projects' data are never visible inside the isolate.
 
 ## Environment variables
 
@@ -122,6 +126,20 @@ with bounded retention, plus metrics: invocations, successes, failures,
 timeouts, rate-limited, total/max duration, cold starts, deploy failures.
 `cold_start` is true for the first execution of a version. Nothing sensitive
 is ever logged.
+
+## Testing
+
+Unit + HTTP E2E run everywhere (`npm test`): validation, sandbox denials,
+timeouts, lifecycle, versions, isolation, rate limits, SDK capabilities with
+denials. Live infrastructure is gated and skips cleanly without it:
+
+| Suite                                  | Gate                                     | Covers                                                   |
+| -------------------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `realtime-cdc.live.test.ts` (database) | `LIVE_PG_URL`                            | trigger DDL + INSERT/UPDATE/DELETE NOTIFY payloads       |
+| `bus.live.test.ts` (realtime)          | `LIVE_REDIS_URL`                         | cross-instance fan-out, presence union                   |
+| `runtime.docker.test.ts` (functions)   | `DOCKER_TESTS=1`                         | container build + isolated execution                     |
+| `realtime-cdc.live.test.ts` (api)      | `DOCKER_TESTS=1`                         | provision → subscribe → DML → WS events                  |
+| `tests/e2e` (Playwright)               | running stack + `npx playwright install` | signup → org → project → CRUD → upload → 403 + dashboard |
 
 ## Local development
 

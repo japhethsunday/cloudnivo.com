@@ -423,6 +423,20 @@ export class RealtimeGateway {
     await this.bus.publish({ channel, kind: 'db-change', event });
   }
 
+  /**
+   * Server-side broadcast (functions SDK, webhooks): same fan-out and
+   * metrics as socket broadcasts, without a sender socket to ack or skip.
+   */
+  async publishBroadcast(channel: string, event: string, data: unknown): Promise<void> {
+    this.metrics.broadcasts += 1;
+    this.metrics.eventsPublished += 1;
+    await this.bus.publish({
+      channel,
+      kind: 'broadcast',
+      event: { event, data: data ?? null, at: new Date().toISOString() },
+    });
+  }
+
   private async onBusMessage(msg: BusMessage): Promise<void> {
     if (msg.kind === 'presence') {
       // Presence state lives in the manager; the bus only wakes subscribers.

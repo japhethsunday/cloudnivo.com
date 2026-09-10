@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { createLogger } from '@cloudnivo/logging';
-import { createContext, handleRequest } from './v1.js';
+import { createContext, handleRequest, initControlPlane } from './v1.js';
 import { realtimeFor } from './realtime.js';
 
 export async function start(port?: number): Promise<{ server: Server; port: number }> {
@@ -9,6 +9,7 @@ export async function start(port?: number): Promise<{ server: Server; port: numb
   const config = loadConfig();
   const logger = createLogger({ service: 'api' });
   const ctx = createContext(config);
+  await initControlPlane(ctx);
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx).catch(err => {
       logger.error('unhandled request error', { error: String(err) });

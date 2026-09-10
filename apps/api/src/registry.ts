@@ -70,33 +70,35 @@ export interface ProjectAuthConfig {
 }
 
 export interface Registry {
-  createOrganization(userId: string, name: string, slug: string): ProjectOrg;
-  listOrganizations(userId: string): OrganizationRecord[];
-  membershipsFor(userId: string): MembershipRecord[];
+  createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg>;
+  listOrganizations(userId: string): Promise<OrganizationRecord[]>;
+  membershipsFor(userId: string): Promise<MembershipRecord[]>;
+  /** Grant a membership (invites, fixtures). Duplicate memberships are ignored. */
+  addMembership(organizationId: string, userId: string, role: string): Promise<void>;
   createProject(input: {
     userId: string;
     organizationId: string;
     name: string;
     slug: string;
     region: string;
-  }): ProjectRecord;
-  listProjects(userId: string): ProjectRecord[];
-  getProject(projectId: string): ProjectRecord | null;
-  deleteProject(projectId: string): void;
-  countDatabases(): number;
-  saveDatabase(rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>): ProjectDbRecord;
-  getDatabaseByProject(projectId: string): ProjectDbRecord | null;
-  updateDatabaseStatus(projectId: string, status: DatabaseStatus): ProjectDbRecord | null;
-  saveCredential(projectId: string, dbUser: string, password: string): void;
-  getCredential(projectId: string): { dbUser: string; password: string } | null;
-  deleteCredential(projectId: string): void;
+  }): Promise<ProjectRecord>;
+  listProjects(userId: string): Promise<ProjectRecord[]>;
+  getProject(projectId: string): Promise<ProjectRecord | null>;
+  deleteProject(projectId: string): Promise<void>;
+  countDatabases(): Promise<number>;
+  saveDatabase(rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>): Promise<ProjectDbRecord>;
+  getDatabaseByProject(projectId: string): Promise<ProjectDbRecord | null>;
+  updateDatabaseStatus(projectId: string, status: DatabaseStatus): Promise<ProjectDbRecord | null>;
+  saveCredential(projectId: string, dbUser: string, password: string): Promise<void>;
+  getCredential(projectId: string): Promise<{ dbUser: string; password: string } | null>;
+  deleteCredential(projectId: string): Promise<void>;
   recordAudit(
     event: string,
     fields: { projectId?: string; organizationId?: string; userId?: string },
-  ): void;
-  listAudit(): AuditRecord[];
-  getAuthConfig(projectId: string): ProjectAuthConfig | null;
-  setAuthConfig(projectId: string, allowedOrigins: string[]): ProjectAuthConfig;
+  ): Promise<void>;
+  listAudit(): Promise<AuditRecord[]>;
+  getAuthConfig(projectId: string): Promise<ProjectAuthConfig | null>;
+  setAuthConfig(projectId: string, allowedOrigins: string[]): Promise<ProjectAuthConfig>;
 }
 
 export interface ProjectOrg {
@@ -117,7 +119,7 @@ export class MemoryRegistry implements Registry {
   private readonly authConfigs = new Map<string, ProjectAuthConfig>();
   private auditCounter = 0;
 
-  createOrganization(userId: string, name: string, slug: string): ProjectOrg {
+  async createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg> {
     if (!slugOk(slug)) throw new ApiError('VALIDATION_ERROR', 'Invalid organization slug', 400);
     for (const o of this.orgs.values()) {
       if (o.slug === slug) throw new ApiError('CONFLICT', 'Organization slug taken', 409);
@@ -128,15 +130,21 @@ export class MemoryRegistry implements Registry {
     return { org };
   }
 
-  listOrganizations(userId: string): OrganizationRecord[] {
+  async listOrganizations(userId: string): Promise<OrganizationRecord[]> {
     const allowed = new Set(
       this.memberships.filter(m => m.userId === userId).map(m => m.organizationId),
     );
     return [...this.orgs.values()].filter(o => allowed.has(o.id));
   }
 
-  membershipsFor(userId: string): MembershipRecord[] {
+  async membershipsFor(userId: string): Promise<MembershipRecord[]> {
     return this.memberships.filter(m => m.userId === userId);
+  }
+
+  async addMembership(organizationId: string, userId: string, role: string): Promise<void> {
+    if (!this.memberships.some(m => m.organizationId === organizationId && m.userId === userId)) {
+      this.memberships.push({ organizationId, userId, role });
+    }
   }
 
   /** Seed helper for tests/dev fixtures (bypasses HTTP). */
@@ -144,15 +152,15 @@ export class MemoryRegistry implements Registry {
     this.memberships.push({ organizationId, userId, role });
   }
 
-  createProject(input: {
+  async createProject(input: {
     userId: string;
     organizationId: string;
     name: string;
     slug: string;
     region: string;
-  }): ProjectRecord {
+  }): Promise<ProjectRecord> {
     assertSameTenant(
-      this.membershipsFor(input.userId),
+      this.memberships.filter(m => m.userId === input.userId),
       { organizationId: input.organizationId },
       input.userId,
     );
@@ -176,37 +184,44 @@ export class MemoryRegistry implements Registry {
     return project;
   }
 
-  listProjects(userId: string): ProjectRecord[] {
-    const allowed = new Set(this.membershipsFor(userId).map(m => m.organizationId));
+  async listProjects(userId: string): Promise<ProjectRecord[]> {
+    const allowed = new Set(
+      this.memberships.filter(m => m.userId === userId).map(m => m.organizationId),
+    );
     return [...this.projects.values()].filter(p => allowed.has(p.organizationId));
   }
 
-  getProject(projectId: string): ProjectRecord | null {
+  async getProject(projectId: string): Promise<ProjectRecord | null> {
     return this.projects.get(projectId) ?? null;
   }
 
-  deleteProject(projectId: string): void {
+  async deleteProject(projectId: string): Promise<void> {
     this.projects.delete(projectId);
     this.databases.delete(projectId);
     this.credentials.delete(projectId);
   }
 
-  countDatabases(): number {
+  async countDatabases(): Promise<number> {
     return this.databases.size;
   }
 
-  saveDatabase(rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>): ProjectDbRecord {
+  async saveDatabase(
+    rec: Omit<ProjectDbRecord, 'createdAt' | 'updatedAt'>,
+  ): Promise<ProjectDbRecord> {
     const now = new Date().toISOString();
     const full: ProjectDbRecord = { ...rec, createdAt: now, updatedAt: now };
     this.databases.set(rec.projectId, full);
     return full;
   }
 
-  getDatabaseByProject(projectId: string): ProjectDbRecord | null {
+  async getDatabaseByProject(projectId: string): Promise<ProjectDbRecord | null> {
     return this.databases.get(projectId) ?? null;
   }
 
-  updateDatabaseStatus(projectId: string, status: DatabaseStatus): ProjectDbRecord | null {
+  async updateDatabaseStatus(
+    projectId: string,
+    status: DatabaseStatus,
+  ): Promise<ProjectDbRecord | null> {
     const rec = this.databases.get(projectId);
     if (!rec) return null;
     const next = { ...rec, status, updatedAt: new Date().toISOString() };
@@ -214,22 +229,22 @@ export class MemoryRegistry implements Registry {
     return next;
   }
 
-  saveCredential(projectId: string, dbUser: string, password: string): void {
+  async saveCredential(projectId: string, dbUser: string, password: string): Promise<void> {
     this.credentials.set(projectId, { dbUser, password });
   }
 
-  getCredential(projectId: string): { dbUser: string; password: string } | null {
+  async getCredential(projectId: string): Promise<{ dbUser: string; password: string } | null> {
     return this.credentials.get(projectId) ?? null;
   }
 
-  deleteCredential(projectId: string): void {
+  async deleteCredential(projectId: string): Promise<void> {
     this.credentials.delete(projectId);
   }
 
-  recordAudit(
+  async recordAudit(
     event: string,
     fields: { projectId?: string; organizationId?: string; userId?: string },
-  ): void {
+  ): Promise<void> {
     this.auditCounter += 1;
     this.audit.push({
       id: `audit_${this.auditCounter}`,
@@ -241,15 +256,15 @@ export class MemoryRegistry implements Registry {
     });
   }
 
-  listAudit(): AuditRecord[] {
+  async listAudit(): Promise<AuditRecord[]> {
     return [...this.audit];
   }
 
-  getAuthConfig(projectId: string): ProjectAuthConfig | null {
+  async getAuthConfig(projectId: string): Promise<ProjectAuthConfig | null> {
     return this.authConfigs.get(projectId) ?? null;
   }
 
-  setAuthConfig(projectId: string, allowedOrigins: string[]): ProjectAuthConfig {
+  async setAuthConfig(projectId: string, allowedOrigins: string[]): Promise<ProjectAuthConfig> {
     for (const o of allowedOrigins) {
       if (o !== 'null' && !/^https?:\/\/[^/]+$/.test(o)) {
         throw new ApiError('VALIDATION_ERROR', `Invalid origin: ${o.slice(0, 80)}`, 400);
@@ -271,14 +286,14 @@ export function generateDbPassword(): string {
 }
 
 /** Resolve a project or throw 404; then enforce caller's membership (403). */
-export function mustOwnProject(
+export async function mustOwnProject(
   registry: Registry,
   userId: string,
   projectId: string,
-): ProjectRecord {
-  const project = registry.getProject(projectId);
+): Promise<ProjectRecord> {
+  const project = await registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
-  const memberships = registry.membershipsFor(userId);
+  const memberships = await registry.membershipsFor(userId);
   // Never trust client org claims — resolve org from the stored project row.
   assertSameTenant(memberships, { organizationId: project.organizationId }, userId);
   return project;

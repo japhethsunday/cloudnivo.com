@@ -12,12 +12,15 @@ import {
   functionsOpenApiPaths,
   type FunctionAuthContext,
   type FunctionRuntime,
+  type SdkHooks,
 } from '@cloudnivo/functions';
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
 import { verifyCustomerCaller } from './customer-auth.js';
+import { storageFor } from './storage.js';
+import { realtimeFor } from './realtime.js';
 
 /**
  * Serverless Functions HTTP wiring.
@@ -93,12 +96,13 @@ async function requireMember(
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
   });
-  const project = ctx.registry.getProject(projectId);
+  const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
-  const owned = mustOwnProject(ctx.registry, session.sub, projectId);
+  const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === owned.organizationId)
-      ?.role ?? 'viewer';
+    (await ctx.registry.membershipsFor(session.sub)).find(
+      m => m.organizationId === owned.organizationId,
+    )?.role ?? 'viewer';
   return { userId: session.sub, email: session.email, role, organizationId: owned.organizationId };
 }
 
@@ -114,7 +118,7 @@ async function resolveInvokeAuth(
   req: IncomingMessage,
   projectId: string,
 ): Promise<FunctionAuthContext> {
-  const project = ctx.registry.getProject(projectId);
+  const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const rawKey = req.headers['apikey'];
   if (typeof rawKey === 'string' && rawKey.length > 0) {
@@ -162,10 +166,11 @@ async function resolveInvokeAuth(
     session = null;
   }
   if (!session) throw new ApiError('UNAUTHORIZED', 'Invalid or expired credentials', 401);
-  const owned = mustOwnProject(ctx.registry, session.sub, projectId);
+  const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === owned.organizationId)
-      ?.role ?? 'viewer';
+    (await ctx.registry.membershipsFor(session.sub)).find(
+      m => m.organizationId === owned.organizationId,
+    )?.role ?? 'viewer';
   return { userId: session.sub, email: session.email, role, projectId, callerKind: 'session' };
 }
 
@@ -177,6 +182,115 @@ function toFunctionError(err: unknown, requestId: string): { status: number; bod
     };
   }
   return toPublicError(err, requestId);
+}
+
+/**
+ * Project-bound data-plane capabilities for `cloudnivo.*` inside handlers.
+ * Every hook re-checks scope: the project comes from the URL (never the
+ * isolate), credentials resolve server-side, and customer callers are
+ * owner-scoped by denial — non-admin customers cannot run raw SQL through
+ * functions (they use RLS-shaped REST instead).
+ */
+async function sdkHooksFor(
+  ctx: ApiContext,
+  projectId: string,
+  auth: FunctionAuthContext,
+): Promise<SdkHooks> {
+  const project = await ctx.registry.getProject(projectId);
+  if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+  const organizationId = project.organizationId;
+  const storageCaller = {
+    kind:
+      auth.callerKind === 'session'
+        ? ('session' as const)
+        : auth.callerKind === 'customer'
+          ? ('customer' as const)
+          : ('key' as const),
+    userId: auth.userId,
+    role: auth.role.startsWith('key:') ? auth.role.slice(4) : auth.role,
+    projectId,
+    organizationId,
+  };
+  return {
+    databaseQuery: async (sql: string, params: unknown[]) => {
+      if (auth.callerKind === 'customer' && auth.role !== 'admin') {
+        throw new FunctionError('FORBIDDEN', 'Customer functions cannot run raw SQL', 403);
+      }
+      const db = await ctx.registry.getDatabaseByProject(projectId);
+      const cred = await ctx.registry.getCredential(projectId);
+      if (!db || !cred) throw new FunctionError('NOT_FOUND', 'Database not provisioned yet', 404);
+      const result = await ctx.gateway.query(
+        {
+          host: db.host,
+          port: db.port,
+          database: db.dbName,
+          user: cred.dbUser,
+          password: cred.password,
+        },
+        sql,
+        {
+          maxStatementMs: Math.min(ctx.config.PROVISION_MAX_SQL_MS, 10_000),
+          maxRows: 100,
+          maxLength: 20_000,
+        },
+        params,
+      );
+      return result.rows as Record<string, unknown>[];
+    },
+    storageRead: async (bucket: string, path: string) => {
+      const svc = storageFor(ctx);
+      let found;
+      try {
+        found = await svc.download(storageCaller, bucket, path);
+      } catch (err) {
+        const code = (err as { code?: unknown }).code;
+        const status = (err as { status?: unknown }).status;
+        throw new FunctionError(
+          typeof code === 'string' ? code : 'STORAGE_ERROR',
+          'Storage read denied or missing',
+          typeof status === 'number' ? status : 404,
+        );
+      }
+      const { stream, object } = found;
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+        const buf = Buffer.from(chunk);
+        bytes += buf.length;
+        if (bytes > ctx.config.FUNCTION_MAX_BODY_BYTES) {
+          throw new FunctionError('OBJECT_TOO_LARGE', 'Object exceeds function read limit', 413);
+        }
+        chunks.push(buf);
+      }
+      const body = Buffer.concat(chunks);
+      let encoding: 'utf8' | 'base64' = 'utf8';
+      let text: string;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(body);
+      } catch {
+        encoding = 'base64';
+        text = body.toString('base64');
+      }
+      return {
+        bucket: object.bucket,
+        path: object.path,
+        mimeType: object.mimeType,
+        size: body.length,
+        body: text,
+        encoding,
+      };
+    },
+    realtimePublish: async (channel: string, event: string, data: unknown) => {
+      if (!channel.startsWith(`project:${projectId}:`)) {
+        throw new FunctionError('FORBIDDEN', 'Channel belongs to another project', 403);
+      }
+      if (auth.callerKind === 'session' && auth.role === 'viewer') {
+        throw new FunctionError('FORBIDDEN', 'Viewers cannot publish', 403);
+      }
+      const state = realtimeFor(ctx);
+      await state.gateway.publishBroadcast(channel, event, data);
+    },
+  };
 }
 
 // ── Route schemas ───────────────────────────────────────────────────
@@ -297,6 +411,7 @@ export async function handleFunctionRoutes(
         requestId,
         rateLimit: ctx.rateLimitStore,
         rateMax: ctx.config.FUNCTION_INVOKE_RATE_MAX,
+        sdkHooks: await sdkHooksFor(ctx, projectId, auth),
       });
       ctx.audit.record('function.invoked', { projectId, userId: auth.userId ?? undefined });
       return finish(
@@ -314,7 +429,7 @@ export async function handleFunctionRoutes(
 
     // ── Management (session members) ──
     const member = await requireMember(ctx, req, projectId);
-    const project = ctx.registry.getProject(projectId);
+    const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
 
     if (head === undefined) {

@@ -304,9 +304,12 @@ export type DataCaller =
   | { kind: 'key'; key: ProjectApiKey; project: ProjectRecord }
   | { kind: 'customer'; userId: string; role: 'admin' | 'authenticated'; project: ProjectRecord };
 
-function credsForProject(ctx: ApiContext, project: ProjectRecord): ProjectConnectionInfo {
-  const db = ctx.registry.getDatabaseByProject(project.id);
-  const cred = ctx.registry.getCredential(project.id);
+async function credsForProject(
+  ctx: ApiContext,
+  project: ProjectRecord,
+): Promise<ProjectConnectionInfo> {
+  const db = await ctx.registry.getDatabaseByProject(project.id);
+  const cred = await ctx.registry.getCredential(project.id);
   if (!db || !cred) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
   return {
     host: db.host,
@@ -330,13 +333,13 @@ export async function resolveCaller(
     if (key.projectId !== projectId) {
       throw new ApiError('TENANT_FORBIDDEN', 'API key is not scoped to this project', 403);
     }
-    const project = ctx.registry.getProject(projectId);
+    const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
     return { kind: 'key', key, project };
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing credentials (Bearer or apikey)', 401);
-  const project = ctx.registry.getProject(projectId);
+  const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   // Customer access tokens are audience-bound: a structurally valid customer
   // credential for ANOTHER project is forbidden (403); an unusable one falls
@@ -363,10 +366,11 @@ export async function resolveCaller(
     session = null;
   }
   if (!session) throw new ApiError('UNAUTHORIZED', 'Invalid or expired credentials', 401);
-  const owned = mustOwnProject(ctx.registry, session.sub, projectId);
+  const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
   const role =
-    ctx.registry.membershipsFor(session.sub).find(m => m.organizationId === owned.organizationId)
-      ?.role ?? 'viewer';
+    (await ctx.registry.membershipsFor(session.sub)).find(
+      m => m.organizationId === owned.organizationId,
+    )?.role ?? 'viewer';
   return { kind: 'session', userId: session.sub, role, project: owned };
 }
 
@@ -552,7 +556,7 @@ export async function handleDataRoutes(
         } catch (e) {
           throw toKeyError(e);
         }
-        ctx.registry.recordAudit('api_key.created', {
+        await ctx.registry.recordAudit('api_key.created', {
           projectId,
           organizationId: caller.project.organizationId,
           userId: caller.kind === 'session' ? caller.userId : undefined,
@@ -567,7 +571,7 @@ export async function handleDataRoutes(
         if (!revoked || revoked.projectId !== projectId) {
           throw new ApiError('NOT_FOUND', 'API key not found', 404);
         }
-        ctx.registry.recordAudit('api_key.revoked', {
+        await ctx.registry.recordAudit('api_key.revoked', {
           projectId,
           organizationId: caller.project.organizationId,
           userId: caller.kind === 'session' ? caller.userId : undefined,
@@ -579,7 +583,7 @@ export async function handleDataRoutes(
 
     // ── OpenAPI (any authorized caller) ──
     if (seg === 'openapi.json' && req.method === 'GET' && rest.length === 2) {
-      const creds = credsForProject(ctx, caller.project);
+      const creds = await credsForProject(ctx, caller.project);
       const schema = await introspect(ctx, caller.project.id, creds);
       const doc = buildOpenApiDoc({
         baseUrl: config.PUBLIC_API_URL,
@@ -599,7 +603,7 @@ export async function handleDataRoutes(
     // ── Table routes ──
     if (extra.length > 0)
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
-    const creds = credsForProject(ctx, caller.project);
+    const creds = await credsForProject(ctx, caller.project);
     const schema = await introspect(ctx, caller.project.id, creds);
     const engine = new DataEngine((text, params) => ctx.data.exec(creds, text, params));
 
@@ -710,11 +714,13 @@ async function introspect(
 }
 
 function auditMutation(ctx: ApiContext, caller: DataCaller, event: string, table: string): void {
-  ctx.registry.recordAudit(event, {
-    projectId: caller.project.id,
-    organizationId: caller.project.organizationId,
-    userId: caller.kind === 'key' ? undefined : caller.userId,
-  });
+  void ctx.registry
+    .recordAudit(event, {
+      projectId: caller.project.id,
+      organizationId: caller.project.organizationId,
+      userId: caller.kind === 'key' ? undefined : caller.userId,
+    })
+    .catch(err => ctx.logger.warn('audit failed', { error: String(err).slice(0, 120) }));
   ctx.logger.info('audit', { event, project: caller.project.id, table });
 }
 

@@ -86,16 +86,29 @@ versioned API envelope, dashboard shell, docs, green
   isolation, rate limits, raw-HTTP E2E incl. rollback + delete); green
   `lint → typecheck → test → build`.
 
-## Phase 8 — Durable control plane + CLI/SDKs (next)
+## Phase 8 — Durable control plane (DONE)
 
-- Drizzle migrations + seed (roles/permissions) applied at deploy.
-- Drizzle-backed registry/key/job/customer/storage/function stores (replace memory adapters).
-- Platform signup/login/session cookies + `GET /me`, org invites.
-- Dashboard wires to live data (loading/empty/error states stay).
-- Playwright smoke: signup → org → project → key → data CRUD → file upload → 403 cross-org.
+- Async `Registry` contract with `MemoryRegistry` (dev/test) + `DrizzleRegistry`
+  (orgs, projects, memberships, databases, credentials, audit, CORS configs).
+- Drizzle-backed keys/jobs/storage-metadata/platform-user/invite stores
+  (`api_keys`, `provisioning_jobs`, `storage_*`, `users`, `organization_invites`
+  - `0003`/`0004` migrations, idempotent RBAC seed, `CONTROL_STORE` selector
+    with fail-fast boot). Customer auth already durable per project DB.
+- Platform signup/login (`cn_session` cookie) + `GET /me`, org invites
+  (opaque tokens, owner-gated, accept flow). Playwright smoke
+  (`tests/e2e`: signup → org → project → key → CRUD → upload → 403 + dashboard).
+- Gated live coverage: `LIVE_PG_URL` (CDC round-trip), `LIVE_REDIS_URL`
+  (cross-instance bus + presence), `DOCKER_TESTS=1` (container runtime, CDC E2E).
+- Real function SDK data-plane: guarded project-scoped SELECT, object reads,
+  project-bound publishes (unit + HTTP E2E incl. denials).
+- Green `lint → typecheck → test → build` (199+ unit/integration, gated skips).
+
+## Phase 9 — CLI + SDKs (next)
+
 - CLI + language SDKs on the stable envelope (functions SDK data-plane next).
+- Dashboard wires to live data (loading/empty/error states stay).
 
-## Phase 9 — Provisioning & scale
+## Phase 10 — Provisioning & scale
 
 - `ProvisioningService` cloud driver (Terraform/API) per project env.
 - Usage metering + billing on top of function/realtime/storage metrics.

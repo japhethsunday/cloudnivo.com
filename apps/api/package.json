@@ -27,6 +27,7 @@
     "@cloudnivo/storage": "0.1.0",
     "@cloudnivo/validation": "0.1.0",
     "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.38.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {

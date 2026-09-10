@@ -77,16 +77,17 @@
 
 Every project gets isolated infrastructure per environment — Postgres, auth, storage, realtime, and versioned APIs — behind one coherent control plane:
 
-| Capability                                            | Status (Phase 7)                                                | Next                                  |
-| ----------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------- |
-| Organizations, projects, environments, API keys, RBAC | Live via API (memory adapters; Drizzle target in Phase 8)       | Durable Drizzle stores, signup/login  |
-| Versioned REST envelope (`/api/v1`)                   | Done — control + data + storage + realtime + functions share it | Stable (v2 only for breaking changes) |
-| Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI                 | RLS policies, nested resources        |
-| Storage (buckets, objects, signed URLs)               | Done — streaming local driver + SigV4 S3 driver                 | Webhooks, multipart dashboard uploads |
-| Realtime (WS, CDC, broadcast, presence)               | Done — gateway + LISTEN/NOTIFY CDC + memory/Redis bus           | Storage webhooks → realtime events    |
-| Functions (deploy, invoke, versions, logs, env)       | Done — worker isolates + container runtime + console            | SDK data-plane access, CLI            |
-| Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)                  | Cloud drivers (Railway/VPS/K8s)       |
-| Dashboard                                             | Database, API, Auth, Storage, Realtime + Functions consoles     | Live data wiring (Phase 8)            |
+| Capability                                            | Status (Phase 7)                                                    | Next                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------- |
+| Organizations, projects, environments, API keys, RBAC | Live via API (memory default, Drizzle with `CONTROL_STORE=drizzle`) | Polish, quotas                        |
+| Platform accounts + org invites                       | Done — signup/login/me, opaque invite tokens, Playwright smoke      | OAuth, password reset                 |
+| Versioned REST envelope (`/api/v1`)                   | Done — control + data + storage + realtime + functions share it     | Stable (v2 only for breaking changes) |
+| Per-table auto REST (`/:project/:table[/:id]`)        | Done — introspection-driven CRUD, keys, OpenAPI                     | RLS policies, nested resources        |
+| Storage (buckets, objects, signed URLs)               | Done — streaming local driver + SigV4 S3 driver                     | Webhooks, multipart dashboard uploads |
+| Realtime (WS, CDC, broadcast, presence)               | Done — gateway + LISTEN/NOTIFY CDC + memory/Redis bus               | Storage webhooks → realtime events    |
+| Functions (deploy, invoke, versions, logs, env)       | Done — worker isolates + container runtime + console                | SDK data-plane access, CLI            |
+| Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)                      | Cloud drivers (Railway/VPS/K8s)       |
+| Dashboard                                             | Database, API, Auth, Storage, Realtime + Functions consoles         | Live data wiring (Phase 8)            |
 
 ## At a glance
 
@@ -330,7 +331,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 7 (this release): serverless functions (worker isolates + container runtime), versioned deploys, invocation with auth context, logs, env vars, Functions console. Phase 8: durable Drizzle stores, platform signup/login, Playwright smoke, CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 8 (this release): durable control plane (`CONTROL_STORE=drizzle`, migrations + seed), platform signup/login/me, org invites, Playwright smoke, gated live coverage, real function SDK data-plane. Phase 9: CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

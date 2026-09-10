@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { FunctionError, type FunctionAuthContext, type FunctionHttpRequest } from './types.js';
+import { assertSdkPublish, assertSdkQuery, assertSdkRead, type SdkHooks } from './sdk.js';
 import { SANDBOX_DENY } from './sdk.js';
 
 /**
@@ -32,6 +33,12 @@ export interface RuntimeExecuteInput {
   timeoutMs: number;
   memoryMb: number;
   maxResponseBytes: number;
+  /**
+   * Capability hooks for `cloudnivo.database/storage/realtime`. Injected by
+   * the control plane per invocation, bound to exactly one project. Absent
+   * capabilities fail inside the isolate with a clear error.
+   */
+  sdk?: SdkHooks;
 }
 
 export interface CapturedLog {
@@ -90,15 +97,41 @@ function toText(value) {
     const message = args.map(a => toText(a)).join(' ').slice(0, 4000);
     logs.push({ level, message });
   };
+  // Capability channel: SDK calls round-trip to the control plane, which
+  // enforces project scope. The isolate can only ask; the server decides.
+  let sdkSeq = 0;
+  const sdkPending = new Map();
+  parentPort.on('message', m => {
+    if (!m || m.t !== 'sdk-result' || !sdkPending.has(m.id)) return;
+    const p = sdkPending.get(m.id);
+    sdkPending.delete(m.id);
+    if (m.ok) p.resolve(m.value);
+    else p.reject(new Error(String(m.message || 'capability failed').slice(0, 300)));
+  });
+  const callSdk = (ns, op, args) => new Promise((resolve, reject) => {
+    const id = 's' + (++sdkSeq);
+    sdkPending.set(id, { resolve, reject });
+    parentPort.postMessage({ t: 'sdk-call', id, ns, op, args });
+  });
   const frozen = o => Object.freeze(JSON.parse(JSON.stringify(o)));
   const deny = op => async () => { throw new Error('cloudnivo data-plane access is not enabled for ' + op); };
+  const hasSdk = !!workerData.hasSdk;
+  const sdkQuery = hasSdk
+    ? async (sql, params) => callSdk('database', 'query', [sql, params])
+    : deny('database.query');
+  const sdkRead = hasSdk
+    ? async (bucket, path) => callSdk('storage', 'read', [bucket, path])
+    : deny('storage.read');
+  const sdkPublish = hasSdk
+    ? async (channel, event, data) => { await callSdk('realtime', 'publish', [channel, event, data]); }
+    : deny('realtime.publish');
   const cloudnivo = {
     auth: frozen({ userId: auth.userId, email: auth.email, role: auth.role }),
     project: frozen({ id: auth.projectId }),
     env: frozen(env),
-    database: { projectId: auth.projectId, query: deny('database.query') },
-    storage: { projectId: auth.projectId, read: deny('storage.read'), write: deny('storage.write') },
-    realtime: { projectId: auth.projectId, publish: deny('realtime.publish') },
+    database: { projectId: auth.projectId, query: sdkQuery },
+    storage: { projectId: auth.projectId, read: sdkRead, write: deny('storage.write') },
+    realtime: { projectId: auth.projectId, publish: sdkPublish },
   };
   Object.freeze(cloudnivo);
   const sandbox = {
@@ -188,6 +221,9 @@ export class NodeWorkerRuntime implements FunctionRuntime {
         env: input.env,
         timeoutMs: input.timeoutMs,
         maxResponseBytes: input.maxResponseBytes,
+        hasSdk:
+          !!input.sdk &&
+          (!!input.sdk.databaseQuery || !!input.sdk.storageRead || !!input.sdk.realtimePublish),
       },
       resourceLimits: { maxOldGenerationSizeMb: input.memoryMb },
     });
@@ -201,11 +237,84 @@ export class NodeWorkerRuntime implements FunctionRuntime {
         }, input.timeoutMs);
         if (typeof timer.unref === 'function') timer.unref();
         let answered = false;
-        worker.once('message', (m: WorkerResultMessage) => {
+        const onMessage = (
+          m: WorkerResultMessage & {
+            t?: string;
+            ns?: string;
+            op?: string;
+            args?: unknown[];
+            id?: string;
+          },
+        ): void => {
+          // Capability round-trip: validate, run the injected hook, answer.
+          // Hooks are project-bound upstream; guards re-check here too.
+          if (m && m.t === 'sdk-call') {
+            void (async () => {
+              const id = typeof m.id === 'string' ? m.id : '';
+              const fail = (message: string): void => {
+                try {
+                  worker.postMessage({
+                    t: 'sdk-result',
+                    id,
+                    ok: false,
+                    message: message.slice(0, 300),
+                  });
+                } catch {
+                  // Isolate gone — the pending call dies with it.
+                }
+              };
+              try {
+                if (!input.sdk) return fail('capability not enabled');
+                if (m.ns === 'database' && m.op === 'query') {
+                  const [sql, params] = (m.args ?? []) as [unknown, unknown];
+                  const checked = assertSdkQuery(sql, params);
+                  if (!input.sdk.databaseQuery) return fail('capability not enabled');
+                  const rows = await input.sdk.databaseQuery(checked.sql, checked.params);
+                  const value = Array.isArray(rows) ? rows.slice(0, 500) : [];
+                  try {
+                    worker.postMessage({ t: 'sdk-result', id, ok: true, value });
+                  } catch {
+                    // Isolate gone.
+                  }
+                  return;
+                }
+                if (m.ns === 'storage' && m.op === 'read') {
+                  const [bucket, path] = (m.args ?? []) as [unknown, unknown];
+                  const checked = assertSdkRead(bucket, path);
+                  if (!input.sdk.storageRead) return fail('capability not enabled');
+                  const value = await input.sdk.storageRead(checked.bucket, checked.path);
+                  try {
+                    worker.postMessage({ t: 'sdk-result', id, ok: true, value: value ?? null });
+                  } catch {
+                    // Isolate gone.
+                  }
+                  return;
+                }
+                if (m.ns === 'realtime' && m.op === 'publish') {
+                  const [channel, event, data] = (m.args ?? []) as [unknown, unknown, unknown];
+                  const checked = assertSdkPublish(input.auth.projectId, channel, event, data);
+                  if (!input.sdk.realtimePublish) return fail('capability not enabled');
+                  await input.sdk.realtimePublish(checked.channel, checked.event, checked.data);
+                  try {
+                    worker.postMessage({ t: 'sdk-result', id, ok: true, value: null });
+                  } catch {
+                    // Isolate gone.
+                  }
+                  return;
+                }
+                fail('unknown capability');
+              } catch (err) {
+                fail(err instanceof Error ? err.message : 'capability failed');
+              }
+            })();
+            return;
+          }
+          if (answered) return;
           answered = true;
           clearTimeout(timer);
           resolve(m);
-        });
+        };
+        worker.on('message', onMessage);
         worker.once('error', (err: Error) => {
           clearTimeout(timer);
           reject(

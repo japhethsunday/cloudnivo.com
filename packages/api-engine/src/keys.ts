@@ -37,7 +37,8 @@ export interface ProjectApiKey {
 export type ExposedKey = Omit<ProjectApiKey, 'hash'>;
 
 export interface KeyStore {
-  save(key: ProjectApiKey): Promise<void>;
+  /** Persist a key; returns the stored record (durable stores assign ids). */
+  save(key: ProjectApiKey): Promise<ProjectApiKey>;
   findByHash(hash: string): Promise<ProjectApiKey | null>;
   listByProject(projectId: string): Promise<ExposedKey[]>;
   revoke(id: string): Promise<ExposedKey | null>;
@@ -49,8 +50,9 @@ let keyCounter = 0;
 export class MemoryKeyStore implements KeyStore {
   private readonly keys = new Map<string, ProjectApiKey>();
 
-  async save(key: ProjectApiKey): Promise<void> {
+  async save(key: ProjectApiKey): Promise<ProjectApiKey> {
     this.keys.set(key.id, key);
+    return { ...key };
   }
 
   async findByHash(hash: string): Promise<ProjectApiKey | null> {
@@ -148,8 +150,8 @@ export async function issueKey(
     createdBy: input.createdBy,
     createdAt: new Date().toISOString(),
   };
-  await store.save(key);
-  const { hash: _hash, ...exposed } = key;
+  const persisted = await store.save(key);
+  const { hash: _hash, ...exposed } = persisted;
   void _hash;
   return { key: exposed, raw: pair.raw };
 }

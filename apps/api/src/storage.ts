@@ -7,6 +7,7 @@ import {
   createStorageProvider,
   dispositionFor,
   type StorageCaller,
+  type StorageMetadataStore,
 } from '@cloudnivo/storage';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
@@ -51,9 +52,12 @@ export function storageFor(ctx: ApiContext): ObjectStorageService {
     ctx.config.STORAGE_SIGNING_SECRET.length >= 32
       ? ctx.config.STORAGE_SIGNING_SECRET
       : `${ctx.config.JWT_SECRET.slice(0, 32)}-storage`;
+  const meta: StorageMetadataStore =
+    (ctx as unknown as { __storageMeta?: StorageMetadataStore }).__storageMeta ??
+    new MemoryStorageMetadataStore();
   const svc = new ObjectStorageService(
     provider,
-    new MemoryStorageMetadataStore(),
+    meta,
     {
       maxBuckets: ctx.config.STORAGE_MAX_BUCKETS,
       quotaBytes: ctx.config.STORAGE_PROJECT_QUOTA_MB * 1024 * 1024,
@@ -62,12 +66,14 @@ export function storageFor(ctx: ApiContext): ObjectStorageService {
       signingSecret: secret,
     },
     (event, fields) => {
-      ctx.registry.recordAudit(event, {
-        projectId: typeof fields['projectId'] === 'string' ? fields['projectId'] : undefined,
-        organizationId:
-          typeof fields['organizationId'] === 'string' ? fields['organizationId'] : undefined,
-        userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
-      });
+      void ctx.registry
+        .recordAudit(event, {
+          projectId: typeof fields['projectId'] === 'string' ? fields['projectId'] : undefined,
+          organizationId:
+            typeof fields['organizationId'] === 'string' ? fields['organizationId'] : undefined,
+          userId: typeof fields['userId'] === 'string' ? fields['userId'] : undefined,
+        })
+        .catch(err => ctx.logger.warn('audit failed', { error: String(err).slice(0, 120) }));
       ctx.logger.info('audit', { event, ...fields });
     },
   );
@@ -247,7 +253,7 @@ export async function handleStorageRoutes(
 
   try {
     const svc = storageFor(ctx);
-    const project = ctx.registry.getProject(projectId);
+    const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
 
     // Signed-token redemption: the token IS the credential (no headers needed).

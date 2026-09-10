@@ -109,6 +109,13 @@ hostile and the client is lying — now including infrastructure operations.
   API responses and redacted from logs; reserved env keys unsettable. Build
   verification proves the entrypoint exists without invoking the handler, so
   `ready` never follows a failed build.
+- **Durable plane (Phase 8):** platform passwords are scrypt-hashed (dummy
+  work on unknown emails, enumeration-neutral); sessions are signed JWTs with
+  httpOnly cookies; invite tokens are opaque with sha256-only storage and
+  7-day expiry; owner-gated invite roles (only owners invite owners);
+  strict auth rate limits; drizzle adapters map unique violations to the same
+  409s (no cross-tenant oracles — unknown and foreign read 404); audit writes
+  never break requests and never carry secrets.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,

@@ -79,6 +79,7 @@ export const projects = pgTable(
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 63 }).notNull(),
     status: varchar('status', { length: 20 }).notNull().default('active'),
+    region: varchar('region', { length: 63 }).notNull().default('local'),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -113,14 +114,20 @@ export const apiKeys = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'cascade',
+    }),
     name: varchar('name', { length: 100 }).notNull(),
     /** First 8 chars of the raw key — safe to log/display for lookup. */
     keyPrefix: varchar('key_prefix', { length: 16 }).notNull(),
     /** SHA-256 hex of the raw key. Raw key is shown once at creation only. */
     keyHash: varchar('key_hash', { length: 128 }).notNull().unique(),
+    role: varchar('role', { length: 20 }).notNull().default('public'),
     scopes: text('scopes').array().notNull().default([]),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    requestCount: integer('request_count').notNull().default(0),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -277,6 +284,7 @@ export const provisioningJobs = pgTable(
     /** Client idempotency key — unique per org so double-submits collapse. */
     idempotencyKey: varchar('idempotency_key', { length: 128 }),
     attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(3),
     lastError: text('last_error'),
     logs: jsonb('logs').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -429,4 +437,67 @@ export const functionEnvVars = pgTable(
     unique('function_env_fn_key_unique').on(t.functionId, t.key),
     index('function_env_fn_idx').on(t.functionId),
   ],
+);
+
+/**
+ * Phase 8 — durable control-plane adapters.
+ *
+ * - `project_auth_configs`: per-project browser allowlists (memory
+ *   `Map` in `MemoryRegistry` mirrors this shape 1:1).
+ * - `organization_invites`: opaque-token org invites (sha256 only stored).
+ * - `storage_usage`: per-project upload/download counters backing
+ *   `StorageMetadataStore.usage()` (objects table gives files/bytes live).
+ */
+
+export const projectAuthConfigs = pgTable(
+  'project_auth_configs',
+  {
+    projectId: uuid('project_id')
+      .primaryKey()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    allowedOrigins: text('allowed_origins').array().notNull().default([]),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('project_auth_configs_org_idx').on(t.organizationId)],
+);
+
+export const organizationInvites = pgTable(
+  'organization_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: varchar('email', { length: 320 }).notNull(),
+    role: varchar('role', { length: 20 }).notNull().default('member'),
+    /** SHA-256 hex of the opaque token. The raw token is shown once. */
+    tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('org_invites_org_idx').on(t.organizationId),
+    index('org_invites_email_idx').on(t.email),
+  ],
+);
+
+export const storageUsage = pgTable(
+  'storage_usage',
+  {
+    projectId: uuid('project_id')
+      .primaryKey()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    uploads: integer('uploads').notNull().default(0),
+    downloads: integer('downloads').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('storage_usage_org_idx').on(t.organizationId)],
 );

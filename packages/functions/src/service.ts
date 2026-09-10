@@ -30,6 +30,7 @@ import {
   assertSource,
 } from './validation.js';
 import type { FunctionRuntime } from './runtime.js';
+import type { SdkHooks } from './sdk.js';
 
 /**
  * Serverless Functions orchestrator: records + versions + env + async
@@ -590,6 +591,8 @@ export class FunctionService {
     requestId: string;
     rateLimit?: { incr(key: string, ttlSeconds: number): Promise<number> } | null;
     rateMax?: number;
+    /** Project-bound data-plane capabilities for cloudnivo.* (optional). */
+    sdkHooks?: SdkHooks;
   }): Promise<InvocationOutcome> {
     const fn = this.requireFunction(input.projectId, input.idOrSlug);
     if (fn.status !== 'ready' && fn.status !== 'running') {
@@ -635,6 +638,7 @@ export class FunctionService {
         timeoutMs: this.opts.limits.executionTimeoutMs,
         memoryMb: this.opts.limits.memoryMb,
         maxResponseBytes: this.opts.limits.maxResponseBytes,
+        sdk: input.sdkHooks,
       });
       this.warmed.add(`${fn.id}:v${version.version}`);
       if (coldStart) metrics.coldStarts += 1;

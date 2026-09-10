@@ -136,6 +136,7 @@ export async function executeProjectSql(
   info: ProjectConnectionInfo,
   sqlText: string,
   guards: SqlGuardOptions = DEFAULT_SQL_GUARDS,
+  params: unknown[] = [],
 ): Promise<SqlResult> {
   const statement = assertSafeSql(sqlText, guards.maxLength);
   const start = Date.now();
@@ -146,8 +147,9 @@ export async function executeProjectSql(
       READ_LIKE.test(statement) && !/\blimit\b/i.test(statement)
         ? `SELECT * FROM (${statement}) AS cnq LIMIT ${guards.maxRows + 1}`
         : statement;
-    // Single execution: result rows carry their own column names.
-    const objects = (await sql.unsafe(finalSql)) as Record<string, unknown>[];
+    // Single execution: result rows carry their own column names. Values stay
+    // driver-bound ($n placeholders) — never interpolated into the text.
+    const objects = (await sql.unsafe(finalSql, params as never[])) as Record<string, unknown>[];
     const cols = objects.length > 0 ? Object.keys(objects[0] as object) : [];
     const truncated = objects.length > guards.maxRows;
     return {

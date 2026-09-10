@@ -105,6 +105,11 @@ const EnvSchema = z.object({
   AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   EMAIL_DRIVER: z.enum(['memory']).default('memory'),
 
+  // ── Durable control plane (Phase 8) ──
+  // memory = dev/test default (zero friction); drizzle = Postgres-backed
+  // registry/keys/jobs/storage metadata (needs migrations + seed at deploy).
+  CONTROL_STORE: z.enum(['memory', 'drizzle']).default('memory'),
+
   // ── Serverless functions (Phase 7) ──
   // worker = in-process isolates (dev/test/small prod); docker = per-version
   // container images executed with --network none + caps (needs an engine).

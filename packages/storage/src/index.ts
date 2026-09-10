@@ -16,6 +16,7 @@ export * from './signed-urls.js';
 export * from './providers.js';
 export * from './policies.js';
 export * from './metadata.js';
+export * from './metadata-drizzle.js';
 export * from './service.js';
 export * from './openapi.js';
 

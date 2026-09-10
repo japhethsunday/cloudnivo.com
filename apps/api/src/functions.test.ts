@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import { signSession } from '@cloudnivo/auth';
@@ -16,6 +19,8 @@ async function boot(): Promise<{ base: string; close: () => Promise<void> }> {
   process.env.CORS_ORIGINS = 'http://localhost:3000';
   process.env.CACHE_DRIVER = 'memory';
   process.env.PROVISION_DRIVER = 'fake';
+  process.env.STORAGE_DRIVER = 'local';
+  process.env.STORAGE_LOCAL_DIR = await mkdtemp(join(tmpdir(), 'cn-api-functions-'));
   const { start } = await import('./index.js');
   const { server, port } = await start(0);
   const srv = server as Server;
@@ -105,6 +110,8 @@ describe('phase 7 functions E2E (fake provider, worker runtime)', () => {
 
   afterAll(async () => {
     await close();
+    const dir = process.env.STORAGE_LOCAL_DIR ?? '';
+    if (dir.includes('cn-api-functions-')) await rm(dir, { recursive: true, force: true });
   });
 
   async function deployAndWait(slug: string, source: string): Promise<string> {
@@ -316,5 +323,106 @@ describe('phase 7 functions E2E (fake provider, worker runtime)', () => {
         .status,
     ).toBe(404);
     expect(projectB.length).toBeGreaterThan(0);
+  });
+
+  it('exposes project-bound data-plane capabilities inside handlers', async () => {
+    const c = await api(base, 'POST', `/api/v1/projects/${projectA}/functions`, tokenA, {
+      name: 'Capable',
+      slug: 'capable',
+    });
+    expect(c.status).toBe(201);
+    // Storage fixture the function will read through its own capability.
+    const bucket = await api(base, 'POST', `/api/v1/projects/${projectA}/storage/buckets`, tokenA, {
+      name: 'capdocs',
+    });
+    expect(bucket.status).toBe(201);
+    const putRes = await fetch(
+      `${base}/api/v1/projects/${projectA}/storage/buckets/capdocs/objects/hello.txt`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'text/plain' },
+        body: 'hello-cap',
+      },
+    );
+    expect(putRes.status).toBe(201);
+    await deployAndWait(
+      'capable',
+      `module.exports.handler = async () => {
+        const rows = await cloudnivo.database.query('select * from users');
+        const file = await cloudnivo.storage.read('capdocs', 'hello.txt');
+        await cloudnivo.realtime.publish('project:' + cloudnivo.project.id + ':events', 'fn-ran', { ok: true });
+        return { body: { rows, file, published: true } };
+      };`,
+    );
+    const invoked = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${projectA}/functions/capable/invoke`,
+      tokenA,
+      {},
+    );
+    expect(invoked.status).toBe(200);
+    const result = data<{ result: { rows: unknown; file: { body: string }; published: boolean } }>(
+      invoked.json,
+    ).result;
+    expect(result.rows).toEqual([{ id: 1 }]);
+    expect(result.file.body).toBe('hello-cap');
+    expect(result.published).toBe(true);
+    // The publish really landed on the bus: visible in realtime stats.
+    const stats = await api(base, 'GET', `/api/v1/projects/${projectA}/realtime/stats`, tokenA);
+    expect(data<{ stats: { broadcasts: number } }>(stats.json).stats.broadcasts).toBeGreaterThan(0);
+  });
+
+  it('denies cross-project channels and customer raw SQL', async () => {
+    const evil = await api(base, 'POST', `/api/v1/projects/${projectA}/functions`, tokenA, {
+      name: 'Evil',
+      slug: 'evil',
+    });
+    expect(evil.status).toBe(201);
+    await deployAndWait(
+      'evil',
+      `module.exports.handler = async () => {
+        await cloudnivo.realtime.publish('project:${projectB}:events', 'x');
+        return { body: 1 };
+      };`,
+    );
+    const blocked = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${projectA}/functions/evil/invoke`,
+      tokenA,
+      {},
+    );
+    expect(blocked.status).toBe(500);
+    expect(JSON.stringify(blocked.json)).toContain('function project');
+    // Non-admin customers cannot run raw SQL through functions.
+    const signup = await api(base, 'POST', `/api/v1/projects/${projectA}/auth/signup`, null, {
+      email: 'cust@example.com',
+      password: 'long-enough-1',
+    });
+    expect(signup.status).toBe(201);
+    const login = await api(base, 'POST', `/api/v1/projects/${projectA}/auth/token`, null, {
+      email: 'cust@example.com',
+      password: 'long-enough-1',
+    });
+    const customerToken = data<{ tokens: { accessToken: string } }>(login.json).tokens.accessToken;
+    const reader = await api(base, 'POST', `/api/v1/projects/${projectA}/functions`, tokenA, {
+      name: 'Reader',
+      slug: 'reader',
+    });
+    expect(reader.status).toBe(201);
+    await deployAndWait(
+      'reader',
+      `module.exports.handler = async () => ({ body: await cloudnivo.database.query('select 1') });`,
+    );
+    const denied = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${projectA}/functions/reader/invoke`,
+      customerToken,
+      {},
+    );
+    expect(denied.status).toBe(500);
+    expect(JSON.stringify(denied.json)).toContain('raw SQL');
   });
 });
