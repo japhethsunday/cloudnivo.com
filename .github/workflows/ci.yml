@@ -52,6 +52,12 @@ jobs:
     needs: [validate, secrets]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install (runner CLIs for migrate/backup gates)
+        run: npm ci --no-audit --no-fund
       - uses: docker/setup-buildx-action@v3
       - name: Build API image
         run: docker build -f Dockerfile.api -t cloudnivo-api:ci .
@@ -93,14 +99,8 @@ jobs:
       - name: Migrate control database (validates journal end-to-end)
         run: |
           set -euo pipefail
-          export DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo
-          # TEMP-DIAG: surface the migrate error as annotations until the
-          # underlying failure is identified (credentials redacted below).
-          if ! MIGRATE_OUT=$(npm run db:migrate --workspace=packages/database 2>&1); then
-            echo "$MIGRATE_OUT" | sed -E 's#://[^/@]+@#://***@#g' | head -n 8 | while IFS= read -r line; do echo "::error::$line"; done
-            exit 1
-          fi
-          echo "$MIGRATE_OUT" | tail -n 5
+          DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
+            npm run db:migrate --workspace=packages/database
       - name: Backup + verify control database
         run: |
           set -euo pipefail
