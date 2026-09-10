@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           DATABASE_URL=postgres://u:p@localhost:5432/db \
-          CORS_ORIGINS=http://localhost:3000 API_PORT=3001 \
+          CORS_ORIGINS=http://127.0.0.1:3000 API_PORT=3001 \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
           nohup node apps/api/dist/index.js > /tmp/cn-api.log 2>&1 &
           echo $! > /tmp/cn-api.pid
