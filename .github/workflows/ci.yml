@@ -93,8 +93,14 @@ jobs:
       - name: Migrate control database (validates journal end-to-end)
         run: |
           set -euo pipefail
-          DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
-            npm run db:migrate --workspace=packages/database
+          export DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo
+          # TEMP-DIAG: surface the migrate error as annotations until the
+          # underlying failure is identified (credentials redacted below).
+          if ! MIGRATE_OUT=$(npm run db:migrate --workspace=packages/database 2>&1); then
+            echo "$MIGRATE_OUT" | sed -E 's#://[^/@]+@#://***@#g' | head -n 8 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
+          echo "$MIGRATE_OUT" | tail -n 5
       - name: Backup + verify control database
         run: |
           set -euo pipefail
