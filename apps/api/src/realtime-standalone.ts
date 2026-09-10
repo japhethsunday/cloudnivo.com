@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, initControlPlane } from './v1.js';
+import { resolveListenPort } from './platform-port.js';
 import { realtimeFor } from './realtime.js';
 
 /**
@@ -36,7 +37,7 @@ export async function startRealtime(
     );
   });
   state.server.attach(server);
-  const listenPort = port ?? config.REALTIME_PORT;
+  const listenPort = resolveListenPort(port, config.REALTIME_PORT);
   await new Promise<void>(resolve => server.listen(listenPort, resolve));
   const addr = server.address();
   const actual = typeof addr === 'object' && addr ? addr.port : listenPort;

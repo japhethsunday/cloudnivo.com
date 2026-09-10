@@ -4,6 +4,7 @@ import { createLogger, type Logger } from '@cloudnivo/logging';
 import type { DatabaseStatus } from '@cloudnivo/database';
 import type { JobStatus } from '@cloudnivo/provisioning';
 import { createContext, initControlPlane, type ApiContext } from './v1.js';
+import { resolveListenPort } from './platform-port.js';
 import { storageFor } from './storage.js';
 
 export interface DrainResult {
@@ -223,7 +224,7 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Not found' } }));
   });
-  const listenPort = port ?? config.WORKER_PORT;
+  const listenPort = resolveListenPort(port, config.WORKER_PORT);
   await new Promise<void>(resolve => server.listen(listenPort, resolve));
   const addr = server.address();
   const actual = typeof addr === 'object' && addr ? addr.port : listenPort;

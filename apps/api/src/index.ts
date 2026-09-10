@@ -5,6 +5,7 @@ import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { runControlMigrations } from '@cloudnivo/database';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, handleRequest, initControlPlane, type ApiContext } from './v1.js';
+import { resolveListenPort } from './platform-port.js';
 import { realtimeFor } from './realtime.js';
 
 export async function start(
@@ -37,7 +38,7 @@ export async function start(
   });
   // Realtime upgrades share the API port (same auth, same envelope semantics).
   realtimeFor(ctx).server.attach(server);
-  const listenPort = port ?? config.API_PORT;
+  const listenPort = resolveListenPort(port, config.API_PORT);
   await new Promise<void>(resolve => server.listen(listenPort, resolve));
   const addr = server.address();
   const actual = typeof addr === 'object' && addr ? addr.port : listenPort;
