@@ -58,7 +58,7 @@ test('project stays clickable across navigation, refresh, and direct URL', async
   await page.goto('/login');
   await page.getByLabel(/email/i).fill(`nav-${stamp}@example.com`);
   await page.getByLabel(/password/i).fill('nav-regression-1');
-  await page.getByRole('button', { name: /^log in$/i }).click();
+  await page.getByRole('button', { name: /^sign in$/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 
   // Dashboard → projects → click project.

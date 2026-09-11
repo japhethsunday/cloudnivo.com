@@ -175,11 +175,72 @@ code,
 }
 
 .shell.collapsed {
-  --sidebar-width: 0px;
+  --sidebar-width: 76px;
+}
+/* Icon-only rail: labels hide, icons stay centered and operable. */
+.shell.collapsed .nav-text,
+.shell.collapsed .nav-context,
+.shell.collapsed .brand-text,
+.shell.collapsed .nav-project-tag,
+.shell.collapsed .theme-switch,
+.shell.collapsed .sidebar .only-mobile {
+  display: none;
 }
 .shell.collapsed .sidebar {
-  margin-left: calc(-1 * var(--sidebar-width));
-  overflow: hidden;
+  padding: 16px 10px;
+}
+.shell.collapsed .brand {
+  justify-content: center;
+  padding: 2px 0;
+}
+.shell.collapsed .brand-mark {
+  margin-right: 0;
+}
+.shell.collapsed .nav a {
+  justify-content: center;
+  padding: 9px 0;
+}
+.shell.collapsed .nav-group + .nav-group {
+  border-top: none;
+  margin-top: 6px;
+  padding-top: 6px;
+}
+.shell.collapsed .sidebar-foot {
+  align-items: center;
+}
+/* Edge rail toggle: sits on the sidebar border, top area. */
+.rail-toggle {
+  position: absolute;
+  top: 14px;
+  right: 10px;
+  z-index: 70;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.rail-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.rail-toggle:active {
+  transform: scale(0.94);
+}
+@media (max-width: 900px) {
+  .rail-toggle {
+    display: none;
+  }
 }
 
 .brand {

@@ -6,7 +6,8 @@ test('account center manages profile and password', async ({ page }) => {
   await page.goto('/signup');
   await page.getByLabel(/display name/i).fill('Orig Name');
   await page.getByLabel(/email/i).fill(`acct-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('acct-password-111');
+  await page.locator('#signup-password').fill('acct-password-111');
+  await page.locator('#signup-confirm').fill('acct-password-111');
   await page.getByRole('button', { name: /create account/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 
@@ -29,10 +30,10 @@ test('account center manages profile and password', async ({ page }) => {
   await expect(page.getByText(/password changed/i)).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole('button', { name: /^log out$/i }).first().click();
-  await expect(page.getByRole('heading', { name: /log in/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible({ timeout: 15_000 });
   await page.getByLabel(/email/i).fill(`acct-${stamp}@example.com`);
   await page.getByLabel(/password/i).fill('acct-password-222');
-  await page.getByRole('button', { name: /^log in$/i }).click();
+  await page.getByRole('button', { name: /^sign in$/i }).click();
   // Login returns to the pre-logout page via ?next= — either way the session is back.
   await expect(page.getByRole('button', { name: new RegExp(`Account: acct-${stamp}@example.com`, 'i') })).toBeVisible({
     timeout: 15_000,
@@ -45,7 +46,8 @@ test('settings center tabs all render working controls', async ({ page }) => {
   const stamp = Date.now() % 1000000;
   await page.goto('/signup');
   await page.getByLabel(/email/i).fill(`set-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('set-password-1111');
+  await page.locator('#signup-password').fill('set-password-1111');
+  await page.locator('#signup-confirm').fill('set-password-1111');
   await page.getByRole('button', { name: /create account/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 

@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { useSession } from '../../components/SessionProvider';
+import { AuthLayout } from '../../components/AuthLayout';
 import { ErrorState } from '../../components/States';
+import styles from '../marketing.module.css';
 
 function LoginForm(): React.JSX.Element {
   const { login } = useSession();
@@ -17,6 +19,7 @@ function LoginForm(): React.JSX.Element {
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError(null);
     const err = await login(email.trim(), password);
@@ -29,46 +32,46 @@ function LoginForm(): React.JSX.Element {
   }
 
   return (
-    <div className="auth-wrap">
-      <div className="card auth-card">
-        <p className="brand brand-sm">CloudNivo</p>
-        <h1 style={{ margin: '0 0 4px' }}>Log in</h1>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Access your organizations and projects.
-        </p>
-        <form onSubmit={submit} aria-label="Log in">
-          <div className="field">
-            <label htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-            />
-          </div>
-          {error ? <ErrorState title="Couldn't log in" message={error} /> : null}
-          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-            {busy ? 'Logging in…' : 'Log in'}
-          </button>
-        </form>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          New to CloudNivo? <Link href="/signup">Create an account</Link>
-        </p>
-      </div>
-    </div>
+    <AuthLayout title="Welcome back" sub="Sign in to your CloudNivo workspace.">
+      <form onSubmit={submit} aria-label="Sign in" className={styles.authForm}>
+        <div className="field">
+          <label htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+          />
+        </div>
+        {error ? <ErrorState title="Couldn't sign you in" message={error} /> : null}
+        <button type="submit" className="btn btn-primary btn-block" disabled={busy} aria-busy={busy}>
+          {busy ? (
+            <>
+              <span className={styles.spinner} aria-hidden />
+              Signing in…
+            </>
+          ) : (
+            'Sign in'
+          )}
+        </button>
+      </form>
+      <p className={styles.authAlt}>
+        Don&apos;t have a CloudNivo account? <Link href="/signup">Create an account</Link>
+      </p>
+    </AuthLayout>
   );
 }
 

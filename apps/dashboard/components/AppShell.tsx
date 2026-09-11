@@ -119,7 +119,10 @@ function ShellBody({
 }): React.JSX.Element {
   const { user, orgs, token, ready, logout } = useSession();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('cn_sidebar') === 'collapsed';
+  });
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
@@ -127,6 +130,18 @@ function ShellBody({
   const [projectId, setProjectId] = useState<string | null>(null);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
+
+  const toggleSidebar = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('cn_sidebar', next ? 'collapsed' : 'expanded');
+      } catch {
+        // Private browsing: the toggle still works for this session.
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     setNavOpen(false);
@@ -231,8 +246,19 @@ function ShellBody({
     <div className={`shell${collapsed ? ' collapsed' : ''}${navOpen ? ' nav-open' : ''}`}>
       <button type="button" className="scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />
       <aside className="sidebar" aria-label="Sidebar">
+        <button
+          type="button"
+          className="rail-toggle"
+          onClick={toggleSidebar}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <IconExpand size={15} /> : <IconCollapse size={15} />}
+        </button>
         <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
-          <span className="brand-mark">C</span>CloudNivo
+          <span className="brand-mark">C</span>
+          <span className="brand-text">CloudNivo</span>
         </Link>
 
         <div className="only-mobile">
@@ -254,22 +280,27 @@ function ShellBody({
           <div className="nav-group">
             <p className="nav-context">Workspace</p>
             {WORKSPACE_NAV.map(l => (
-              <Link key={l.href} href={l.href} aria-current={l.match(pathname) ? 'page' : undefined}>
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={l.match(pathname) ? 'page' : undefined}
+                aria-label={l.label}
+              >
                 <span className="nav-icon" aria-hidden>
                   {l.icon}
                 </span>
-                {l.label}
+                <span className="nav-text">{l.label}</span>
               </Link>
             ))}
           </div>
           <div className="nav-group">
             <p className="nav-context">Resources</p>
             {RESOURCES.map(r => (
-              <Link key={r.suffix} href={projHref(r.suffix)} aria-current={projActive(r.suffix)}>
+              <Link key={r.suffix} href={projHref(r.suffix)} aria-current={projActive(r.suffix)} aria-label={r.label}>
                 <span className="nav-icon" aria-hidden>
                   {r.icon}
                 </span>
-                {r.label}
+                <span className="nav-text">{r.label}</span>
               </Link>
             ))}
           </div>
@@ -281,18 +312,19 @@ function ShellBody({
                   key="cli"
                   href="/developer"
                   aria-current={pathname === '/developer' ? 'page' : undefined}
+                  aria-label={d.label}
                 >
                   <span className="nav-icon" aria-hidden>
                     {d.icon}
                   </span>
-                  {d.label}
+                  <span className="nav-text">{d.label}</span>
                 </Link>
               ) : (
-                <Link key={d.suffix} href={projHref(d.suffix)} aria-current={projActive(d.suffix)}>
+                <Link key={d.suffix} href={projHref(d.suffix)} aria-current={projActive(d.suffix)} aria-label={d.label}>
                   <span className="nav-icon" aria-hidden>
                     {d.icon}
                   </span>
-                  {d.label}
+                  <span className="nav-text">{d.label}</span>
                 </Link>
               ),
             )}
@@ -301,6 +333,7 @@ function ShellBody({
             <p className="nav-context">Management</p>
             <Link
               href={usageHref}
+              aria-label="Usage"
               aria-current={
                 scopeProject && (pathname === usageHref || pathname.startsWith(`${usageHref}/`))
                   ? 'page'
@@ -310,14 +343,19 @@ function ShellBody({
               <span className="nav-icon" aria-hidden>
                 <IconUsage size={16} />
               </span>
-              Usage
+              <span className="nav-text">Usage</span>
             </Link>
             {MANAGE_NAV.map(l => (
-              <Link key={l.href} href={l.href} aria-current={l.match(pathname) ? 'page' : undefined}>
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={l.match(pathname) ? 'page' : undefined}
+                aria-label={l.label}
+              >
                 <span className="nav-icon" aria-hidden>
                   {l.icon}
                 </span>
-                {l.label}
+                <span className="nav-text">{l.label}</span>
               </Link>
             ))}
           </div>
@@ -325,15 +363,6 @@ function ShellBody({
 
         <div className="sidebar-foot">
           <ThemeToggle />
-          <button
-            type="button"
-            className="btn btn-quiet btn-sm"
-            onClick={() => setCollapsed(c => !c)}
-            aria-expanded={!collapsed}
-          >
-            {collapsed ? <IconExpand size={15} /> : <IconCollapse size={15} />}
-            {collapsed ? 'Expand' : 'Collapse'}
-          </button>
         </div>
       </aside>
       <div className="content">

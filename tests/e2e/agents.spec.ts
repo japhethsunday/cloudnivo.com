@@ -5,7 +5,8 @@ test('agent tokens: create, reveal once, revoke', async ({ page }) => {
   const stamp = Date.now() % 1000000;
   await page.goto('/signup');
   await page.getByLabel(/email/i).fill(`agent-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('agent-ui-password-1');
+  await page.locator('#signup-password').fill('agent-ui-password-1');
+  await page.locator('#signup-confirm').fill('agent-ui-password-1');
   await page.getByRole('button', { name: /create account/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 
