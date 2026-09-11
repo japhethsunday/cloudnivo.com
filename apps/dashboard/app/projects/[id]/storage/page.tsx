@@ -1,9 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { use } from 'react';
 import { StoragePanel } from '../../../../components/StoragePanel';
-import { TokenBar } from '../../../../components/ProjectForms';
 
 export default function ProjectStoragePage({
   params,
@@ -12,20 +10,13 @@ export default function ProjectStoragePage({
 }): React.JSX.Element {
   const { id } = use(params);
   return (
-    <section aria-labelledby="storage-title">
-      <p>
-        <Link href={`/projects/${id}`}>← Project database</Link> ·{' '}
-        <Link href={`/projects/${id}/api`}>API console</Link> ·{' '}
-        <Link href={`/projects/${id}/auth`}>Authentication</Link> ·{' '}
-        <Link href={`/projects/${id}/realtime`}>Realtime</Link>
-      </p>
-      <h1 id="storage-title">Storage</h1>
+    <div>
+      <h2 style={{ marginTop: 0 }}>Storage</h2>
       <p className="muted">
         Buckets, files, usage, and policies. Bytes persist through the configured provider; metadata
         stays tenant-scoped.
       </p>
-      <TokenBar onChange={() => undefined} />
       <StoragePanel projectId={id} />
-    </section>
+    </div>
   );
 }

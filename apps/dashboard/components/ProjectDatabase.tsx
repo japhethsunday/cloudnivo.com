@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
+import { StatusDot, statusTone } from './ui';
 
 interface DbRecord {
   status: string;
@@ -21,21 +22,13 @@ interface TableInfo {
   primaryKeys: string[];
 }
 
-function StatusDot({ status, health }: { status: string; health: string }): React.JSX.Element {
-  const color =
-    health === 'healthy' && (status === 'running' || status === 'ready')
-      ? 'green'
-      : health === 'starting' || status === 'creating' || status === 'restarting'
-        ? 'orange'
-        : 'red';
-  return (
-    <span role="status" aria-label={`Database ${status}, ${health}`}>
-      <span style={{ color, fontSize: 20 }}>●</span> {status} ({health})
-    </span>
-  );
-}
-
-export function ProjectDatabase({ projectId }: { projectId: string }): React.JSX.Element {
+export function ProjectDatabase({
+  projectId,
+  mode = 'full',
+}: {
+  projectId: string;
+  mode?: 'full' | 'query';
+}): React.JSX.Element {
   const [db, setDb] = useState<DbRecord | null>(null);
   const [health, setHealth] = useState('unknown');
   const [conn, setConn] = useState<Record<string, unknown> | null>(null);
@@ -127,6 +120,21 @@ export function ProjectDatabase({ projectId }: { projectId: string }): React.JSX
     }
   }
 
+  if (mode === 'query')
+    return (
+      <QueryCard
+        sql={sql}
+        setSql={setSql}
+        result={result}
+        error={error}
+        busy={busy}
+        onRun={runSql}
+        onClear={() => {
+          setResult(null);
+          setError(null);
+        }}
+      />
+    );
   if (error && !db) return <ErrorState message={error} />;
   if (!db) return <LoadingSkeleton label="Loading database" />;
 
@@ -135,7 +143,10 @@ export function ProjectDatabase({ projectId }: { projectId: string }): React.JSX
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Database</h2>
         <p>
-          <StatusDot status={db.status} health={health} />
+          <span role="status" aria-label={`Database ${db.status}, ${health}`}>
+            <StatusDot tone={health === 'healthy' ? statusTone(db.status) : statusTone(health)} />{' '}
+            {db.status} ({health})
+          </span>
         </p>
         <table className="table">
           <tbody>
@@ -290,40 +301,51 @@ export function ProjectDatabase({ projectId }: { projectId: string }): React.JSX
         )}
       </div>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>SQL editor</h2>
-        <form onSubmit={e => void runSql(e)}>
+      <QueryCard sql={sql} setSql={setSql} result={result} error={error} busy={busy} onRun={runSql} onClear={() => { setResult(null); setError(null); }} />
+    </div>
+  );
+}
+
+function QueryCard({
+  sql,
+  setSql,
+  result,
+  error,
+  busy,
+  onRun,
+  onClear,
+}: {
+  sql: string;
+  setSql: (v: string) => void;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  busy: string | null;
+  onRun: (e: React.FormEvent) => void;
+  onClear: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>SQL editor</h2>
+      <form onSubmit={e => void onRun(e)}>
+        <div className="field">
           <label htmlFor="sql-input">SQL (single statement, 15s limit, 500 rows)</label>
-          <textarea
-            id="sql-input"
-            rows={5}
-            style={{ width: '100%', fontFamily: 'monospace' }}
-            value={sql}
-            onChange={e => setSql(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button type="submit" className="btn btn-primary" disabled={busy === 'sql'}>
-              {busy === 'sql' ? 'Running…' : 'Execute'}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setResult(null);
-                setError(null);
-              }}
-            >
-              Clear results
-            </button>
-          </div>
-        </form>
-        {result ? (
-          <pre style={{ overflow: 'auto', background: 'var(--bg-muted)', padding: 8 }}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        ) : null}
-        {error ? <ErrorState message={error} /> : null}
-      </div>
+          <textarea id="sql-input" rows={6} value={sql} onChange={e => setSql(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" className="btn btn-primary" disabled={busy === 'sql'}>
+            {busy === 'sql' ? 'Running…' : 'Execute'}
+          </button>
+          <button type="button" className="btn" onClick={onClear}>
+            Clear results
+          </button>
+        </div>
+      </form>
+      {result ? (
+        <pre style={{ overflow: 'auto', background: 'var(--bg-muted)', padding: 8 }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      ) : null}
+      {error ? <ErrorState message={error} /> : null}
     </div>
   );
 }
