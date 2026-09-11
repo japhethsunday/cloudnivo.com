@@ -150,3 +150,8 @@ audit store before relying on it for compliance.
 - **Secret scan: CLEAN.** No keys, passwords, private keys, or connection strings in source, tests (one intentional scanner-fixture fake), docs, or history.
 
 Critical: 0 open. High: 0 open (1 fixed, 1 accepted-risk dev-only).
+
+
+## Security Center (dashboard)
+
+Live per-organization posture scan with score and fix links. Rules and E2E: [security-center.md](security-center.md).
