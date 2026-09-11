@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { InfraVisual } from '../components/InfraVisual';
+import { ThemeToggle } from '../components/ThemeToggle';
 import {
   IconAIBuilder,
   IconAPI,
@@ -167,6 +168,9 @@ export default function HomePage(): React.JSX.Element {
             <Link href="#pricing">Pricing</Link>
           </nav>
           <div className={styles.navCtas}>
+            <span className={styles.themeToggleWrap} role="presentation">
+              <ThemeToggle />
+            </span>
             <Link className={`btn ${styles.hideMobile}`} href="/login">
               Sign in
             </Link>
@@ -200,6 +204,9 @@ export default function HomePage(): React.JSX.Element {
                 {label}
               </Link>
             ))}
+            <div style={{ padding: '12px 8px' }} aria-label="Theme">
+              <ThemeToggle />
+            </div>
           </nav>
         ) : null}
       </header>

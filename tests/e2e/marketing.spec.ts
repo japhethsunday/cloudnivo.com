@@ -28,6 +28,17 @@ test('homepage renders the full story without overflow', async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
+test('homepage theme toggle switches light and dark', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /build, deploy and scale/i })).toBeVisible({ timeout: 15_000 });
+  const header = page.locator('header').first();
+  await header.getByRole('button', { name: /^dark theme$/i }).click();
+  await expect(page.locator('html[data-theme="dark"]')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: /build, deploy and scale/i })).toBeVisible();
+  await header.getByRole('button', { name: /^light theme$/i }).click();
+  await expect(page.locator('html[data-theme="light"]')).toHaveCount(1);
+});
+
 test('mobile menu opens and navigates', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
