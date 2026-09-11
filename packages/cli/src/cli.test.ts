@@ -65,7 +65,7 @@ describe('cli arg parsing', () => {
 describe('cli agent commands', () => {
   it('logs in agent tokens only after verifying them', async () => {
     const tmp = `${process.cwd()}/node_modules/.tmp-agent-creds-${Date.now()}.json`;
-    const env = { ...process.env, CLOUDNIVO_CREDENTIALS: tmp, CLOUDNIVO_API_URL: 'http://x:3001' };
+    const env: NodeJS.ProcessEnv = { ...process.env, CLOUDNIVO_CREDENTIALS: tmp, CLOUDNIVO_API_URL: 'http://x:3001' };
     delete env['CLOUDNIVO_TOKEN'];
     delete env['CLOUDNIVO_AGENT_TOKEN'];
     await expect(run(['agent', 'login', '--token', 'not-an-agent-token'], env)).rejects.toThrow(
@@ -114,21 +114,20 @@ describe('cli agent commands', () => {
         });
       }),
     );
-    const env = { ...process.env, CLOUDNIVO_AGENT_TOKEN: 'cn_agent_testvalue' };
+    const env: NodeJS.ProcessEnv = { ...process.env, CLOUDNIVO_AGENT_TOKEN: 'cn_agent_testvalue' };
     const listed = await run(['agent', 'projects'], env);
     expect(listed).toContain('shop');
-    const { writeFile, mkdir, rm } = await import('node:fs/promises');
+    const { writeFile, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
-    const dir = await mkdir(join(tmpdir(), `cn-agent-src-${Date.now()}`), { recursive: true });
-    const src = join(dir, 'handler.js');
+    const src = join(tmpdir(), `cn-agent-src-${Date.now()}.js`);
     await writeFile(src, 'module.exports.handler = async () => ({ ok: true });');
     const deployed = await run(
       ['agent', 'deploy', '--project', 'p1', '--function', 'f', '--source', src],
       env,
     );
     expect(deployed).toContain('j9');
-    await rm(dir, { recursive: true, force: true });
+    await rm(src, { force: true });
     expect(calls.join('|')).toContain('POST /v1/projects/p1/functions/f/deploy');
     vi.unstubAllGlobals();
   });
