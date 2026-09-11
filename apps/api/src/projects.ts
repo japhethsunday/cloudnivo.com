@@ -19,9 +19,11 @@ import {
 } from '@cloudnivo/provisioning';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
+import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { generateDbPassword, mustOwnProject, toTenantError } from './registry.js';
+import { auditAgent, gateDestructive, requireAgent, sendApprovalRequired } from './agents.js';
 import { storageFor } from './storage.js';
 
 export function sendJson(
@@ -188,17 +190,49 @@ export async function handleProjectRoutes(
   logger: Logger,
   baseHeaders: Record<string, string>,
   requestId: string,
-  session: { sub: string; email: string; org?: string },
+  session: { sub: string; email: string; org?: string; agent?: AgentToken },
   parts: string[],
   query: URLSearchParams,
   readJson: () => Promise<unknown>,
 ): Promise<boolean> {
   const [projectId, ...rest] = parts;
+  const agent = session.agent ?? null;
+
+  /** Agent gate for one operation (null for human sessions). */
+  async function gate(
+    opts: { scope: string; organizationId?: string; projectId?: string; action: string; resource?: string },
+  ): Promise<void> {
+    if (agent) {
+      await requireAgent(ctx, req, agent, opts);
+    }
+  }
+
+  function auditSuccess(action: string, organizationId: string, projectId?: string, resource?: string): void {
+    if (agent) {
+      auditAgent(ctx, req, {
+        token: agent,
+        userId: agent.userId,
+        organizationId,
+        projectId: projectId ?? null,
+        action,
+        resource,
+        result: 'success',
+      });
+    }
+  }
 
   // POST /api/v1/projects — create project + enqueue provisioning (202).
   if (parts.length === 0 && req.method === 'POST') {
     try {
       const body = parseBody(CreateProjectBody, await readJson());
+      if (agent) {
+        await gate({
+          scope: 'projects.create',
+          organizationId: body.organizationId,
+          action: 'project.create',
+          resource: body.slug,
+        });
+      }
       if ((await ctx.registry.countDatabases()) >= config.PROVISION_MAX_DATABASES) {
         throw new ApiError('LIMIT_EXCEEDED', 'Maximum number of databases reached', 403);
       }
@@ -323,6 +357,7 @@ export async function handleProjectRoutes(
         }
       })();
       logger.info('projects.create.accepted', { project: project.id });
+      auditSuccess('project.create', project.organizationId, project.id, project.slug);
       sendJson(res, 202, ok({ project, jobId: job.id, database: null }, requestId), baseHeaders);
     } catch (err) {
       const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -333,7 +368,19 @@ export async function handleProjectRoutes(
 
   // GET /api/v1/projects — tenant-scoped list with live database state.
   if (parts.length === 0 && req.method === 'GET') {
-    const projects = await ctx.registry.listProjects(session.sub);
+    if (agent) {
+      // Cross-org listing: scope gate only; the scoped filter below enforces isolation.
+      await gate({ scope: 'projects.read', action: 'project.list' });
+    }
+    const all = await ctx.registry.listProjects(session.sub);
+    // Agents see only their scoped slice (org and/or project allow-list).
+    const projects = agent
+      ? all.filter(
+          p =>
+            (!agent.organizationId || p.organizationId === agent.organizationId) &&
+            (agent.projectIds.length === 0 || agent.projectIds.includes(p.id)),
+        )
+      : all;
     // Single batched read (2 queries on durable stores, not 2N).
     const stored = await ctx.registry.listProjectDatabases(projects.map(p => p.id));
     const byProject = new Map(stored.map(s => [s.projectId, s]));
@@ -368,6 +415,14 @@ export async function handleProjectRoutes(
 
   try {
     const project = await mustOwnProject(ctx.registry, session.sub, projectId);
+    if (agent) {
+      await gate({
+        scope: 'projects.read',
+        organizationId: project.organizationId,
+        projectId: project.id,
+        action: 'project.access',
+      });
+    }
 
     // GET /api/v1/projects/:id
     if (rest.length === 0 && req.method === 'GET') {
@@ -384,6 +439,23 @@ export async function handleProjectRoutes(
 
     // DELETE /api/v1/projects/:id — delete infra first, then metadata.
     if (rest.length === 0 && req.method === 'DELETE') {
+      if (agent) {
+        const decision = await gateDestructive(ctx, req, {
+          agent,
+          scope: 'projects.delete',
+          action: 'project.delete',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          method: 'DELETE',
+          path: `/api/v1/projects/${project.id}`,
+          body: undefined,
+          resource: project.slug,
+        });
+        if (!decision.proceed) {
+          sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+          return true;
+        }
+      }
       const db = await ctx.registry.getDatabaseByProject(project.id);
       let jobId: string | null = null;
       if (db && db.status !== 'deleted') {
@@ -412,12 +484,21 @@ export async function handleProjectRoutes(
         });
       }
       logger.info('projects.delete', { project: project.id });
+      auditSuccess('project.delete', project.organizationId, project.id, project.slug);
       sendJson(res, 200, ok({ deleted: true, jobId }, requestId), baseHeaders);
       return true;
     }
 
     // GET /:id/jobs, GET /:id/jobs/:jobId
     if (rest[0] === 'jobs' && req.method === 'GET') {
+      if (agent) {
+        await gate({
+          scope: 'logs.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'jobs.read',
+        });
+      }
       if (rest.length === 1) {
         sendJson(
           res,
@@ -444,6 +525,14 @@ export async function handleProjectRoutes(
 
     // GET /:id/database — overview with REAL live status.
     if (rest.length === 1 && req.method === 'GET') {
+      if (agent) {
+        await gate({
+          scope: 'database.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'database.overview',
+        });
+      }
       try {
         const cred = await ctx.registry.getCredential(project.id);
         const live = cred
@@ -481,6 +570,28 @@ export async function handleProjectRoutes(
 
     // GET /:id/database/connection[?reveal=true] — masked by default.
     if (rest.length === 2 && rest[1] === 'connection' && req.method === 'GET') {
+      if (agent) {
+        // Agents never receive live credentials; masked metadata is enough
+        // to address the database through the API.
+        if (query.get('reveal') === 'true') {
+          auditAgent(ctx, req, {
+            token: agent,
+            userId: agent.userId,
+            organizationId: project.organizationId,
+            projectId: project.id,
+            action: 'database.credentials.reveal',
+            result: 'denied',
+            reason: 'FORBIDDEN: agents cannot reveal credentials',
+          });
+          throw new ApiError('FORBIDDEN', 'Agents cannot reveal database credentials', 403);
+        }
+        await gate({
+          scope: 'database.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'database.connection',
+        });
+      }
       const creds = await credsFor(ctx, project);
       if (query.get('reveal') === 'true') {
         await ctx.registry.recordAudit('database.credentials.accessed', {
@@ -532,6 +643,15 @@ export async function handleProjectRoutes(
     if (rest.length === 2 && rest[1] === 'actions' && req.method === 'POST') {
       try {
         const body = parseBody(ActionBody, await readJson());
+        if (agent) {
+          await gate({
+            scope: 'projects.update',
+            organizationId: project.organizationId,
+            projectId: project.id,
+            action: `database.${body.action}`,
+            resource: body.action,
+          });
+        }
         const jobId = await runLifecycleJob(ctx.provider, ctx.jobs, ctx.audit, {
           kind: body.action,
           projectId: project.id,
@@ -542,6 +662,7 @@ export async function handleProjectRoutes(
         const next: DatabaseStatus =
           body.action === 'stop' ? 'stopped' : body.action === 'start' ? 'running' : 'ready';
         await ctx.registry.updateDatabaseStatus(project.id, next);
+        auditSuccess(`database.${body.action}`, project.organizationId, project.id, body.action);
         sendJson(res, 200, ok({ jobId, status: next }, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -552,6 +673,14 @@ export async function handleProjectRoutes(
 
     // GET /:id/database/schema — real information_schema inspection.
     if (rest.length === 2 && rest[1] === 'schema' && req.method === 'GET') {
+      if (agent) {
+        await gate({
+          scope: 'database.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'database.schema',
+        });
+      }
       try {
         const schema = await ctx.gateway.inspect(await credsFor(ctx, project));
         sendJson(res, 200, ok(schema, requestId), baseHeaders);
@@ -568,6 +697,34 @@ export async function handleProjectRoutes(
         const body = parseBody(QueryBody, await readJson());
         // Guards enforced at the boundary for every gateway (defense in depth).
         assertSafeSql(body.sql, 20_000);
+        if (agent) {
+          const destructive = /^\s*(drop|truncate|alter)\b/i.test(body.sql);
+          if (destructive) {
+            const decision = await gateDestructive(ctx, req, {
+              agent,
+              scope: 'database.destructive',
+              action: 'database.sql.destructive',
+              organizationId: project.organizationId,
+              projectId: project.id,
+              method: 'POST',
+              path: `/api/v1/projects/${project.id}/database/query`,
+              body: { sql: body.sql },
+              resource: body.sql.slice(0, 120),
+            });
+            if (!decision.proceed) {
+              sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+              return true;
+            }
+          } else {
+            await gate({
+              scope: 'database.sql',
+              organizationId: project.organizationId,
+              projectId: project.id,
+              action: 'database.query',
+              resource: statementType(body.sql),
+            });
+          }
+        }
         const result = await ctx.gateway.query(await credsFor(ctx, project), body.sql, {
           maxStatementMs: config.PROVISION_MAX_SQL_MS,
           maxRows: config.PROVISION_MAX_SQL_ROWS,
@@ -584,6 +741,7 @@ export async function handleProjectRoutes(
           durationMs: result.durationMs,
           rows: result.rowCount,
         });
+        auditSuccess('database.query', project.organizationId, project.id, statementType(body.sql));
         sendJson(res, 200, ok(result, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
@@ -594,6 +752,14 @@ export async function handleProjectRoutes(
 
     // GET /:id/database/metrics — real pg statistics.
     if (rest.length === 2 && rest[1] === 'metrics' && req.method === 'GET') {
+      if (agent) {
+        await gate({
+          scope: 'database.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'database.metrics',
+        });
+      }
       try {
         const metrics = await ctx.provider.getMetrics(await credsFor(ctx, project));
         sendJson(res, 200, ok(metrics, requestId), baseHeaders);

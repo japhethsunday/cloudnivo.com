@@ -27,12 +27,15 @@ import { realtimeOpenApiPaths } from '@cloudnivo/realtime';
 import { functionsOpenApiPaths } from '@cloudnivo/functions';
 import { aiOpenApiPaths } from '@cloudnivo/ai';
 import { billingOpenApiPaths } from '@cloudnivo/billing';
+import { agentsOpenApiPaths } from '@cloudnivo/agents';
+import type { AgentToken } from '@cloudnivo/agents';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { mustOwnProject } from './registry.js';
 import { verifyCustomerCaller } from './customer-auth.js';
+import { agentFromRequest, auditAgent, requireAgentScope, verifyAgentAccess } from './agents.js';
 import { sendJson } from './projects.js';
 
 /**
@@ -304,7 +307,8 @@ export function isDataRoute(rest: string[], method: string): boolean {
 export type DataCaller =
   | { kind: 'session'; userId: string; role: string; project: ProjectRecord }
   | { kind: 'key'; key: ProjectApiKey; project: ProjectRecord }
-  | { kind: 'customer'; userId: string; role: 'admin' | 'authenticated'; project: ProjectRecord };
+  | { kind: 'customer'; userId: string; role: 'admin' | 'authenticated'; project: ProjectRecord }
+  | { kind: 'agent'; agent: AgentToken; project: ProjectRecord };
 
 async function credsForProject(
   ctx: ApiContext,
@@ -343,6 +347,19 @@ export async function resolveCaller(
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing credentials (Bearer or apikey)', 401);
   const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+  // Agent tokens route by prefix before any JWT handling (they are opaque).
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    return {
+      kind: 'agent',
+      agent: await verifyAgentAccess(ctx, req, maybeAgent, {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        action: 'data.access',
+      }),
+      project,
+    };
+  }
   // Customer access tokens are audience-bound: a structurally valid customer
   // credential for ANOTHER project is forbidden (403); an unusable one falls
   // through to the platform session check (401 when that fails too).
@@ -382,6 +399,8 @@ function toKeyError(err: unknown): ApiError {
 }
 
 function requireWrite(caller: DataCaller): void {
+  // Agents are scope-gated per method at the top of handleDataRoutes.
+  if (caller.kind === 'agent') return;
   if (caller.kind === 'key') {
     if (!keyCanWrite(caller.key.role)) {
       throw new ApiError('KEY_READONLY', 'This API key is read-only', 403);
@@ -534,6 +553,28 @@ export async function handleDataRoutes(
       return finish(status, body, { caller: caller.kind });
     }
     if (caller.kind === 'key') await ctx.keys.touch(caller.key.id);
+    if (caller.kind === 'agent') {
+      // Agents never manage keys (no escalation); audit the attempt.
+      if (seg === 'keys') {
+        auditAgent(ctx, req, {
+          token: caller.agent,
+          userId: caller.agent.userId,
+          organizationId: caller.project.organizationId,
+          projectId: caller.project.id,
+          action: 'keys.manage',
+          result: 'denied',
+          reason: 'FORBIDDEN: agents cannot manage API keys',
+        });
+        throw new ApiError('FORBIDDEN', 'API keys cannot manage keys', 403);
+      }
+      await requireAgentScope(ctx, req, caller.agent, {
+        scope: req.method === 'GET' ? 'database.read' : 'database.write',
+        organizationId: caller.project.organizationId,
+        projectId: caller.project.id,
+        action: req.method === 'GET' ? 'data.read' : 'data.write',
+        resource: `${req.method ?? 'GET'} ${seg}`,
+      });
+    }
 
     // ── API keys (session members only) ──
     if (seg === 'keys') {
@@ -600,6 +641,7 @@ export async function handleDataRoutes(
         ...functionsOpenApiPaths(),
         ...aiOpenApiPaths(),
         ...billingOpenApiPaths(),
+        ...agentsOpenApiPaths(),
       };
       return finish(200, doc, { caller: caller.kind });
     }
@@ -650,7 +692,7 @@ export async function handleDataRoutes(
         }
         const payload = forceOwnerInsert(schema, seg, caller, body as Record<string, unknown>);
         const row = await engine.create(schema, seg, payload);
-        auditMutation(ctx, caller, 'data.created', seg);
+        auditMutation(ctx, req, caller, 'data.created', seg);
         return finish(201, ok({ row }, requestId), { caller: caller.kind });
       }
       return finish(405, {
@@ -677,7 +719,7 @@ export async function handleDataRoutes(
       assertRowOwner(existing, caller);
       const payload = forceOwnerInsert(schema, seg, caller, body as Record<string, unknown>, true);
       const row = await engine.update(schema, seg, id, payload);
-      auditMutation(ctx, caller, 'data.updated', seg);
+      auditMutation(ctx, req, caller, 'data.updated', seg);
       return finish(200, ok({ row }, requestId), { caller: caller.kind });
     }
     if (req.method === 'DELETE') {
@@ -685,7 +727,7 @@ export async function handleDataRoutes(
       const existing = await engine.get(schema, seg, id);
       assertRowOwner(existing, caller);
       await engine.remove(schema, seg, id);
-      auditMutation(ctx, caller, 'data.deleted', seg);
+      auditMutation(ctx, req, caller, 'data.deleted', seg);
       return finish(200, ok({ deleted: true }, requestId), { caller: caller.kind });
     }
     return finish(405, {
@@ -717,15 +759,32 @@ async function introspect(
   return svc.getSchema();
 }
 
-function auditMutation(ctx: ApiContext, caller: DataCaller, event: string, table: string): void {
+function auditMutation(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  caller: DataCaller,
+  event: string,
+  table: string,
+): void {
   void ctx.registry
     .recordAudit(event, {
       projectId: caller.project.id,
       organizationId: caller.project.organizationId,
-      userId: caller.kind === 'key' ? undefined : caller.userId,
+      userId: caller.kind === 'key' ? undefined : caller.kind === 'agent' ? caller.agent.userId : caller.userId,
     })
     .catch(err => ctx.logger.warn('audit failed', { error: String(err).slice(0, 120) }));
   ctx.logger.info('audit', { event, project: caller.project.id, table });
+  if (caller.kind === 'agent') {
+    auditAgent(ctx, req, {
+      token: caller.agent,
+      userId: caller.agent.userId,
+      organizationId: caller.project.organizationId,
+      projectId: caller.project.id,
+      action: event,
+      resource: table,
+      result: 'success',
+    });
+  }
 }
 
 function toKeyErrorSafe(err: unknown): unknown {

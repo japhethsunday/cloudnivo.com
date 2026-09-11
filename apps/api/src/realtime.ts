@@ -21,6 +21,8 @@ import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
 import { verifyCustomerCaller } from './customer-auth.js';
+import type { AgentToken } from '@cloudnivo/agents';
+import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
 
 /**
  * Realtime HTTP + WebSocket wiring.
@@ -244,6 +246,46 @@ async function upgradeAuth(
 
   const token = bearerFromHeader(headers['authorization']);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing credentials', 401);
+  // Agent tokens route by prefix before any JWT handling (they are opaque).
+  // Subscribe needs realtime.read; broadcast additionally needs
+  // realtime.manage (enforced by the gateway via the narrowed role below).
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    const agent = await verifyAgentAccess(ctx, req, maybeAgent, {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      action: 'realtime.connect',
+    });
+    await mustOwnProject(ctx.registry, agent.userId, projectId);
+    const svc = agentServiceFor(ctx);
+    const canPublish = svc.hasScope(agent, 'realtime.read') && svc.hasScope(agent, 'realtime.manage');
+    if (!svc.hasScope(agent, 'realtime.read')) {
+      await svc
+        .log({
+          tokenId: agent.id,
+          userId: agent.userId,
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'realtime.connect',
+          resource: '',
+          result: 'denied',
+          reason: 'FORBIDDEN_SCOPE: token lacks realtime.read',
+          ip:
+            (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
+            req.socket.remoteAddress ||
+            'unknown',
+        })
+        .catch(() => undefined);
+      throw new ApiError('FORBIDDEN', 'Agent token lacks required scope: realtime.read', 403);
+    }
+    return {
+      userId: agent.userId,
+      role: canPublish ? 'agent' : 'agent:readonly',
+      projectId: project.id,
+      organizationId: project.organizationId,
+      expiresAt: agent.expiresAt,
+    };
+  }
   // Customer tokens first (audience-bound), then platform sessions.
   const asCustomer = await decodeCustomerToken(token, {
     jwtSecret: ctx.config.JWT_SECRET,
@@ -301,7 +343,19 @@ async function requireMember(
   ctx: ApiContext,
   req: IncomingMessage,
   projectId: string,
-): Promise<{ userId: string; role: string; projectId: string; organizationId: string }> {
+): Promise<{ userId: string; role: string; projectId: string; organizationId: string; agent?: AgentToken }> {
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    const project = await ctx.registry.getProject(projectId);
+    if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+    const agent = await verifyAgentAccess(ctx, req, maybeAgent, {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      action: 'realtime.access',
+    });
+    await mustOwnProject(ctx.registry, agent.userId, projectId);
+    return { userId: agent.userId, role: 'agent', projectId: project.id, organizationId: project.organizationId, agent };
+  }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
   const session = await verifySession(token, {
@@ -333,7 +387,14 @@ export async function handleRealtimeRoutes(
   const [head, ...extra] = tail;
   try {
     const member = await requireMember(ctx, req, projectId);
-    void member;
+    if (member.agent) {
+      await requireAgentScope(ctx, req, member.agent, {
+        scope: 'realtime.read',
+        organizationId: member.organizationId,
+        projectId: member.projectId,
+        action: 'realtime.read',
+      });
+    }
     const state = realtimeFor(ctx);
     const finish = (status: number, body: unknown): true => {
       logger.info('realtime.request', {

@@ -72,6 +72,8 @@ export interface StorageCaller {
   role: string;
   projectId: string;
   organizationId: string;
+  /** Present for agent-token callers (identity refs for audit trails). */
+  agent?: { id: string; userId: string };
 }
 
 export type StorageOp =

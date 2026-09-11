@@ -41,8 +41,9 @@ export function canSubscribe(ctx: AuthContext, channel: string): boolean {
 export function canBroadcast(ctx: AuthContext, channel: string): boolean {
   if (!canSubscribe(ctx, channel)) return false;
   // Viewers/anonymous may listen, never speak. Public project keys read.
+  // Read-only agent tokens (realtime.read without realtime.manage) listen only.
   if (ctx.role === 'viewer' || ctx.role === 'anonymous') return false;
-  if (ctx.role === 'public') return false;
+  if (ctx.role === 'public' || ctx.role === 'agent:readonly') return false;
   return true;
 }
 

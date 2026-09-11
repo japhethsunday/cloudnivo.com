@@ -14,6 +14,8 @@ import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
 import { resolveCaller, type DataCaller } from './data.js';
 import { sendJson } from './projects.js';
+import type { AgentToken } from '@cloudnivo/agents';
+import { auditAgent, gateDestructive, requireAgentScope, sendApprovalRequired } from './agents.js';
 
 /**
  * Customer storage plane: buckets + objects under
@@ -89,6 +91,18 @@ export function isStorageRoute(rest: string[], method: string): boolean {
 }
 
 function toStorageCaller(caller: DataCaller): StorageCaller {
+  if (caller.kind === 'agent') {
+    // Route-layer scope gates (below) already authorized this request; the
+    // service sees an admin-equivalent member caller for the same project.
+    return {
+      kind: 'session',
+      userId: caller.agent.userId,
+      role: 'admin',
+      projectId: caller.project.id,
+      organizationId: caller.project.organizationId,
+      agent: { id: caller.agent.id, userId: caller.agent.userId },
+    };
+  }
   if (caller.kind === 'session') {
     return {
       kind: 'session',
@@ -255,6 +269,7 @@ export async function handleStorageRoutes(
     const svc = storageFor(ctx);
     const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+    const orgId = project.organizationId;
 
     // Signed-token redemption: the token IS the credential (no headers needed).
     if (segs[0] === 's' && segs[1] && segs.length === 2) {
@@ -308,8 +323,10 @@ export async function handleStorageRoutes(
 
     // Everything else needs a caller (anonymous allowed for public downloads).
     let caller: StorageCaller;
+    let agent: AgentToken | null = null;
     try {
       const resolved = await resolveCaller(ctx, req, projectId);
+      if (resolved.kind === 'agent') agent = resolved.agent;
       caller = toStorageCaller(resolved);
       if (resolved.kind === 'key') await ctx.keys.touch(resolved.key.id);
     } catch (err) {
@@ -336,10 +353,36 @@ export async function handleStorageRoutes(
       return finish(status, body, { caller: caller.kind });
     }
 
+    /** Agent scope gate for one storage operation (no-op for other callers). */
+    async function gateSt(opts: { scope: string; action: string; resource?: string }): Promise<void> {
+      if (!agent) return;
+      await requireAgentScope(ctx, req, agent, {
+        scope: opts.scope,
+        organizationId: orgId,
+        projectId,
+        action: opts.action,
+        resource: opts.resource,
+      });
+    }
+
+    function auditSt(action: string, resource?: string): void {
+      if (!agent) return;
+      auditAgent(ctx, req, {
+        token: agent,
+        userId: agent.userId,
+        organizationId: orgId,
+        projectId,
+        action,
+        resource,
+        result: 'success',
+      });
+    }
+
     // ── Usage ──
     if (segs[0] === 'usage' && segs.length === 1 && req.method === 'GET') {
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.read', action: 'storage.usage' });
       return finish(200, ok(await svc.usage(caller), requestId), { caller: caller.kind });
     }
 
@@ -348,11 +391,13 @@ export async function handleStorageRoutes(
       if (req.method === 'GET') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+        await gateSt({ scope: 'storage.read', action: 'storage.buckets.list' });
         return finish(200, ok({ buckets: await svc.listBuckets(caller) }, requestId), {
           caller: caller.kind,
         });
       }
       if (req.method === 'POST') {
+        await gateSt({ scope: 'storage.write', action: 'storage.bucket.create' });
         const parsed = parseBody(CreateBucketBody, await readJson());
         const bucket = await svc.createBucket(caller, {
           name: parsed.name,
@@ -361,6 +406,7 @@ export async function handleStorageRoutes(
           allowedMimeTypes: parsed.allowedMimeTypes,
           ownerIsolation: parsed.ownerIsolation,
         });
+        auditSt('storage.bucket.create', bucket.name);
         return finish(201, ok({ bucket }, requestId), { caller: caller.kind });
       }
       return finish(405, {
@@ -373,20 +419,42 @@ export async function handleStorageRoutes(
       if (req.method === 'GET') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+        await gateSt({ scope: 'storage.read', action: 'storage.bucket.get', resource: bucketName });
         return finish(200, ok({ bucket: await svc.getBucket(caller, bucketName) }, requestId), {
           caller: caller.kind,
         });
       }
       if (req.method === 'PATCH') {
+        await gateSt({ scope: 'storage.write', action: 'storage.bucket.update', resource: bucketName });
         const parsed = parseBody(UpdateBucketBody, await readJson());
+        const updated = await svc.updateBucket(caller, bucketName, parsed);
+        auditSt('storage.bucket.update', bucketName);
         return finish(
           200,
-          ok({ bucket: await svc.updateBucket(caller, bucketName, parsed) }, requestId),
+          ok({ bucket: updated }, requestId),
           { caller: caller.kind },
         );
       }
       if (req.method === 'DELETE') {
+        if (agent) {
+          const decision = await gateDestructive(ctx, req, {
+            agent,
+            scope: 'storage.delete',
+            action: 'storage.bucket.delete',
+            organizationId: project.organizationId,
+            projectId,
+            method: 'DELETE',
+            path: `/api/v1/projects/${projectId}/storage/buckets/${segs[1]}`,
+            body: undefined,
+            resource: bucketName,
+          });
+          if (!decision.proceed) {
+            sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+            return true;
+          }
+        }
         await svc.deleteBucket(caller, bucketName);
+        auditSt('storage.bucket.delete', bucketName);
         return finish(200, ok({ deleted: true }, requestId), { caller: caller.kind });
       }
       return finish(405, {
@@ -405,6 +473,7 @@ export async function handleStorageRoutes(
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
       const bucketName = decodeURIComponent(segs[1]);
+      await gateSt({ scope: 'storage.read', action: 'storage.objects.list', resource: bucketName });
       const prefix = query.get('prefix') ?? '';
       const limit = query.get('limit') ? Number(query.get('limit')) : 50;
       const offset = query.get('offset') ? Number(query.get('offset')) : 0;
@@ -422,6 +491,7 @@ export async function handleStorageRoutes(
     ) {
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.read', action: 'storage.sign.download' });
       const parsed = parseBody(SignBody, await readJson());
       const out = await svc.sign(
         caller,
@@ -444,6 +514,7 @@ export async function handleStorageRoutes(
     ) {
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.write', action: 'storage.sign.upload' });
       const parsed = parseBody(SignBody, await readJson());
       const out = await svc.sign(
         caller,
@@ -468,6 +539,7 @@ export async function handleStorageRoutes(
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
         if (last === 'metadata' && req.method === 'GET') {
+          await gateSt({ scope: 'storage.read', action: 'storage.object.metadata', resource: `${bucketName}/${objectPath}` });
           return finish(
             200,
             ok({ object: await svc.metadata(caller, bucketName, objectPath) }, requestId),
@@ -477,11 +549,13 @@ export async function handleStorageRoutes(
           );
         }
         if ((last === 'move' || last === 'copy') && req.method === 'POST') {
+          await gateSt({ scope: 'storage.write', action: `storage.object.${last}`, resource: `${bucketName}/${objectPath}` });
           const parsed = parseBody(DestBody, await readJson());
           const object =
             last === 'move'
               ? await svc.move(caller, bucketName, objectPath, parsed.dest)
               : await svc.copy(caller, bucketName, objectPath, parsed.dest);
+          auditSt(`storage.object.${last}`, `${bucketName}/${objectPath}`);
           return finish(200, ok({ object }, requestId), { caller: caller.kind });
         }
         return finish(405, {
@@ -490,6 +564,7 @@ export async function handleStorageRoutes(
       }
       const objectPath = decodePath(tail);
       if (req.method === 'GET') {
+        await gateSt({ scope: 'storage.read', action: 'storage.object.download', resource: `${bucketName}/${objectPath}` });
         const { stream, object } = await svc.download(caller, bucketName, objectPath);
         const chunks: Uint8Array[] = [];
         for await (const chunk of stream as AsyncIterable<Uint8Array>) chunks.push(chunk);
@@ -517,6 +592,7 @@ export async function handleStorageRoutes(
       if (req.method === 'PUT') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+        await gateSt({ scope: 'storage.write', action: 'storage.object.upload', resource: `${bucketName}/${objectPath}` });
         const maxBytes = config.STORAGE_MAX_FILE_MB * 1024 * 1024;
         const { bytes, sample } = await readRaw(req, maxBytes);
         const upsert = query.get('upsert') === 'true';
@@ -531,12 +607,15 @@ export async function handleStorageRoutes(
           sample,
           upsert,
         });
+        auditSt('storage.object.upload', `${bucketName}/${objectPath}`);
         return finish(201, ok({ object: record }, requestId), { caller: caller.kind });
       }
       if (req.method === 'DELETE') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+        await gateSt({ scope: 'storage.delete', action: 'storage.object.delete', resource: `${bucketName}/${objectPath}` });
         await svc.remove(caller, bucketName, objectPath);
+        auditSt('storage.object.delete', `${bucketName}/${objectPath}`);
         return finish(200, ok({ deleted: true }, requestId), { caller: caller.kind });
       }
       return finish(405, {

@@ -9,6 +9,7 @@
 
 export interface ClientOptions {
   baseUrl: string;
+  /** Session JWT or `cn_agent_…` agent token (same Bearer header). */
   token?: string;
   apikey?: string;
   fetchImpl?: typeof fetch;
@@ -48,9 +49,10 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extraHeaders };
   if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
   if (opts.apikey) headers['apikey'] = opts.apikey;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -79,6 +81,34 @@ async function request<T>(
   return (json.data ?? {}) as T;
 }
 
+export interface AgentTokenView {
+  id: string;
+  organizationId: string | null;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  projectIds: string[];
+  approvalRequired: boolean;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  requestCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface ApprovalView {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  tokenId: string;
+  action: string;
+  method: string;
+  path: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export class CloudNivoClient {
   constructor(private readonly opts: ClientOptions) {}
 
@@ -92,6 +122,22 @@ export class CloudNivoClient {
     projectId: string,
   ): Promise<{ functions: { slug: string; status: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/functions`);
+  }
+
+  async deployFunction(
+    projectId: string,
+    slug: string,
+    source: string,
+    approvalId?: string,
+  ): Promise<{ function: { slug: string }; job: { id: string } }> {
+    const out = await request<{ function: { slug: string }; job: { id: string } }>(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/functions/${slug}/deploy`,
+      { source },
+      approvalId ? { 'X-Approval-Id': approvalId } : undefined,
+    );
+    return out;
   }
 
   async invokeFunction(
@@ -165,5 +211,78 @@ export class CloudNivoClient {
       usage: { requests: number; plansApplied: number; plansFailed: number };
     }>(this.opts, 'GET', `/api/v1/projects/${projectId}/ai/usage`);
     return out.usage;
+  }
+
+  // ── Agent access (works with session JWTs for management; agent tokens
+  // authenticate with the same Bearer header for self-service calls) ──
+  async agentWhoami(): Promise<{ token: AgentTokenView; scopes: string[] }> {
+    return request(this.opts, 'GET', '/api/v1/agent/whoami');
+  }
+
+  async listAgentTokens(organizationId: string): Promise<{ tokens: AgentTokenView[] }> {
+    return request(this.opts, 'GET', `/api/v1/organizations/${organizationId}/agent-tokens`);
+  }
+
+  async createAgentToken(
+    organizationId: string,
+    input: {
+      name: string;
+      scopes: string[];
+      projectIds?: string[];
+      approvalRequired?: boolean;
+      expiresIn?: string;
+    },
+  ): Promise<{ token: AgentTokenView; raw: string }> {
+    return request(this.opts, 'POST', `/api/v1/organizations/${organizationId}/agent-tokens`, input);
+  }
+
+  async revokeAgentToken(organizationId: string, tokenId: string): Promise<{ token: AgentTokenView }> {
+    return request(this.opts, 'DELETE', `/api/v1/organizations/${organizationId}/agent-tokens/${tokenId}`);
+  }
+
+  async listApprovals(
+    organizationId: string,
+    status?: string,
+  ): Promise<{ approvals: ApprovalView[] }> {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request(this.opts, 'GET', `/api/v1/organizations/${organizationId}/approvals${q}`);
+  }
+
+  async decideApproval(
+    organizationId: string,
+    approvalId: string,
+    decision: 'approve' | 'reject',
+  ): Promise<{ approval: ApprovalView }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/organizations/${organizationId}/approvals/${approvalId}/${decision}`,
+      {},
+    );
+  }
+
+  async agentApprovals(status?: string): Promise<{ approvals: ApprovalView[] }> {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request(this.opts, 'GET', `/api/v1/agent/approvals${q}`);
+  }
+
+  async deleteProject(projectId: string, approvalId?: string): Promise<{ deleted: boolean }> {
+    return request<{ deleted: boolean }>(
+      this.opts,
+      'DELETE',
+      `/api/v1/projects/${projectId}`,
+      undefined,
+      approvalId ? { 'X-Approval-Id': approvalId } : undefined,
+    );
+  }
+
+  /** Create a project (agents need the projects.create scope). */
+  async createProject(input: {
+    name: string;
+    slug: string;
+    organizationId: string;
+    region?: string;
+  }): Promise<{ project: { id: string }; jobId: string }> {
+    return request(this.opts, 'POST', '/api/v1/projects', input);
   }
 }

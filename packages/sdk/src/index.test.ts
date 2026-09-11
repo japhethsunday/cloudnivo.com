@@ -45,4 +45,38 @@ describe('sdk client', () => {
     await expect(client.listProjects()).rejects.toMatchObject({ code: 'UNREACHABLE' });
     vi.unstubAllGlobals();
   });
+
+  it('drives the agent surface with bearer auth and approval headers', async () => {
+    const seen: { url: string; auth: string | null; approval: string | null }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        const headers = new Headers(init.headers);
+        seen.push({
+          url: String(url),
+          auth: headers.get('authorization'),
+          approval: headers.get('x-approval-id'),
+        });
+        const body = url.includes('/agent/whoami')
+          ? { data: { token: { name: 'ci' }, scopes: ['projects.read'] } }
+          : url.includes('/deploy')
+            ? { data: { function: { slug: 'f' }, job: { id: 'j1' } } }
+            : { data: {} };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    const client = new CloudNivoClient({ baseUrl: 'http://x:3001', token: 'cn_agent_test' });
+    const who = await client.agentWhoami();
+    expect(who.token.name).toBe('ci');
+    expect(seen[0]?.auth).toBe('Bearer cn_agent_test');
+    const dep = await client.deployFunction('p', 'f', 'src', 'apr_1');
+    expect(dep.job.id).toBe('j1');
+    expect(seen[1]?.approval).toBe('apr_1');
+    const projects = await client.listProjects();
+    expect(projects).toEqual({});
+    vi.unstubAllGlobals();
+  });
 });

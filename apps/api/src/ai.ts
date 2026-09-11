@@ -18,9 +18,19 @@ import {
   type ToolAdapters,
 } from '@cloudnivo/ai';
 import type { Logger } from '@cloudnivo/logging';
+import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import {
+  agentFromRequest,
+  agentServiceFor,
+  auditAgent,
+  gateDestructive,
+  requireAgentScope,
+  sendApprovalRequired,
+  verifyAgentAccess,
+} from './agents.js';
 import { storageFor } from './storage.js';
 import { functionsFor } from './functions.js';
 import { ensureProjectFeed, realtimeFor } from './realtime.js';
@@ -77,7 +87,19 @@ async function requireMember(
   ctx: ApiContext,
   req: IncomingMessage,
   projectId: string,
-): Promise<{ userId: string; email: string; role: string; organizationId: string }> {
+): Promise<{ userId: string; email: string; role: string; organizationId: string; agent?: AgentToken }> {
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    const project = await ctx.registry.getProject(projectId);
+    if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+    const agent = await verifyAgentAccess(ctx, req, maybeAgent, {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      action: 'ai.access',
+    });
+    await mustOwnProject(ctx.registry, agent.userId, projectId);
+    return { userId: agent.userId, email: '', role: 'agent', organizationId: project.organizationId, agent };
+  }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
   const session = await verifySession(token, {
@@ -366,9 +388,37 @@ export async function handleAiRoutes(
   };
   try {
     const member = await requireMember(ctx, req, projectId);
-    const level = levelForRole(member.role);
+    // Agents resolve builder permission from scopes (never from member roles).
+    const agent = member.agent ?? null;
+    const level = agent
+      ? agentServiceFor(ctx).hasScope(agent, 'database.migrate')
+        ? 'ADMIN'
+        : 'APPROVAL_REQUIRED'
+      : levelForRole(member.role);
     const state = aiFor(ctx);
     const [head, ...extra] = tail;
+
+    async function gateAi(opts: { scope: string; action: string }): Promise<void> {
+      if (!agent) return;
+      await requireAgentScope(ctx, req, agent, {
+        scope: opts.scope,
+        organizationId: member.organizationId,
+        projectId,
+        action: opts.action,
+      });
+    }
+
+    function auditAi(action: string): void {
+      if (!agent) return;
+      auditAgent(ctx, req, {
+        token: agent,
+        userId: agent.userId,
+        organizationId: member.organizationId,
+        projectId,
+        action,
+        result: 'success',
+      });
+    }
 
     if (head === undefined) {
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
@@ -376,8 +426,11 @@ export async function handleAiRoutes(
 
     // POST /ai/plan — generate (never executes).
     if (head === 'plan' && extra.length === 0 && req.method === 'POST') {
-      if (level === 'READ_ONLY')
+      if (agent) {
+        await gateAi({ scope: 'projects.read', action: 'ai.plan' });
+      } else if (level === 'READ_ONLY') {
         throw new ApiError('FORBIDDEN', 'Planning requires a project role', 403);
+      }
       await aiLimit(ctx, req, `plan:${member.userId}:${projectId}`);
       const parsed = parseBody(PlanBody, await readJson());
       if (parsed.prompt.length > ctx.config.AI_MAX_PROMPT_CHARS) {
@@ -407,15 +460,18 @@ export async function handleAiRoutes(
 
     // GET /ai/plans — list.
     if (head === 'plans' && extra.length === 0 && req.method === 'GET') {
+      await gateAi({ scope: 'projects.read', action: 'ai.plans.list' });
       const plans = state.builder.listPlans(projectId);
       return finish(200, ok({ plans: plans.map(exposePlan) }, requestId));
     }
 
     // GET /ai/usage, GET /ai/history.
     if (head === 'usage' && extra.length === 0 && req.method === 'GET') {
+      await gateAi({ scope: 'projects.read', action: 'ai.usage' });
       return finish(200, ok({ usage: state.builder.getUsage(projectId) }, requestId));
     }
     if (head === 'history' && extra.length === 0 && req.method === 'GET') {
+      await gateAi({ scope: 'projects.read', action: 'ai.history' });
       return finish(
         200,
         ok({ history: state.builder.getHistory(projectId) }, requestId),
@@ -424,6 +480,7 @@ export async function handleAiRoutes(
 
     // GET /ai/plans/:id — detail with preview + migration SQL.
     if (head === 'plans' && extra.length === 1 && extra[0] && req.method === 'GET') {
+      await gateAi({ scope: 'projects.read', action: 'ai.plan.get' });
       const stored = state.builder.getPlan(projectId, extra[0]);
       return finish(200, ok({ plan: exposePlanDetail(stored) }, requestId));
     }
@@ -436,7 +493,11 @@ export async function handleAiRoutes(
       extra[1] === 'approve' &&
       req.method === 'POST'
     ) {
-      requireAdmin(member.role);
+      if (agent) {
+        await gateAi({ scope: 'projects.update', action: 'ai.plan.approve' });
+      } else {
+        requireAdmin(member.role);
+      }
       const parsed = ApproveBody.parse((await readJson()) ?? {});
       const stored = state.builder.approvePlan(
         projectId,
@@ -467,6 +528,7 @@ export async function handleAiRoutes(
         organizationId: member.organizationId,
         userId: member.userId,
       });
+      auditAi('ai.plan.approved');
       return finish(200, ok({ plan: exposePlan(stored) }, requestId));
     }
     if (
@@ -476,7 +538,11 @@ export async function handleAiRoutes(
       extra[1] === 'reject' &&
       req.method === 'POST'
     ) {
-      requireAdmin(member.role);
+      if (agent) {
+        await gateAi({ scope: 'projects.update', action: 'ai.plan.reject' });
+      } else {
+        requireAdmin(member.role);
+      }
       const stored = state.builder.rejectPlan(projectId, extra[0]);
       state.builder.recordAudit({
         projectId,
@@ -492,6 +558,7 @@ export async function handleAiRoutes(
         organizationId: member.organizationId,
         userId: member.userId,
       });
+      auditAi('ai.plan.rejected');
       return finish(200, ok({ plan: exposePlan(stored) }, requestId));
     }
 
@@ -503,8 +570,35 @@ export async function handleAiRoutes(
       extra[1] === 'apply' &&
       req.method === 'POST'
     ) {
-      requireAdmin(member.role);
       const stored = state.builder.getPlan(projectId, extra[0]);
+      if (agent) {
+        // Applying executes migrations: approval-capable, plus a destructive
+        // gate when the plan itself is destructive. Exactly one gate runs per
+        // request (first missing scope) so a single approval covers the call.
+        const svc = agentServiceFor(ctx);
+        const needed = ['database.migrate'];
+        if (stored.validation.destructive.length > 0) needed.push('database.destructive');
+        const missing = needed.find(s => !svc.hasScope(agent, s));
+        if (missing) {
+          const decision = await gateDestructive(ctx, req, {
+            agent,
+            scope: missing,
+            action: 'ai.plan.apply',
+            organizationId: member.organizationId,
+            projectId,
+            method: 'POST',
+            path: `/api/v1/projects/${projectId}/ai/plans/${stored.id}/apply`,
+            body: {},
+            resource: stored.id,
+          });
+          if (!decision.proceed) {
+            sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+            return true;
+          }
+        }
+      } else {
+        requireAdmin(member.role);
+      }
       if (stored.status !== 'approved') {
         throw new ApiError('CONFLICT', 'Only approved plans can be applied', 409);
       }
@@ -528,6 +622,7 @@ export async function handleAiRoutes(
           userId: member.userId,
         },
       );
+      auditAi(outcome.ok ? 'ai.plan.applied' : 'ai.plan.failed');
       return finish(
         outcome.ok ? 200 : 500,
         ok(

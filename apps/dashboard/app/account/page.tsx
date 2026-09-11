@@ -15,6 +15,7 @@ interface ProjectKey { id: string }
 const SECTIONS = [
   { id: 'profile', label: 'Profile' },
   { id: 'security', label: 'Security' },
+  { id: 'agents', label: 'Agent access' },
   { id: 'api-access', label: 'API access' },
   { id: 'organizations', label: 'Organizations' },
 ];
@@ -104,6 +105,19 @@ function AccountBody(): React.JSX.Element {
             />
           ) : null}
           {active === 'security' ? <SecuritySection expiry={expiry} /> : null}
+          {active === 'agents' ? (
+            <div className="card">
+              <h2 style={{ marginTop: 0 }}>Agent access</h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Dedicated <code>cn_agent_…</code> credentials for AI coding agents — scoped to
+                organizations and projects, with expiry, instant revocation, and an optional
+                approval gate for destructive operations.
+              </p>
+              <Link className="btn btn-primary" href="/agents">
+                Open Agent access →
+              </Link>
+            </div>
+          ) : null}
           {active === 'api-access' ? <ApiAccessSection keyCounts={keyCounts} /> : null}
           {active === 'organizations' ? (
             <div className="card">

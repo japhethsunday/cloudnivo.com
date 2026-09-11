@@ -54,6 +54,7 @@ import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 import { handleAiRoutes, isAiRoute } from './ai.js';
 import { handleBillingRoutes, isBillingRoute } from './billing.js';
+import { agentSessionFor, handleAgentRoutes, isAgentRoute, looksLikeAgentToken } from './agents.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
 
 /**
@@ -315,6 +316,12 @@ export async function handleRequest(
       if (handled) return;
     }
 
+    // Agent access tokens (management by org owners/admins; agent self-service).
+    if (isAgentRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handleAgentRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
     // Phase 2: project + database provisioning routes (tenant-enforced).
     if (url.pathname === '/api/v1/organizations') {
       const session = await requireSession(req, ctx);
@@ -428,7 +435,13 @@ export async function handleRequest(
         );
         if (handled) return;
       }
-      const session = await requireSession(req, ctx);
+      const rawBearer = bearerFromHeader(req.headers.authorization);
+      // Agent tokens authenticate as their owner's membership with an
+      // attached agent record; planes enforce scopes from there.
+      const session =
+        rawBearer && looksLikeAgentToken(rawBearer)
+          ? await agentSessionFor(ctx, req, rawBearer)
+          : await requireSession(req, ctx);
       const body = await readJson(req);
       const handled = await handleProjectRoutes(
         req,

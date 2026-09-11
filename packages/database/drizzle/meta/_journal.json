@@ -43,6 +43,13 @@
       "when": 1789052238602,
       "tag": "0005_tired_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789100524660,
+      "tag": "0006_jittery_stryfe",
+      "breakpoints": true
     }
   ]
 }

@@ -13,8 +13,10 @@ import {
   type BillingProvider,
 } from '@cloudnivo/billing';
 import type { Logger } from '@cloudnivo/logging';
+import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
 
 /**
  * Billing + usage metering HTTP wiring (Phase 12).
@@ -65,17 +67,42 @@ function toBillingError(err: unknown, requestId: string): { status: number; body
 async function requireOrgMember(
   ctx: ApiContext,
   req: IncomingMessage,
-): Promise<{ userId: string; email: string; organizationId: string; role: string }> {
+): Promise<{ userId: string; email: string; organizationId: string; role: string; agent?: AgentToken }> {
+  const maybeAgent = await agentFromRequest(ctx, req);
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const m = /^\/api\/v1\/organizations\/([^/]+)\/billing\//.exec(url.pathname);
+  const organizationId = m?.[1] ?? '';
+  if (!organizationId) throw new ApiError('NOT_FOUND', 'Not found', 404);
+  if (maybeAgent) {
+    const agent = await verifyAgentAccess(ctx, req, maybeAgent, {
+      organizationId,
+      action: 'billing.access',
+    });
+    const memberships = await ctx.registry.membershipsFor(agent.userId);
+    if (!memberships.some(x => x.organizationId === organizationId)) {
+      await agentServiceFor(ctx)
+        .log({
+          tokenId: agent.id,
+          userId: agent.userId,
+          organizationId,
+          projectId: null,
+          action: 'billing.access',
+          resource: '',
+          result: 'denied',
+          reason: 'TENANT_FORBIDDEN: no membership',
+          ip: null,
+        })
+        .catch(() => undefined);
+      throw new ApiError('TENANT_FORBIDDEN', 'Access denied', 403);
+    }
+    return { userId: agent.userId, email: '', organizationId, role: 'agent', agent };
+  }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
   const session = await verifySession(token, {
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
   });
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  const m = /^\/api\/v1\/organizations\/([^/]+)\/billing\//.exec(url.pathname);
-  const organizationId = m?.[1] ?? '';
-  if (!organizationId) throw new ApiError('NOT_FOUND', 'Not found', 404);
   const memberships = await ctx.registry.membershipsFor(session.sub);
   const mine = memberships.find(x => x.organizationId === organizationId);
   if (!mine) throw new ApiError('TENANT_FORBIDDEN', 'Access denied', 403);
@@ -245,6 +272,32 @@ export async function handleBillingRoutes(
     const member = await requireOrgMember(ctx, req);
     await billingLimit(ctx, req, `org:${member.organizationId}`);
 
+    /** Agent billing gate: reads need billing.read; mutations are human-only. */
+    async function gateBill(opts: { scope?: string; deny?: string; action: string }): Promise<void> {
+      if (!member.agent) return;
+      if (opts.deny) {
+        await agentServiceFor(ctx)
+          .log({
+            tokenId: member.agent.id,
+            userId: member.agent.userId,
+            organizationId: member.organizationId,
+            projectId: null,
+            action: opts.action,
+            resource: '',
+            result: 'denied',
+            reason: `FORBIDDEN: ${opts.deny}`,
+            ip: null,
+          })
+          .catch(() => undefined);
+        throw new ApiError('FORBIDDEN', opts.deny, 403);
+      }
+      await requireAgentScope(ctx, req, member.agent, {
+        scope: opts.scope ?? 'billing.read',
+        organizationId: member.organizationId,
+        action: opts.action,
+      });
+    }
+
     // Gauge reader for downgrade protection: live member/project counts.
     const gaugeReader = async (metric: string): Promise<number> => {
       if (metric === 'team_members') {
@@ -258,6 +311,7 @@ export async function handleBillingRoutes(
     };
 
     if (tail === 'plan' && method === 'GET') {
+      await gateBill({ action: 'billing.plan' });
       const subscription = await ctx.billing.getSubscription(member.organizationId);
       const effective = await ctx.billing.effectiveLimits(member.organizationId);
       const plan = getPlan(effective.planId);
@@ -282,15 +336,18 @@ export async function handleBillingRoutes(
     }
 
     if (tail === 'plans' && method === 'GET') {
+      await gateBill({ action: 'billing.plans' });
       return finish(200, ok({ plans: listPlans() }, requestId));
     }
 
     if (tail === 'subscription' && method === 'GET') {
+      await gateBill({ action: 'billing.subscription' });
       const subscription = await ctx.billing.getSubscription(member.organizationId);
       return finish(200, ok({ subscription }, requestId));
     }
 
     if (tail === 'subscription' && method === 'POST') {
+      await gateBill({ deny: 'Agents cannot change billing plans', action: 'billing.subscription.change' });
       requireOwnerOrAdmin(member.role);
       const parsed = parseBody(SubscriptionChangeBody, await readJsonBody(req));
       const provider = billingProviderFor(ctx);
@@ -342,6 +399,7 @@ export async function handleBillingRoutes(
     }
 
     if (tail === 'usage' && method === 'GET') {
+      await gateBill({ scope: 'usage.read', action: 'billing.usage' });
       const periodParam = url.searchParams.get('period');
       const period = periodParam ?? periodOf(new Date());
       periodBounds(period);
@@ -385,11 +443,13 @@ export async function handleBillingRoutes(
     }
 
     if (tail === 'invoices' && method === 'GET') {
+      await gateBill({ action: 'billing.invoices' });
       const invoices = await ctx.billing.listInvoices(member.organizationId);
       return finish(200, ok({ invoices }, requestId));
     }
 
     if (tail === 'invoices' && method === 'POST') {
+      await gateBill({ deny: 'Agents cannot generate invoices', action: 'billing.invoice.generate' });
       requireOwnerOrAdmin(member.role);
       const parsed = parseBody(InvoiceGenerateBody, (await readJsonBody(req)) ?? {});
       const invoice = await ctx.billing.generateInvoice(member.organizationId, parsed.period);
@@ -406,11 +466,13 @@ export async function handleBillingRoutes(
     }
 
     if (tail === 'payments' && method === 'GET') {
+      await gateBill({ action: 'billing.payments' });
       const payments = await ctx.billing.listPayments(member.organizationId);
       return finish(200, ok({ payments }, requestId));
     }
 
     if (tail === 'portal' && method === 'POST') {
+      await gateBill({ deny: 'Agents cannot open billing portals', action: 'billing.portal' });
       requireOwnerOrAdmin(member.role);
       const provider = billingProviderFor(ctx);
       const portal = await provider.createPortalSession(member.organizationId);

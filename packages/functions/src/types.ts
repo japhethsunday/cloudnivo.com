@@ -126,6 +126,8 @@ export interface FunctionAuthContext {
   role: string;
   projectId: string;
   callerKind: 'session' | 'key' | 'customer' | 'public';
+  /** Present for agent-token callers (identity refs for audit trails). */
+  agent?: { id: string; userId: string };
 }
 
 export interface FunctionHttpRequest {

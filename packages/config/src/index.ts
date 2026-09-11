@@ -174,6 +174,11 @@ const EnvSchema = z.object({
   BILLING_DEFAULT_PLAN: z.enum(['free', 'pro', 'business', 'enterprise']).default('free'),
   BILLING_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(60),
   BILLING_RAW_RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(90),
+
+  // ── Agent access tokens (Phase 13) ──
+  // Per-token request budget per rate-limit window (abuse protection).
+  AGENT_RATE_MAX: z.coerce.number().int().min(1).max(10_000).default(300),
+  AGENT_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(180),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

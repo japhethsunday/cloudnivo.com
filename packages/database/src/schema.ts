@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -676,10 +677,103 @@ export const billingCredits = pgTable(
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    amountCents: integer('amount_cents').notNull(),
+    amountCents: integer('amount_cents').notNull().default(0),
     reason: varchar('reason', { length: 200 }).notNull().default(''),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   t => [index('billing_credits_org_idx').on(t.organizationId)],
+);
+
+/**
+ * Phase 13 — agent access tokens.
+ *
+ * Dedicated credentials for AI/developer agents (Claude Code, OpenCode…),
+ * deliberately separate from project API keys: organization- or
+ * project-scoped, granular scopes, expiry, instant revocation, and an
+ * optional approval gate for destructive operations. Only sha256 hashes are
+ * stored — raw tokens are shown once at creation and never logged.
+ */
+export const agentTokens = pgTable(
+  'agent_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'cascade',
+    }),
+    name: varchar('name', { length: 100 }).notNull(),
+    prefix: varchar('prefix', { length: 20 }).notNull(),
+    keyHash: text('key_hash').notNull().unique(),
+    scopes: text('scopes').array().notNull().default([]),
+    projectIds: text('project_ids').array().notNull().default([]),
+    approvalRequired: boolean('approval_required').notNull().default(false),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    requestCount: integer('request_count').notNull().default(0),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('agent_tokens_user_idx').on(t.userId),
+    index('agent_tokens_org_idx').on(t.organizationId),
+  ],
+);
+
+export const agentApprovals = pgTable(
+  'agent_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }),
+    tokenId: uuid('token_id')
+      .notNull()
+      .references(() => agentTokens.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    action: varchar('action', { length: 80 }).notNull(),
+    method: varchar('method', { length: 10 }).notNull(),
+    path: varchar('path', { length: 500 }).notNull(),
+    bodyHash: varchar('body_hash', { length: 64 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('agent_approvals_org_idx').on(t.organizationId),
+    index('agent_approvals_token_idx').on(t.tokenId),
+    index('agent_approvals_status_idx').on(t.status),
+  ],
+);
+
+export const agentActivity = pgTable(
+  'agent_activity',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenId: uuid('token_id').references(() => agentTokens.id, { onDelete: 'set null' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
+    projectId: varchar('project_id', { length: 64 }),
+    action: varchar('action', { length: 80 }).notNull(),
+    resource: varchar('resource', { length: 300 }).notNull().default(''),
+    result: varchar('result', { length: 20 }).notNull(),
+    reason: varchar('reason', { length: 300 }).notNull().default(''),
+    ip: varchar('ip', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('agent_activity_token_idx').on(t.tokenId),
+    index('agent_activity_org_idx').on(t.organizationId),
+    index('agent_activity_created_idx').on(t.createdAt),
+  ],
 );

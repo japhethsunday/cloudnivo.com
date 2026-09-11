@@ -15,9 +15,19 @@ import {
   type SdkHooks,
 } from '@cloudnivo/functions';
 import type { Logger } from '@cloudnivo/logging';
+import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import {
+  agentFromRequest,
+  agentServiceFor,
+  auditAgent,
+  gateDestructive,
+  requireAgent,
+  sendApprovalRequired,
+  verifyAgentAccess,
+} from './agents.js';
 import { verifyCustomerCaller } from './customer-auth.js';
 import { storageFor } from './storage.js';
 import { realtimeFor } from './realtime.js';
@@ -89,7 +99,20 @@ async function requireMember(
   ctx: ApiContext,
   req: IncomingMessage,
   projectId: string,
-): Promise<{ userId: string; email: string; role: string; organizationId: string }> {
+): Promise<{ userId: string; email: string; role: string; organizationId: string; agent?: AgentToken }> {
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    const project = await ctx.registry.getProject(projectId);
+    if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+    const agent = await verifyAgentAccess(ctx, req, maybeAgent, {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      action: 'functions.access',
+    });
+    // Owner-membership still required (a removed owner loses everything).
+    await mustOwnProject(ctx.registry, agent.userId, projectId);
+    return { userId: agent.userId, email: '', role: 'agent', organizationId: project.organizationId, agent };
+  }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
   const session = await verifySession(token, {
@@ -110,6 +133,44 @@ function requireManager(role: string): void {
   if (role !== 'owner' && role !== 'admin') {
     throw new ApiError('FORBIDDEN', 'Function management requires admin', 403);
   }
+}
+
+/** Agent scope gate for one management operation (no-op for human members). */
+async function gateFn(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  member: { userId: string; role: string; organizationId: string; agent?: AgentToken },
+  projectId: string,
+  opts: { scope: string; action: string; resource?: string },
+): Promise<void> {
+  if (!member.agent) return;
+  await requireAgent(ctx, req, member.agent, {
+    scope: opts.scope,
+    organizationId: member.organizationId,
+    projectId,
+    action: opts.action,
+    resource: opts.resource,
+  });
+}
+
+function auditFn(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  member: { userId: string; organizationId: string; agent?: AgentToken },
+  projectId: string,
+  action: string,
+  resource?: string,
+): void {
+  if (!member.agent) return;
+  auditAgent(ctx, req, {
+    token: member.agent,
+    userId: member.agent.userId,
+    organizationId: member.organizationId,
+    projectId,
+    action,
+    resource,
+    result: 'success',
+  });
 }
 
 /** Invoke-grade caller: session member, privileged project key, or customer. */
@@ -138,6 +199,26 @@ async function resolveInvokeAuth(
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing credentials', 401);
+  // Agent tokens invoke with the deploy capability (executing code is a
+  // privileged operation, like service keys — never viewers or customers).
+  const maybeAgent = await agentFromRequest(ctx, req);
+  if (maybeAgent) {
+    const agent = await requireAgent(ctx, req, maybeAgent, {
+      scope: 'functions.deploy',
+      organizationId: project.organizationId,
+      projectId: project.id,
+      action: 'function.invoke',
+    });
+    await mustOwnProject(ctx.registry, agent.userId, projectId);
+    return {
+      userId: agent.userId,
+      email: null,
+      role: 'agent',
+      projectId,
+      callerKind: 'key',
+      agent: { id: agent.id, userId: agent.userId },
+    };
+  }
   const asCustomer = await decodeCustomerToken(token, {
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
@@ -414,6 +495,23 @@ export async function handleFunctionRoutes(
         sdkHooks: await sdkHooksFor(ctx, projectId, auth),
       });
       ctx.audit.record('function.invoked', { projectId, userId: auth.userId ?? undefined });
+      if (auth.agent) {
+        const invokedProject = await ctx.registry.getProject(projectId).catch(() => null);
+        const svc = agentServiceFor(ctx);
+        void svc
+          .log({
+            tokenId: auth.agent.id,
+            userId: auth.agent.userId,
+            organizationId: invokedProject?.organizationId ?? null,
+            projectId,
+            action: 'function.invoke',
+            resource: head,
+            result: 'success',
+            reason: '',
+            ip: null,
+          })
+          .catch(() => undefined);
+      }
       return finish(
         outcome.result.status,
         ok(
@@ -434,14 +532,26 @@ export async function handleFunctionRoutes(
 
     if (head === undefined) {
       if (req.method === 'GET') {
+        await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'functions.list' });
         return finish(
           200,
           ok({ functions: await state.service.listFunctions(projectId) }, requestId),
         );
       }
       if (req.method === 'POST') {
-        requireManager(member.role);
-        const parsed = CreateBody.parse((await readBody()) ?? {});
+        const rawCreate = await readBody();
+        if (member.agent) {
+          await gateFn(ctx, req, member, projectId, {
+            scope: 'functions.update',
+            action: 'function.create',
+            resource: typeof rawCreate === 'object' && rawCreate !== null
+              ? String((rawCreate as Record<string, unknown>)['name'] ?? '')
+              : undefined,
+          });
+        } else {
+          requireManager(member.role);
+        }
+        const parsed = CreateBody.parse(rawCreate ?? {});
         const fn = await state.service.createFunction({
           projectId,
           organizationId: project.organizationId,
@@ -453,6 +563,7 @@ export async function handleFunctionRoutes(
           entrypoint: parsed.entrypoint,
         });
         ctx.audit.record('function.created', { projectId, userId: member.userId });
+        auditFn(ctx, req, member, projectId, 'function.create', fn.slug);
         return finish(201, ok({ function: fn }, requestId));
       }
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
@@ -461,26 +572,56 @@ export async function handleFunctionRoutes(
     const slug = head;
     if (extra.length === 0) {
       if (req.method === 'GET') {
+        await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'function.get', resource: slug });
         return finish(
           200,
           ok({ function: await state.service.getFunction(projectId, slug) }, requestId),
         );
       }
       if (req.method === 'PATCH') {
-        requireManager(member.role);
-        const parsed = UpdateBody.parse((await readBody()) ?? {});
+        const rawUpdate = await readBody();
+        if (member.agent) {
+          await gateFn(ctx, req, member, projectId, {
+            scope: 'functions.update',
+            action: 'function.update',
+            resource: slug,
+          });
+        } else {
+          requireManager(member.role);
+        }
+        const parsed = UpdateBody.parse(rawUpdate ?? {});
         const fn = await state.service.updateFunction(projectId, slug, {
           name: parsed.name,
           description: parsed.description,
           runtime: parsed.runtime,
           entrypoint: parsed.entrypoint,
         });
+        auditFn(ctx, req, member, projectId, 'function.update', slug);
         return finish(200, ok({ function: fn }, requestId));
       }
       if (req.method === 'DELETE') {
-        requireManager(member.role);
+        if (member.agent) {
+          const decision = await gateDestructive(ctx, req, {
+            agent: member.agent,
+            scope: 'functions.delete',
+            action: 'function.delete',
+            organizationId: member.organizationId,
+            projectId,
+            method: 'DELETE',
+            path: `/api/v1/projects/${projectId}/functions/${slug}`,
+            body: undefined,
+            resource: slug,
+          });
+          if (!decision.proceed) {
+            sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+            return true;
+          }
+        } else {
+          requireManager(member.role);
+        }
         await state.service.deleteFunction(projectId, slug);
         ctx.audit.record('function.deleted', { projectId, userId: member.userId });
+        auditFn(ctx, req, member, projectId, 'function.delete', slug);
         res.writeHead(204, baseHeaders);
         res.end();
         return true;
@@ -490,8 +631,27 @@ export async function handleFunctionRoutes(
 
     const [action, ...rest2] = extra;
     if (action === 'deploy' && req.method === 'POST' && rest2.length === 0) {
-      requireManager(member.role);
-      const parsed = DeployBody.parse((await readBody()) ?? {});
+      const rawDeploy = await readBody();
+      if (member.agent) {
+        const decision = await gateDestructive(ctx, req, {
+          agent: member.agent,
+          scope: 'functions.deploy',
+          action: 'function.deploy',
+          organizationId: member.organizationId,
+          projectId,
+          method: 'POST',
+          path: `/api/v1/projects/${projectId}/functions/${slug}/deploy`,
+          body: rawDeploy ?? {},
+          resource: slug,
+        });
+        if (!decision.proceed) {
+          sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+          return true;
+        }
+      } else {
+        requireManager(member.role);
+      }
+      const parsed = DeployBody.parse(rawDeploy ?? {});
       const { job, fn } = await state.service.deployFunction({
         projectId,
         organizationId: project.organizationId,
@@ -503,10 +663,29 @@ export async function handleFunctionRoutes(
         idempotencyKey: parsed.idempotencyKey ?? null,
       });
       ctx.audit.record('function.deploy_started', { projectId, userId: member.userId });
+      auditFn(ctx, req, member, projectId, 'function.deploy', slug);
       return finish(202, ok({ function: fn, job }, requestId));
     }
     if (action === 'redeploy' && req.method === 'POST' && rest2.length === 0) {
-      requireManager(member.role);
+      if (member.agent) {
+        const decision = await gateDestructive(ctx, req, {
+          agent: member.agent,
+          scope: 'functions.deploy',
+          action: 'function.deploy',
+          organizationId: member.organizationId,
+          projectId,
+          method: 'POST',
+          path: `/api/v1/projects/${projectId}/functions/${slug}/redeploy`,
+          body: {},
+          resource: slug,
+        });
+        if (!decision.proceed) {
+          sendApprovalRequired(res, baseHeaders, requestId, decision.approval);
+          return true;
+        }
+      } else {
+        requireManager(member.role);
+      }
       const { job, fn } = await state.service.redeployFunction({
         projectId,
         organizationId: project.organizationId,
@@ -514,9 +693,11 @@ export async function handleFunctionRoutes(
         idOrSlug: slug,
       });
       ctx.audit.record('function.deploy_started', { projectId, userId: member.userId });
+      auditFn(ctx, req, member, projectId, 'function.deploy', slug);
       return finish(202, ok({ function: fn, job }, requestId));
     }
     if (action === 'deployments' && req.method === 'GET') {
+      await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'functions.deployments', resource: slug });
       if (rest2.length === 0) {
         return finish(
           200,
@@ -535,9 +716,11 @@ export async function handleFunctionRoutes(
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
     }
     if (action === 'status' && req.method === 'GET' && rest2.length === 0) {
+      await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'function.status', resource: slug });
       return finish(200, ok(await state.service.getFunctionStatus(projectId, slug), requestId));
     }
     if (action === 'logs' && req.method === 'GET' && rest2.length === 0) {
+      await gateFn(ctx, req, member, projectId, { scope: 'logs.read', action: 'function.logs', resource: slug });
       const limit = url.searchParams.get('limit')
         ? Number(url.searchParams.get('limit'))
         : undefined;
@@ -551,6 +734,7 @@ export async function handleFunctionRoutes(
       );
     }
     if (action === 'versions' && req.method === 'GET' && rest2.length === 0) {
+      await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'function.versions', resource: slug });
       return finish(
         200,
         ok({ versions: await state.service.listVersions(projectId, slug) }, requestId),
@@ -562,22 +746,40 @@ export async function handleFunctionRoutes(
       rest2[1] === 'activate' &&
       req.method === 'POST'
     ) {
-      requireManager(member.role);
+      if (member.agent) {
+        await gateFn(ctx, req, member, projectId, {
+          scope: 'functions.update',
+          action: 'function.version.activate',
+          resource: slug,
+        });
+      } else {
+        requireManager(member.role);
+      }
       const version = Number(rest2[0]);
       if (!Number.isInteger(version) || version < 1)
         throw new ApiError('VALIDATION_ERROR', 'Bad version', 400);
-      const fn = await state.service.activateVersion(projectId, slug, version);
-      return finish(200, ok({ function: fn }, requestId));
+        const fn = await state.service.activateVersion(projectId, slug, version);
+        auditFn(ctx, req, member, projectId, 'function.version.activate', slug);
+        return finish(200, ok({ function: fn }, requestId));
     }
     if (action === 'env' && rest2.length === 0) {
       if (req.method === 'GET') {
+        await gateFn(ctx, req, member, projectId, { scope: 'environment.read', action: 'function.env.read', resource: slug });
         return finish(
           200,
           ok({ env: await state.service.listEnvVars(projectId, slug) }, requestId),
         );
       }
       if (req.method === 'PUT') {
-        requireManager(member.role);
+        if (member.agent) {
+          await gateFn(ctx, req, member, projectId, {
+            scope: 'environment.write',
+            action: 'function.env.write',
+            resource: slug,
+          });
+        } else {
+          requireManager(member.role);
+        }
         const parsed = EnvBody.parse((await readBody()) ?? {});
         const row = await state.service.setEnvVar({
           projectId,
@@ -587,18 +789,29 @@ export async function handleFunctionRoutes(
           value: parsed.value,
           secret: parsed.secret,
         });
+        auditFn(ctx, req, member, projectId, 'function.env.write', slug);
         return finish(200, ok({ env: row }, requestId));
       }
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
     }
     if (action === 'env' && rest2.length === 1 && rest2[0] && req.method === 'DELETE') {
-      requireManager(member.role);
+      if (member.agent) {
+        await gateFn(ctx, req, member, projectId, {
+          scope: 'environment.write',
+          action: 'function.env.delete',
+          resource: slug,
+        });
+      } else {
+        requireManager(member.role);
+      }
       await state.service.deleteEnvVar(projectId, slug, rest2[0]);
+      auditFn(ctx, req, member, projectId, 'function.env.delete', slug);
       res.writeHead(204, baseHeaders);
       res.end();
       return true;
     }
     if (action === 'metrics' && req.method === 'GET' && rest2.length === 0) {
+      await gateFn(ctx, req, member, projectId, { scope: 'functions.read', action: 'function.metrics', resource: slug });
       return finish(
         200,
         ok({ metrics: await state.service.getMetrics(projectId, slug) }, requestId),

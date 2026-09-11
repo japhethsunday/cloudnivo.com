@@ -151,6 +151,24 @@ export async function drainBillingOnce(
   }
 }
 
+/**
+ * Agent maintenance: expire stale pending approvals and prune old activity.
+ * Same fire-and-forget discipline as the billing drain.
+ */
+export async function drainAgentsOnce(
+  ctx: ApiContext,
+  organizationIds: string[] = [],
+): Promise<{ expired: number; pruned: number }> {
+  try {
+    const { agentServiceFor } = await import('./agents.js');
+    return await agentServiceFor(ctx).runMaintenance(organizationIds, {
+      activityRetentionDays: ctx.config.AGENT_ACTIVITY_RETENTION_DAYS,
+    });
+  } catch {
+    return { expired: 0, pruned: 0 };
+  }
+}
+
 export interface WorkerHandle {
   close: () => Promise<void>;
   port: number;
@@ -186,6 +204,13 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
           reconciled: billing.reconciled,
           pruned: billing.pruned,
           errors: billing.errors.length,
+        });
+      }
+      const agents = await drainAgentsOnce(ctx);
+      if (agents.expired + agents.pruned > 0) {
+        logger.info('worker.agents_drain', {
+          expired: agents.expired,
+          pruned: agents.pruned,
         });
       }
     } catch (err) {

@@ -68,6 +68,10 @@ export default defineConfig({
         replacement: resolve(rootDir, 'packages/billing/src/index.ts'),
       },
       {
+        find: '@cloudnivo/agents',
+        replacement: resolve(rootDir, 'packages/agents/src/index.ts'),
+      },
+      {
         find: '@cloudnivo/sdk',
         replacement: resolve(rootDir, 'packages/sdk/src/index.ts'),
       },
