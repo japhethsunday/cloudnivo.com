@@ -42,6 +42,85 @@ export function statusTone(status: string): 'ok' | 'warn' | 'bad' | 'muted' {
   return 'muted';
 }
 
+// ── Section header ──────────────────────────────────────
+
+export function SectionHead({
+  eyebrow,
+  title,
+  desc,
+  actions,
+  split = true,
+}: {
+  eyebrow?: string;
+  title: string;
+  desc?: string;
+  actions?: React.ReactNode;
+  split?: boolean;
+}): React.JSX.Element {
+  return (
+    <div className={`section-head${split && actions ? ' split' : ''}`}>
+      <div>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+        <h2>{title}</h2>
+        {desc ? <p>{desc}</p> : null}
+      </div>
+      {actions ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{actions}</div> : null}
+    </div>
+  );
+}
+
+// ── Breadcrumbs ─────────────────────────────────────────
+
+export function Breadcrumbs({ trail }: { trail: { label: string; href?: string }[] }): React.JSX.Element {
+  return (
+    <nav className="crumbs" aria-label="Breadcrumb">
+      {trail.map((t, i) => (
+        <span key={`${t.label}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {i > 0 ? (
+            <span aria-hidden style={{ color: 'var(--text-faint)' }}>
+              ›
+            </span>
+          ) : null}
+          {t.href && i < trail.length - 1 ? <a href={t.href}>{t.label}</a> : <span aria-current="page">{t.label}</span>}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+// ── Copy button + copy field ────────────────────────────
+
+export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="btn btn-sm"
+      aria-live="polite"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text).then(
+          () => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2000);
+          },
+          () => setCopied(false),
+        );
+      }}
+    >
+      {copied ? 'Copied ✓' : label}
+    </button>
+  );
+}
+
+export function CopyField({ text, label }: { text: string; label: string }): React.JSX.Element {
+  return (
+    <div className="copy-field">
+      <code aria-label={label}>{text}</code>
+      <CopyButton text={text} />
+    </div>
+  );
+}
+
 // ── Dropdown menu (outside-click + Escape handled) ─────────
 
 export function Menu({

@@ -42,6 +42,10 @@ export default function ProjectLogsPage({
   const [activeFn, setActiveFn] = useState('');
   const [entries, setEntries] = useState<LogEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobQuery, setJobQuery] = useState('');
+  const [jobStatus, setJobStatus] = useState('');
+  const [logQuery, setLogQuery] = useState('');
+  const [logLevel, setLogLevel] = useState('');
 
   const loadJobs = useCallback(async () => {
     const [j, f] = await Promise.all([
@@ -82,12 +86,77 @@ export default function ProjectLogsPage({
   if (error && !jobs) return <ErrorState message={error} />;
   if (!jobs) return <LoadingSkeleton label="Loading logs" />;
 
+  const q = jobQuery.trim().toLowerCase();
+  const shownJobs = jobs.filter(
+    j =>
+      (jobStatus === '' || j.status === jobStatus) &&
+      (q === '' ||
+        j.kind.toLowerCase().includes(q) ||
+        (j.lastError ?? '').toLowerCase().includes(q)),
+  );
+  const lq = logQuery.trim().toLowerCase();
+  const shownEntries = (entries ?? []).filter(
+    e =>
+      (logLevel === '' || e.level === logLevel) &&
+      (lq === '' || e.message.toLowerCase().includes(lq)),
+  );
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Logs</h2>
+        <p>Infrastructure jobs and function executions for this project — newest last reported.</p>
+      </div>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Infrastructure jobs</h2>
+        <div className="section-head split">
+          <div>
+            <h2 style={{ fontSize: 15 }}>Infrastructure jobs</h2>
+          </div>
+          <span className="muted" style={{ fontSize: 13 }} aria-live="polite">
+            {shownJobs.length} of {jobs.length}
+          </span>
+        </div>
+        <div className="toolbar" role="search">
+          <div className="search">
+            <span className="icon" aria-hidden>
+              ⌕
+            </span>
+            <input
+              type="search"
+              value={jobQuery}
+              onChange={e => setJobQuery(e.target.value)}
+              placeholder="Search kind or error…"
+              aria-label="Search jobs"
+            />
+          </div>
+          <select value={jobStatus} onChange={e => setJobStatus(e.target.value)} aria-label="Filter jobs by status">
+            <option value="">All statuses</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="pending">Pending</option>
+            <option value="running">Running</option>
+          </select>
+        </div>
         {jobs.length === 0 ? (
           <EmptyState title="No jobs yet" hint="Provisioning and lifecycle operations appear here." />
+        ) : shownJobs.length === 0 ? (
+          <EmptyState
+            title="No matching jobs"
+            hint="No jobs match this search. Clear the filters to see everything."
+            action={
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setJobQuery('');
+                  setJobStatus('');
+                }}
+              >
+                Clear filters
+              </button>
+            }
+          />
         ) : (
           <div className="table-wrap" style={{ border: 0 }}>
             <table className="table">
@@ -100,7 +169,7 @@ export default function ProjectLogsPage({
                 </tr>
               </thead>
               <tbody>
-                {jobs.map(j => (
+                {shownJobs.map(j => (
                   <tr key={j.id}>
                     <td>
                       <code>{j.kind}</code>
@@ -121,25 +190,71 @@ export default function ProjectLogsPage({
       </div>
 
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Function logs</h2>
+        <h2 style={{ marginTop: 0, fontSize: 15 }}>Function logs</h2>
         {functions.length === 0 ? (
           <EmptyState title="No functions yet" hint="Deploy a function to stream execution logs here." />
         ) : (
           <>
-            <div className="field" style={{ maxWidth: 320 }}>
-              <label htmlFor="log-fn">Function</label>
-              <select id="log-fn" value={activeFn} onChange={e => setActiveFn(e.target.value)}>
-                {functions.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {f.name} ({f.slug})
-                  </option>
-                ))}
+            <div className="toolbar">
+              <div className="field" style={{ margin: 0, minWidth: 200 }}>
+                <label htmlFor="log-fn">Function</label>
+                <select id="log-fn" value={activeFn} onChange={e => setActiveFn(e.target.value)}>
+                  {functions.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.slug})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="search" style={{ alignSelf: 'end' }}>
+                <span className="icon" aria-hidden>
+                  ⌕
+                </span>
+                <input
+                  type="search"
+                  value={logQuery}
+                  onChange={e => setLogQuery(e.target.value)}
+                  placeholder="Search messages…"
+                  aria-label="Search log messages"
+                />
+              </div>
+              <select
+                value={logLevel}
+                onChange={e => setLogLevel(e.target.value)}
+                aria-label="Filter by level"
+                style={{ alignSelf: 'end' }}
+              >
+                <option value="">All levels</option>
+                <option value="error">Errors</option>
+                <option value="info">Info</option>
+                <option value="log">Log</option>
               </select>
             </div>
             {!entries ? (
               <LoadingSkeleton label="Loading entries" />
-            ) : entries.length === 0 ? (
-              <EmptyState title="No executions logged" hint="Invoke the function to produce log entries." />
+            ) : shownEntries.length === 0 ? (
+              <EmptyState
+                title={entries.length === 0 ? 'No executions logged' : 'No matching entries'}
+                hint={
+                  entries.length === 0
+                    ? 'Invoke the function to produce log entries.'
+                    : 'No entries match this search. Clear the filters to see everything.'
+                }
+                action={
+                  entries.length === 0 ? undefined : (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setLogQuery('');
+                        setLogLevel('');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  )
+                }
+              />
             ) : (
               <div className="table-wrap" style={{ border: 0 }}>
                 <table className="table">
@@ -152,7 +267,7 @@ export default function ProjectLogsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {entries.map(e => (
+                    {shownEntries.map(e => (
                       <tr key={e.id}>
                         <td className="muted">{new Date(e.timestamp).toLocaleString()}</td>
                         <td>

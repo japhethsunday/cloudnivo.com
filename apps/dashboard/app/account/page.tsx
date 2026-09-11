@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../lib/api';
+import { listAgentTokens, revokeAgentToken } from '../../lib/agents';
 import { sessionExpiresAt } from '../../lib/session-info';
 import { useSession } from '../../components/SessionProvider';
+import { useTheme } from '../../components/ThemeProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, useToast } from '../../components/ui';
@@ -18,6 +20,9 @@ const SECTIONS = [
   { id: 'agents', label: 'Agent access' },
   { id: 'api-access', label: 'API access' },
   { id: 'organizations', label: 'Organizations' },
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'notifications', label: 'Notifications' },
+  { id: 'danger', label: 'Danger zone' },
 ];
 
 export default function AccountPage(): React.JSX.Element {
@@ -70,7 +75,7 @@ function AccountBody(): React.JSX.Element {
       <div className="page-head">
         <div>
           <h1 id="account-title">Account</h1>
-          <p className="sub muted">Profile, security, API access, and memberships.</p>
+          <p className="sub muted">Profile, security, agent access, API access, appearance, and memberships.</p>
         </div>
         <button type="button" className="btn btn-danger" onClick={doLogout}>
           Log out
@@ -119,6 +124,9 @@ function AccountBody(): React.JSX.Element {
             </div>
           ) : null}
           {active === 'api-access' ? <ApiAccessSection keyCounts={keyCounts} /> : null}
+          {active === 'appearance' ? <AppearanceSection /> : null}
+          {active === 'notifications' ? <NotificationsSection email={user?.email ?? ''} /> : null}
+          {active === 'danger' ? <DangerSection /> : null}
           {active === 'organizations' ? (
             <div className="card">
               <h2 style={{ marginTop: 0 }}>Organization memberships</h2>
@@ -316,6 +324,140 @@ function SecuritySection({ expiry }: { expiry: string | null }): React.JSX.Eleme
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AppearanceSection(): React.JSX.Element {
+  const { theme, setTheme } = useTheme();
+  return (
+    <div className="card">
+      <div className="section-head">
+        <p className="eyebrow">Account</p>
+        <h2>Appearance</h2>
+        <p>Applies instantly and is remembered in this browser.</p>
+      </div>
+      <div className="field" style={{ maxWidth: 280, marginBottom: 0 }}>
+        <label htmlFor="account-theme">Theme</label>
+        <select
+          id="account-theme"
+          value={theme}
+          onChange={e => setTheme(e.target.value as 'light' | 'dark' | 'system')}
+        >
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function NotificationsSection({ email }: { email: string }): React.JSX.Element {
+  return (
+    <div className="card">
+      <div className="section-head">
+        <p className="eyebrow">Account</p>
+        <h2>Notifications</h2>
+        <p>
+          Security notices for this account go to <strong>{email || 'your account email'}</strong>. There are
+          no marketing emails and no per-event toggles — operational signals live in the product, linked
+          below.
+        </p>
+      </div>
+      <ul className="health-list">
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Workspace activity</span>
+            <div className="detail">Provisioning, deploys, and job failures across projects.</div>
+          </span>
+          <Link className="value" href="/activity">
+            Open feed →
+          </Link>
+        </li>
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Agent denials &amp; approvals</span>
+            <div className="detail">Blocked agent calls and pending destructive approvals.</div>
+          </span>
+          <Link className="value" href="/agents">
+            Review →
+          </Link>
+        </li>
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Quota &amp; billing</span>
+            <div className="detail">Period usage, limits, invoices, and payments.</div>
+          </span>
+          <Link className="value" href="/billing">
+            Open billing →
+          </Link>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+function DangerSection(): React.JSX.Element {
+  const { orgs } = useSession();
+  const toast = useToast();
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<number | null>(null);
+
+  async function revokeAll(): Promise<void> {
+    if (confirm !== 'REVOKE' || busy) return;
+    setBusy(true);
+    let revoked = 0;
+    try {
+      for (const o of orgs) {
+        const listed = await listAgentTokens(o.id);
+        if (!listed.ok || !listed.tokens) continue;
+        const live = listed.tokens.filter(t => !t.revokedAt);
+        for (const t of live) {
+          const r = await revokeAgentToken(o.id, t.id);
+          if (r.ok) revoked += 1;
+        }
+      }
+      setDone(revoked);
+      setConfirm('');
+      toast(`Revoked ${revoked} agent token${revoked === 1 ? '' : 's'}`, 'ok');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--danger)' }}>
+      <div className="section-head">
+        <p className="eyebrow">Account</p>
+        <h2>Danger zone</h2>
+        <p>
+          Revoking agent tokens takes effect instantly across every plane — affected agents and CI jobs
+          stop authenticating immediately. This cannot be undone.
+        </p>
+      </div>
+      {done !== null ? (
+        <p role="status" className="flash-ok">
+          Revoked {done} token{done === 1 ? '' : 's'} across {orgs.length} organization
+          {orgs.length === 1 ? '' : 's'}.
+        </p>
+      ) : null}
+      <div className="field">
+        <label htmlFor="revoke-confirm">
+          Type <code>REVOKE</code> to revoke every live agent token you own
+        </label>
+        <input
+          id="revoke-confirm"
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          autoComplete="off"
+          placeholder="REVOKE"
+        />
+      </div>
+      <button type="button" className="btn btn-danger" disabled={busy || confirm !== 'REVOKE'} onClick={() => void revokeAll()}>
+        {busy ? 'Revoking…' : 'Revoke all agent tokens'}
+      </button>
     </div>
   );
 }

@@ -98,7 +98,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
         </p>
       </div>
 
-      <div className="card">
+      <div className="card" id="keys" style={{ scrollMarginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>API keys</h2>
         {issued ? (
           <div className="error-box" role="alert">

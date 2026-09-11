@@ -59,41 +59,34 @@ export default function ProjectSettingsPage({
   if (!project) return <LoadingSkeleton label="Loading settings" />;
 
   return (
-    <div style={{ display: 'grid', gap: 12, maxWidth: 640 }}>
+    <div style={{ display: 'grid', gap: 12, maxWidth: 680 }}>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Settings</h2>
+        <p>Identity, environment, and the danger zone. Destructive actions always ask for confirmation.</p>
+      </div>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>General</h2>
-        <table className="table">
-          <tbody>
-            <tr>
-              <th scope="row">Name</th>
-              <td>{project.name}</td>
-            </tr>
-            <tr>
-              <th scope="row">Slug</th>
-              <td>
-                <code>{project.slug}</code>
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">Project ID</th>
-              <td>
-                <code>{project.id}</code>
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">Region</th>
-              <td>{project.region}</td>
-            </tr>
-            <tr>
-              <th scope="row">Status</th>
-              <td>{project.status}</td>
-            </tr>
-            <tr>
-              <th scope="row">Created</th>
-              <td>{project.createdAt ? new Date(project.createdAt).toLocaleString() : '—'}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="section-head">
+          <h2 style={{ fontSize: 15 }}>General</h2>
+        </div>
+        <dl className="fact-grid">
+          <dt>Name</dt>
+          <dd>{project.name}</dd>
+          <dt>Slug</dt>
+          <dd>
+            <code>{project.slug}</code>
+          </dd>
+          <dt>Project ID</dt>
+          <dd>
+            <code>{project.id}</code>
+          </dd>
+          <dt>Region</dt>
+          <dd>{project.region}</dd>
+          <dt>Status</dt>
+          <dd>{project.status}</dd>
+          <dt>Created</dt>
+          <dd>{project.createdAt ? new Date(project.createdAt).toLocaleString() : '—'}</dd>
+        </dl>
       </div>
 
       <div className="card" style={{ borderColor: 'var(--danger)' }}>

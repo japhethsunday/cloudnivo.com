@@ -11,11 +11,14 @@ export default function ProjectAIPage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>AI Builder</h2>
-      <p className="muted">
-        Describe → plan → review → approve → apply. CloudNivo drafts a validated plan, shows every
-        change, and applies it only after your approval. Nothing executes silently.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>AI Builder</h2>
+        <p>
+          Describe → plan → review → approve → apply. CloudNivo drafts a validated plan, shows every
+          change, and applies it only after your approval. Nothing executes silently.
+        </p>
+      </div>
       <AIBuilderPanel projectId={id} />
     </div>
   );

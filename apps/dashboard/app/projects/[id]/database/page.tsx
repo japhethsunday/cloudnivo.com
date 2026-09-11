@@ -11,8 +11,11 @@ export default function ProjectDatabasePage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Database</h2>
-      <p className="muted">Isolated PostgreSQL with live status, schema inspection, and guarded queries.</p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Database</h2>
+        <p>Isolated PostgreSQL with live status, schema inspection, and guarded queries.</p>
+      </div>
       <ProjectDatabase projectId={id} />
     </div>
   );

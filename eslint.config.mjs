@@ -12,6 +12,8 @@ export default tseslint.config(
       '**/build/**',
       '**/coverage/**',
       '**/*.min.js',
+      'playwright-report/**',
+      'test-results/**',
       'apps/dashboard/.next/**',
       'apps/dashboard/next-env.d.ts',
     ],

@@ -325,23 +325,48 @@ function QueryCard({
 }): React.JSX.Element {
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>SQL editor</h2>
-      <form onSubmit={e => void onRun(e)}>
+      <div className="section-head split">
+        <div>
+          <p className="eyebrow">Workspace</p>
+          <h2>SQL editor</h2>
+        </div>
+        <span className="muted" style={{ fontSize: 12 }}>
+          <kbd>⌘</kbd> + <kbd>↵</kbd> to run
+        </span>
+      </div>
+      <form
+        onSubmit={e => void onRun(e)}
+        onKeyDown={e => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            void onRun(e);
+          }
+        }}
+      >
         <div className="field">
           <label htmlFor="sql-input">SQL (single statement, 15s limit, 500 rows)</label>
-          <textarea id="sql-input" rows={6} value={sql} onChange={e => setSql(e.target.value)} />
+          <textarea
+            id="sql-input"
+            className="sql-editor"
+            rows={8}
+            value={sql}
+            onChange={e => setSql(e.target.value)}
+            placeholder="SELECT * FROM users LIMIT 20;"
+            spellCheck={false}
+          />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="submit" className="btn btn-primary" disabled={busy === 'sql'}>
-            {busy === 'sql' ? 'Running…' : 'Execute'}
+            {busy === 'sql' ? 'Running…' : '▶ Run query'}
           </button>
           <button type="button" className="btn" onClick={onClear}>
             Clear results
           </button>
         </div>
       </form>
+      {busy === 'sql' ? <LoadingSkeleton label="Running query" rows={2} /> : null}
       {result ? (
-        <pre style={{ overflow: 'auto', background: 'var(--bg-muted)', padding: 8 }}>
+        <pre className="codeblock" style={{ marginTop: 12, maxHeight: 420 }}>
           {JSON.stringify(result, null, 2)}
         </pre>
       ) : null}

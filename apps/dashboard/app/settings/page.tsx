@@ -14,6 +14,7 @@ const TABS = [
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'developer', label: 'Developer' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'security', label: 'Security' },
   { id: 'workspace', label: 'Workspace' },
 ];
@@ -54,6 +55,7 @@ function SettingsBody(): React.JSX.Element {
           {tab === 'general' ? <GeneralTab /> : null}
           {tab === 'appearance' ? <AppearanceTab /> : null}
           {tab === 'developer' ? <DeveloperTab /> : null}
+          {tab === 'notifications' ? <NotificationsTab /> : null}
           {tab === 'security' ? <SecurityTab /> : null}
           {tab === 'workspace' ? <WorkspaceTab /> : null}
         </div>
@@ -195,6 +197,51 @@ function DeveloperTab(): React.JSX.Element {
         Quotas, CORS origins, and rate limits are enforced server-side and are not configurable from
         the dashboard.
       </p>
+      <p style={{ marginBottom: 0 }}>
+        <Link href="/developer">Full CLI &amp; SDK reference →</Link>
+      </p>
+    </div>
+  );
+}
+
+function NotificationsTab(): React.JSX.Element {
+  const { user } = useSession();
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Notifications</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Security notices go to <strong>{user?.email ?? 'your account email'}</strong>. Operational
+        signals live in the product — there are no event toggles to misconfigure.
+      </p>
+      <ul className="health-list">
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Workspace activity</span>
+            <div className="detail">Provisioning, deploys, and job failures.</div>
+          </span>
+          <Link className="value" href="/activity">
+            Open feed →
+          </Link>
+        </li>
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Agent denials &amp; approvals</span>
+            <div className="detail">Blocked agent calls and pending approvals.</div>
+          </span>
+          <Link className="value" href="/agents">
+            Review →
+          </Link>
+        </li>
+        <li className="health-row">
+          <span className="grow">
+            <span className="name">Quota &amp; billing</span>
+            <div className="detail">Period usage, limits, invoices.</div>
+          </span>
+          <Link className="value" href="/billing">
+            Open billing →
+          </Link>
+        </li>
+      </ul>
     </div>
   );
 }

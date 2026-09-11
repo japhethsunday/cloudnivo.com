@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
-import { getSelectedOrg, setSelectedProject } from '../../../lib/selection';
+import { getSelectedOrg, setSelectedOrg, setSelectedProject } from '../../../lib/selection';
 import { RequireAuth } from '../../../components/RequireAuth';
 import { EmptyState, ErrorState } from '../../../components/States';
 
@@ -107,6 +107,10 @@ function Wizard(): React.JSX.Element {
     }
     setProjectId(res.data.project.id);
     setSelectedProject(res.data.project.id);
+    // Keep the persisted workspace scope on the org the project was created
+    // in — otherwise the projects list filter (and sidebar) keep pointing at
+    // the previously selected org and the new project looks unopenable.
+    setSelectedOrg(orgId);
     setStage('provisioning');
     setStatus('creating');
     await pollJob(res.data.project.id, res.data.jobId);
@@ -135,7 +139,16 @@ function Wizard(): React.JSX.Element {
         <form onSubmit={submit} className="card" aria-label="New project details">
           <div className="field">
             <label htmlFor="np-org">1 · Organization</label>
-            <select id="np-org" value={orgId} onChange={e => setOrgId(e.target.value)} required>
+            <select
+              id="np-org"
+              value={orgId}
+              onChange={e => {
+                setOrgId(e.target.value);
+                // Persist immediately so a reload mid-wizard keeps the scope.
+                setSelectedOrg(e.target.value || null);
+              }}
+              required
+            >
               {(orgs ?? []).map(o => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.slug})

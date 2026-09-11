@@ -11,11 +11,14 @@ export default function ProjectApiPage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>API &amp; keys</h2>
-      <p className="muted">
-        Auto-generated REST over your Postgres tables. Responses follow the platform envelope{' '}
-        <code>{'{ data, meta }'}</code> / <code>{'{ error }'}</code>.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>API</h2>
+        <p>
+          Auto-generated REST over your Postgres tables. Responses follow the platform envelope{' '}
+          <code>{'{ data, meta }'}</code> / <code>{'{ error }'}</code>.
+        </p>
+      </div>
       <ApiPanel projectId={id} />
     </div>
   );

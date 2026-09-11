@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
+import { CommandPalette } from './CommandPalette';
 import { useSession } from './SessionProvider';
 import { ThemeToggle } from './ThemeToggle';
 import { Menu, ToastProvider } from './ui';
@@ -13,20 +14,38 @@ interface ProjectLite {
   id: string;
   name: string;
   slug: string;
+  region: string;
   organizationId: string;
 }
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: '⌂' },
-  { href: '/projects', label: 'Projects', icon: '▦' },
-  { href: '/organizations', label: 'Organizations', icon: '⛉' },
-  { href: '/agents', label: 'Agents', icon: '✦' },
-  { href: '/account', label: 'Account', icon: '☺' },
-  { href: '/settings', label: 'Settings', icon: '⚙' },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  match: (pathname: string) => boolean;
+}
+
+const WORKSPACE_NAV: NavItem[] = [
+  { href: '/dashboard', label: 'Overview', icon: '⌂', match: p => p === '/dashboard' },
+  { href: '/projects', label: 'Projects', icon: '⬣', match: p => p === '/projects' || p === '/projects/new' },
+  { href: '/activity', label: 'Activity', icon: '◷', match: p => p === '/activity' },
+  { href: '/organizations', label: 'Organizations', icon: '⛉', match: p => p === '/organizations' },
+];
+
+const MANAGE_NAV: NavItem[] = [
+  { href: '/agents', label: 'Agent Access', icon: '✦', match: p => p === '/agents' },
+  { href: '/billing', label: 'Billing', icon: '❏', match: p => p === '/billing' },
+  { href: '/account', label: 'Account', icon: '☺', match: p => p === '/account' },
+  { href: '/settings', label: 'Settings', icon: '⚙', match: p => p === '/settings' },
 ];
 
 function isAuthRoute(pathname: string): boolean {
   return pathname === '/login' || pathname === '/signup' || pathname === '/';
+}
+
+function projectIdFromPath(pathname: string): string | null {
+  const m = /^\/projects\/([^/]+)/.exec(pathname);
+  return m?.[1] && m[1] !== 'new' ? (m[1] as string) : null;
 }
 
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -56,13 +75,27 @@ function ShellBody({
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
 
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(o => !o);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -78,16 +111,48 @@ function ShellBody({
   }, [ready, token, pathname]);
 
   useEffect(() => {
-    if (ready && orgs.length > 0 && !orgs.some(o => o.id === orgId)) {
+    if (!ready || orgs.length === 0) return;
+    // Storage is the source of truth for workspace scope (the wizard,
+    // filters, and switchers all persist there). This effect only repairs
+    // missing/invalid selections — it must never overwrite a valid persisted
+    // org, otherwise a reload can silently strand the user in the wrong scope.
+    const persisted = getSelectedOrg();
+    if (persisted && orgs.some(o => o.id === persisted)) {
+      if (persisted !== orgId) setOrgId(persisted);
+      return;
+    }
+    if (!persisted) {
       const fallback = orgs[0]?.id ?? null;
       setOrgId(fallback);
       setSelectedOrg(fallback);
+    } else {
+      setOrgId(null);
+      setSelectedOrg(null);
     }
   }, [ready, orgs, orgId]);
 
+  // Keep the persisted project selection in sync when the URL names a project.
+  useEffect(() => {
+    const fromPath = projectIdFromPath(pathname);
+    if (fromPath && fromPath !== getSelectedProject()) {
+      setProjectId(fromPath);
+      setSelectedProject(fromPath);
+      const known = projects.find(p => p.id === fromPath);
+      if (known && known.organizationId !== getSelectedOrg()) {
+        setOrgId(known.organizationId);
+        setSelectedOrg(known.organizationId);
+      }
+    }
+  }, [pathname, projects]);
+
   const org = orgs.find(o => o.id === orgId) ?? orgs[0] ?? null;
   const project = projects.find(p => p.id === projectId) ?? null;
+  const viewingProject = projectIdFromPath(pathname)
+    ? (projects.find(p => p.id === projectIdFromPath(pathname)) ?? project)
+    : null;
   const orgProjects = org ? projects.filter(p => p.organizationId === org.id) : projects;
+  const aiProject = viewingProject ?? project;
+  const aiHref = aiProject ? `/projects/${aiProject.id}/ai` : '/projects';
 
   function pickOrg(id: string): void {
     setOrgId(id);
@@ -100,6 +165,11 @@ function ShellBody({
   function pickProject(id: string): void {
     setProjectId(id);
     setSelectedProject(id);
+    const known = projects.find(p => p.id === id);
+    if (known) {
+      setOrgId(known.organizationId);
+      setSelectedOrg(known.organizationId);
+    }
     router.push(`/projects/${id}`);
   }
 
@@ -125,13 +195,27 @@ function ShellBody({
           <span className="brand-mark">C</span>CloudNivo
         </span>
         <span className="spacer" />
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Search and commands"
+          onClick={openPalette}
+        >
+          ⌕
+        </button>
         {user ? <span className="avatar" aria-label={user.email}>{user.email.slice(0, 1)}</span> : null}
       </div>
       <button type="button" className="scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />
       <aside className="sidebar" aria-label="Sidebar">
-        <div className="brand">
+        <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
           <span className="brand-mark">C</span>CloudNivo
-        </div>
+        </Link>
+
+        <button type="button" className="search-trigger" onClick={openPalette} aria-label="Open command palette">
+          <span aria-hidden>⌕</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>Search…</span>
+          <kbd>⌘K</kbd>
+        </button>
 
         <div>
           <p className="nav-label">Organization</p>
@@ -143,20 +227,52 @@ function ShellBody({
           <ProjectMenu project={project} projects={orgProjects} onPick={pickProject} />
         </div>
 
-        <nav className="nav" aria-label="Primary">
-          <p className="nav-label">Workspace</p>
-          {NAV.map(l => (
-            <Link
-              key={l.href}
-              href={l.href}
-              aria-current={pathname === l.href || pathname.startsWith(`${l.href}/`) ? 'page' : undefined}
-            >
+        {viewingProject ? (
+          <div className="nav-project-tag" aria-label={`Current project: ${viewingProject.name}`}>
+            <span className="dot ok" aria-hidden />
+            <span className="grow">{viewingProject.name}</span>
+            <Link href="/projects">All</Link>
+          </div>
+        ) : null}
+
+        <nav className="nav" aria-label="Workspace">
+          <div className="nav-group">
+            <p className="nav-context">Workspace</p>
+            {WORKSPACE_NAV.map(l => (
+              <Link key={l.href} href={l.href} aria-current={l.match(pathname) ? 'page' : undefined}>
+                <span className="nav-icon" aria-hidden>
+                  {l.icon}
+                </span>
+                {l.label}
+              </Link>
+            ))}
+          </div>
+          <div className="nav-group">
+            <p className="nav-context">Development</p>
+            <Link href={aiHref} aria-current={pathname.endsWith('/ai') ? 'page' : undefined}>
               <span className="nav-icon" aria-hidden>
-                {l.icon}
+                ✦
               </span>
-              {l.label}
+              AI Builder
             </Link>
-          ))}
+            <Link href="/developer" aria-current={pathname === '/developer' ? 'page' : undefined}>
+              <span className="nav-icon" aria-hidden>
+                ❯
+              </span>
+              CLI &amp; SDK
+            </Link>
+          </div>
+          <div className="nav-group">
+            <p className="nav-context">Management</p>
+            {MANAGE_NAV.map(l => (
+              <Link key={l.href} href={l.href} aria-current={l.match(pathname) ? 'page' : undefined}>
+                <span className="nav-icon" aria-hidden>
+                  {l.icon}
+                </span>
+                {l.label}
+              </Link>
+            ))}
+          </div>
         </nav>
 
         <div className="sidebar-foot">
@@ -179,6 +295,7 @@ function ShellBody({
       <main id="main" className="main" tabIndex={-1}>
         {children}
       </main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

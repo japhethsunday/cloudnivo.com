@@ -11,8 +11,11 @@ export default function ProjectSqlPage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>SQL editor</h2>
-      <p className="muted">Guarded execution against this project&apos;s database. Results never leave your session.</p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>SQL editor</h2>
+        <p>Guarded execution against this project&apos;s database. Results never leave your session.</p>
+      </div>
       <ProjectDatabase projectId={id} mode="query" />
     </div>
   );

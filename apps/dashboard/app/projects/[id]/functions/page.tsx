@@ -11,11 +11,14 @@ export default function ProjectFunctionsPage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Functions</h2>
-      <p className="muted">
-        Serverless functions run your backend code in isolated runtimes — scoped to this project,
-        versioned on every deploy, never across projects.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Functions</h2>
+        <p>
+          Serverless functions run your backend code in isolated runtimes — scoped to this project,
+          versioned on every deploy, never across projects.
+        </p>
+      </div>
       <FunctionsPanel projectId={id} />
     </div>
   );

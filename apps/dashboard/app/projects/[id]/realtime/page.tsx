@@ -11,11 +11,14 @@ export default function ProjectRealtimePage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Realtime</h2>
-      <p className="muted">
-        Live connections, channels, events, presence, and usage. Events travel over real WebSocket
-        connections scoped to this project — never across projects.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Realtime</h2>
+        <p>
+          Live connections, channels, events, presence, and usage. Events travel over real WebSocket
+          connections scoped to this project — never across projects.
+        </p>
+      </div>
       <RealtimePanel projectId={id} />
     </div>
   );

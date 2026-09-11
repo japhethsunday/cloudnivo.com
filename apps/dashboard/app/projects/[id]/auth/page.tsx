@@ -11,11 +11,14 @@ export default function ProjectAuthPage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Authentication</h2>
-      <p className="muted">
-        Per-project application users. You are signed in with your platform session — customer
-        passwords and secrets are never displayed.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Authentication</h2>
+        <p>
+          Per-project application users. You are signed in with your platform session — customer
+          passwords and secrets are never displayed.
+        </p>
+      </div>
       <AuthPanel projectId={id} />
     </div>
   );

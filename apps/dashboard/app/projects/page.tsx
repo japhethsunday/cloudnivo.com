@@ -1,21 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../lib/api';
-import { getSelectedOrg } from '../../lib/selection';
+import { getSelectedOrg, setSelectedOrg } from '../../lib/selection';
 import { RequireAuth } from '../../components/RequireAuth';
-import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
-import { Badge, StatusDot, statusTone } from '../../components/ui';
-
-interface Project {
-  id: string;
-  name: string;
-  slug: string;
-  region: string;
-  organizationId: string;
-  database: { status: string; health?: string } | null;
-}
+import { EmptyState, ErrorState, LoadingCards } from '../../components/States';
+import { ProjectCard, type ProjectCardData } from '../../components/ProjectCard';
 
 interface Org {
   id: string;
@@ -32,14 +23,16 @@ export default function ProjectsPage(): React.JSX.Element {
 }
 
 function ProjectsBody(): React.JSX.Element {
-  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [filter, setFilter] = useState<string>('');
+  const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setError(null);
     const [p, o] = await Promise.all([
-      apiFetch<{ projects: Project[] }>('/api/v1/projects'),
+      apiFetch<{ projects: ProjectCardData[] }>('/api/v1/projects'),
       apiFetch<{ organizations: Org[] }>('/api/v1/organizations'),
     ]);
     if (!p.ok) {
@@ -50,8 +43,15 @@ function ProjectsBody(): React.JSX.Element {
     }
     if (o.ok && o.data) {
       setOrgs(o.data.organizations);
+      // Respect the persisted workspace selection, but never strand the user
+      // on an empty scope: fall back to "all" when the selected org is gone.
       const preferred = getSelectedOrg();
-      if (preferred && o.data.organizations.some(x => x.id === preferred)) setFilter(preferred);
+      if (preferred && o.data.organizations.some(x => x.id === preferred)) {
+        setFilter(preferred);
+      } else {
+        setFilter('');
+        setSelectedOrg(null);
+      }
     }
   }, []);
 
@@ -59,44 +59,86 @@ function ProjectsBody(): React.JSX.Element {
     void load();
   }, [load]);
 
-  const visible = filter ? (projects ?? []).filter(p => p.organizationId === filter) : (projects ?? []);
+  const orgNameOf = useCallback(
+    (id: string) => orgs.find(o => o.id === id)?.name,
+    [orgs],
+  );
+
+  const visible = useMemo(() => {
+    const scoped = filter ? (projects ?? []).filter(p => p.organizationId === filter) : (projects ?? []);
+    const q = query.trim().toLowerCase();
+    const searched = q
+      ? scoped.filter(p => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q))
+      : scoped;
+    return [...searched].sort((a, b) => a.name.localeCompare(b.name));
+  }, [projects, filter, query]);
+
+  const hiddenByScope = (projects ?? []).length > 0 && filter !== '' && visible.length === 0 && query.trim() === '';
 
   return (
     <section aria-labelledby="projects-title">
       <div className="page-head">
         <div>
           <h1 id="projects-title">Projects</h1>
-          <p className="sub muted">Each project gets an isolated PostgreSQL database.</p>
+          <p className="sub muted">
+            Each project is an isolated backend — PostgreSQL, APIs, auth, storage, realtime, functions.
+          </p>
         </div>
         <Link className="btn btn-primary" href="/projects/new">
           New project
         </Link>
       </div>
 
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <ErrorState message={error} retry={() => void load()} /> : null}
 
       {!projects ? (
-        <LoadingSkeleton label="Loading projects" />
+        <LoadingCards label="Loading projects" />
       ) : projects.length === 0 ? (
         <EmptyState
+          icon="⬣"
           title={orgs.length === 0 ? 'Create an organization first' : 'No projects yet'}
           hint={
             orgs.length === 0
-              ? 'Projects live inside organizations.'
-              : 'Create a project to provision infrastructure automatically.'
+              ? 'Projects live inside organizations. Create one to get started — it takes ten seconds.'
+              : 'Create an isolated CloudNivo backend with PostgreSQL, APIs, authentication, storage, realtime and serverless functions.'
           }
           action={
             <Link className="btn btn-primary" href={orgs.length === 0 ? '/organizations' : '/projects/new'}>
               {orgs.length === 0 ? 'Create organization' : 'Create project'}
             </Link>
           }
+          secondary={
+            orgs.length === 0 ? null : (
+              <Link className="btn" href="/developer">
+                Explore CLI &amp; SDK
+              </Link>
+            )
+          }
         />
       ) : (
         <>
-          {orgs.length > 1 ? (
-            <div className="field" style={{ maxWidth: 320 }}>
-              <label htmlFor="project-org-filter">Organization</label>
-              <select id="project-org-filter" value={filter} onChange={e => setFilter(e.target.value)}>
+          <div className="toolbar" role="search">
+            <div className="search">
+              <span className="icon" aria-hidden>
+                ⌕
+              </span>
+              <input
+                type="search"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search projects…"
+                aria-label="Search projects"
+              />
+            </div>
+            {orgs.length > 1 ? (
+              <select
+                value={filter}
+                onChange={e => {
+                  setFilter(e.target.value);
+                  setSelectedOrg(e.target.value || null);
+                }}
+                aria-label="Filter by organization"
+              >
                 <option value="">All organizations</option>
                 {orgs.map(o => (
                   <option key={o.id} value={o.id}>
@@ -104,53 +146,46 @@ function ProjectsBody(): React.JSX.Element {
                   </option>
                 ))}
               </select>
-            </div>
-          ) : null}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="table-wrap" style={{ border: 0 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Project</th>
-                    <th scope="col">Database</th>
-                    <th scope="col">Health</th>
-                    <th scope="col">
-                      <span className="mono">Region</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map(p => (
-                    <tr key={p.id}>
-                      <td>
-                        <Link href={`/projects/${p.id}`}>{p.name}</Link>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          {p.slug}
-                        </div>
-                      </td>
-                      <td>
-                        {p.database ? (
-                          <Badge tone={statusTone(p.database.status)}>{p.database.status}</Badge>
-                        ) : (
-                          <Badge tone="warn">provisioning</Badge>
-                        )}
-                      </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <StatusDot tone={statusTone(p.database?.health ?? 'unknown')} />
-                          {p.database?.health ?? '—'}
-                        </span>
-                      </td>
-                      <td className="muted">{p.region}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            ) : null}
+            <span className="muted" style={{ fontSize: 13 }} aria-live="polite">
+              {visible.length} of {projects.length}
+            </span>
           </div>
-          {visible.length === 0 ? (
-            <p className="muted">No projects in this organization yet.</p>
+
+          {hiddenByScope ? (
+            <div className="banner info" role="status">
+              <span aria-hidden>ⓘ</span>
+              <div className="grow">
+                <strong>No projects in this organization.</strong>
+                <p>
+                  Your other organizations hold {(projects ?? []).length} project
+                  {(projects ?? []).length === 1 ? '' : 's'}. Switch the filter to find them.
+                </p>
+              </div>
+              <button type="button" className="btn btn-sm" onClick={() => setFilter('')}>
+                Show all
+              </button>
+            </div>
           ) : null}
+
+          {visible.length === 0 && !hiddenByScope ? (
+            <EmptyState
+              icon="⌕"
+              title="No matching projects"
+              hint={`Nothing matches “${query.trim()}”. Try a different name or slug.`}
+              action={
+                <button type="button" className="btn" onClick={() => setQuery('')}>
+                  Clear search
+                </button>
+              }
+            />
+          ) : (
+            <div className="proj-grid">
+              {visible.map(p => (
+                <ProjectCard key={p.id} project={{ ...p, orgName: orgNameOf(p.organizationId) }} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </section>

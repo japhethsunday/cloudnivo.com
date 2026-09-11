@@ -11,11 +11,14 @@ export default function ProjectStoragePage({
   const { id } = use(params);
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Storage</h2>
-      <p className="muted">
-        Buckets, files, usage, and policies. Bytes persist through the configured provider; metadata
-        stays tenant-scoped.
-      </p>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Storage</h2>
+        <p>
+          Buckets, files, usage, and policies. Bytes persist through the configured provider; metadata
+          stays tenant-scoped.
+        </p>
+      </div>
       <StoragePanel projectId={id} />
     </div>
   );

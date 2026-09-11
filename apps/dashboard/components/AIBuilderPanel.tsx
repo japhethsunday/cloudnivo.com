@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
+import { Badge, statusTone } from './ui';
 
 interface PlanSummary {
   id: string;
@@ -139,228 +140,323 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
   }
 
   return (
-    <div>
+    <div style={{ display: 'grid', gap: 12 }}>
+      <ol className="stepper" aria-label="AI builder pipeline">
+        <Step n="1" t="Describe" state={stage === 'prompt' && !detail ? 'active' : 'done'} />
+        <Step
+          n="2"
+          t="Plan"
+          state={!detail ? (busy && stage === 'prompt' ? 'active' : 'todo') : stage === 'prompt' ? 'done' : 'done'}
+        />
+        <Step
+          n="3"
+          t="Review"
+          state={
+            !detail ? 'todo' : detail.status === 'pending' ? 'active' : 'done'
+          }
+        />
+        <Step
+          n="4"
+          t="Approve"
+          state={
+            !detail || detail.status === 'pending'
+              ? 'todo'
+              : detail.status === 'approved' && stage !== 'result'
+                ? 'active'
+                : 'done'
+          }
+        />
+        <Step
+          n="5"
+          t="Apply"
+          state={
+            stage === 'result' || (detail != null && detail.steps.length > 0)
+              ? 'done'
+              : detail?.status === 'approved'
+                ? 'active'
+                : 'todo'
+          }
+        />
+      </ol>
+
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
-        <p role="status" className="muted">
-          {notice}
-        </p>
+        <div className="banner ok" role="status">
+          <span aria-hidden>✓</span>
+          <div className="grow">{notice}</div>
+        </div>
       ) : null}
 
       {stage === 'prompt' ? (
         <>
-          <h2>Describe the backend you need</h2>
-          <form onSubmit={e => void generate(e)}>
-            <label htmlFor="ai-prompt">
-              Natural-language request (tables, roles, storage, realtime, functions)
-            </label>
-            <textarea
-              id="ai-prompt"
-              rows={5}
-              cols={80}
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              placeholder="Build an ecommerce backend with products, customers, orders and order items. Send an email when a new order is created."
-            />
-            <p>
+          <div className="card">
+            <div className="section-head">
+              <p className="eyebrow">Step 1 · Describe</p>
+              <h2>Describe the backend you need</h2>
+              <p>Tables, roles, storage, realtime, functions — one paragraph is enough to start.</p>
+            </div>
+            <form onSubmit={e => void generate(e)}>
+              <div className="field">
+                <label htmlFor="ai-prompt">Natural-language request</label>
+                <textarea
+                  id="ai-prompt"
+                  rows={5}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  placeholder="Build an ecommerce backend with products, customers, orders and order items. Send an email when a new order is created."
+                />
+              </div>
               <button
                 className="btn btn-primary"
                 type="submit"
                 disabled={busy || prompt.trim().length < 10}
               >
-                {busy ? 'Generating…' : 'Generate Backend'}
+                {busy ? 'Generating plan…' : 'Generate plan'}
               </button>
-            </p>
-          </form>
-          <h2>Previous plans</h2>
-          {plans === null ? (
-            <LoadingSkeleton label="Loading plans" />
-          ) : plans.length === 0 ? (
-            <EmptyState
-              title="No plans yet"
-              hint="Describe a backend above — the plan appears here for review before anything is built."
-            />
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Summary</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Open</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plans.map(p => (
-                  <tr key={p.id}>
-                    <td>{p.summary.slice(0, 100)}</td>
-                    <td>{p.status}</td>
-                    <td>
-                      <button className="btn" type="button" onClick={() => void loadDetail(p.id)}>
-                        Review
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+            </form>
+          </div>
+          <div className="card">
+            <div className="section-head split">
+              <div>
+                <p className="eyebrow">History</p>
+                <h2>Previous plans</h2>
+              </div>
+              <span className="muted" style={{ fontSize: 13 }}>
+                {plans === null ? '' : `${plans.length} total`}
+              </span>
+            </div>
+            {plans === null ? (
+              <LoadingSkeleton label="Loading plans" />
+            ) : plans.length === 0 ? (
+              <EmptyState
+                icon="✦"
+                title="No plans yet"
+                hint="Describe a backend above — the plan appears here for review before anything is built."
+              />
+            ) : (
+              <div className="table-wrap" style={{ border: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Summary</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">
+                        <span className="mono">Updated</span>
+                      </th>
+                      <th aria-label="actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plans.map(p => (
+                      <tr key={p.id}>
+                        <td>{p.summary.slice(0, 100)}</td>
+                        <td>
+                          <Badge tone={statusTone(p.status)}>{p.status}</Badge>
+                        </td>
+                        <td className="muted">{new Date(p.updatedAt).toLocaleString()}</td>
+                        <td>
+                          <button className="btn btn-sm" type="button" onClick={() => void loadDetail(p.id)}>
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       ) : null}
 
       {stage !== 'prompt' && detail ? (
         <>
-          <h2>Analysis</h2>
-          <p>{detail.summary}</p>
-          <p className="muted">
-            Provider: {detail.provider} · Model: {detail.model} · Status:{' '}
-            <strong>{detail.status}</strong>
-          </p>
-
-          <h2>Architecture</h2>
-          <dl>
-            <div>
-              <dt>Tables</dt>
-              <dd>{detail.plan.database.tables.map(t => t.name).join(', ') || '—'}</dd>
+          <div className="card">
+            <div className="section-head split">
+              <div>
+                <p className="eyebrow">Step 2 · Plan</p>
+                <h2>Generated architecture</h2>
+                <p>{detail.summary}</p>
+              </div>
+              <Badge tone={statusTone(detail.status)}>{detail.status}</Badge>
             </div>
-            <div>
-              <dt>Roles</dt>
-              <dd>{detail.plan.auth.roles.map(r => r.name).join(', ') || '—'}</dd>
-            </div>
-            <div>
-              <dt>Buckets</dt>
-              <dd>{detail.plan.storage.buckets.map(b => b.name).join(', ') || '—'}</dd>
-            </div>
-            <div>
-              <dt>Channels</dt>
-              <dd>{detail.plan.realtime.channels.map(c => c.topic).join(', ') || '—'}</dd>
-            </div>
-            <div>
-              <dt>Functions</dt>
-              <dd>{detail.plan.functions.map(f => f.name).join(', ') || '—'}</dd>
-            </div>
-          </dl>
-
-          <h2>Changes</h2>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Op</th>
-                <th scope="col">Section</th>
-                <th scope="col">Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.changes.map((c, i) => (
-                <tr key={i}>
-                  <td>{c.op}</td>
-                  <td>{c.section}</td>
-                  <td>{c.text}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <h2>Validation</h2>
-          {detail.validation.ok ? (
-            <p role="status">Plan is structurally valid.</p>
-          ) : (
-            <div role="alert">
-              <strong>Blocked:</strong>
-              <ul>
-                {detail.validation.errors.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {detail.validation.warnings.map((w, i) => (
-            <p key={i} className="muted">
-              Note: {w}
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+              Provider: {detail.provider} · Model: {detail.model} · Estimate:{' '}
+              {Object.entries(detail.estimate)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(' · ') || '—'}
             </p>
-          ))}
-          {detail.validation.destructive.length > 0 ? (
-            <div role="alert">
-              <strong>
-                Destructive operations detected: {detail.validation.destructive.join(', ')}
-              </strong>
-              <p className="muted">
-                Approval alone is not enough — type each operation name (comma-separated) into the
-                confirmation box to proceed.
-              </p>
-            </div>
-          ) : null}
+            <ul className="health-list">
+              <ArchRow label="Tables" value={detail.plan.database.tables.map(t => t.name)} />
+              <ArchRow label="Roles" value={detail.plan.auth.roles.map(r => r.name)} />
+              <ArchRow label="Buckets" value={detail.plan.storage.buckets.map(b => b.name)} />
+              <ArchRow label="Channels" value={detail.plan.realtime.channels.map(c => c.topic)} />
+              <ArchRow label="Functions" value={detail.plan.functions.map(f => f.name)} />
+            </ul>
+          </div>
 
-          <h2>Preview</h2>
-          {detail.migrationSql.length > 0 ? (
-            <pre>{detail.migrationSql.join('\n').slice(0, 6000)}</pre>
-          ) : (
-            <p className="muted">No database statements in this plan.</p>
-          )}
+          <div className="card">
+            <div className="section-head">
+              <p className="eyebrow">Step 3 · Review</p>
+              <h2>Changes &amp; validation</h2>
+              <p>Every change the plan wants to make, with structural validation up front.</p>
+            </div>
+            <div className="table-wrap" style={{ border: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th scope="col">Op</th>
+                    <th scope="col">Section</th>
+                    <th scope="col">Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.changes.map((c, i) => (
+                    <tr key={i}>
+                      <td>
+                        <Badge tone={/drop|delete|remove/i.test(c.op) ? 'bad' : 'info'}>{c.op}</Badge>
+                      </td>
+                      <td>{c.section}</td>
+                      <td style={{ fontSize: 13 }}>{c.text}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {detail.validation.ok ? (
+              <div className="banner ok" role="status" style={{ marginTop: 12, marginBottom: 0 }}>
+                <span aria-hidden>✓</span>
+                <div className="grow">Plan is structurally valid.</div>
+              </div>
+            ) : (
+              <div className="banner bad" role="alert" style={{ marginTop: 12, marginBottom: 0 }}>
+                <span aria-hidden>!</span>
+                <div className="grow">
+                  <strong>Blocked:</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {detail.validation.errors.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {detail.validation.warnings.map((w, i) => (
+              <div className="banner warn" key={i} role="note" style={{ marginTop: 8, marginBottom: 0 }}>
+                <span aria-hidden>ⓘ</span>
+                <div className="grow">{w}</div>
+              </div>
+            ))}
+            {detail.validation.destructive.length > 0 ? (
+              <div className="banner bad" role="alert" style={{ marginTop: 8, marginBottom: 0 }}>
+                <span aria-hidden>⚠</span>
+                <div className="grow">
+                  <strong>Destructive operations: {detail.validation.destructive.join(', ')}</strong>
+                  <p>
+                    Approval alone is not enough — type each operation name (comma-separated) into the
+                    confirmation box to proceed.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="card">
+            <div className="section-head">
+              <p className="eyebrow">Diff</p>
+              <h2>Migration preview</h2>
+            </div>
+            {detail.migrationSql.length > 0 ? (
+              <pre className="codeblock" style={{ maxHeight: 360 }}>
+                {detail.migrationSql.join('\n').slice(0, 6000)}
+              </pre>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                No database statements in this plan.
+              </p>
+            )}
+          </div>
 
           {detail.status === 'pending' ? (
-            <>
-              <h2>Approval</h2>
-              <label htmlFor="ai-confirm">Destructive confirmations (if any)</label>
-              <input
-                id="ai-confirm"
-                value={confirmText}
-                onChange={e => setConfirmText(e.target.value)}
-                placeholder="e.g. DROP TABLE"
-              />
-              <p>
+            <div className="card">
+              <div className="section-head">
+                <p className="eyebrow">Step 4 · Approve</p>
+                <h2>Approval</h2>
+                <p>Nothing executes until you approve. Rejection discards the plan.</p>
+              </div>
+              <div className="field">
+                <label htmlFor="ai-confirm">Destructive confirmations (if any)</label>
+                <input
+                  id="ai-confirm"
+                  value={confirmText}
+                  onChange={e => setConfirmText(e.target.value)}
+                  placeholder="e.g. DROP TABLE"
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   className="btn btn-primary"
                   type="button"
                   onClick={() => void approve()}
                   disabled={busy}
                 >
-                  Approve
-                </button>{' '}
+                  {busy ? 'Approving…' : 'Approve plan'}
+                </button>
                 <button className="btn" type="button" onClick={() => void reject()} disabled={busy}>
                   Reject
                 </button>
-              </p>
-            </>
+              </div>
+            </div>
           ) : null}
 
           {detail.status === 'approved' ? (
-            <>
-              <h2>Deployment</h2>
-              <p>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={() => void apply()}
-                  disabled={busy}
-                >
-                  {busy ? 'Applying…' : 'Apply plan'}
-                </button>
-              </p>
-            </>
+            <div className="card">
+              <div className="section-head">
+                <p className="eyebrow">Step 5 · Apply</p>
+                <h2>Deployment</h2>
+                <p>The approved plan applies against live services, step by step.</p>
+              </div>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void apply()}
+                disabled={busy}
+              >
+                {busy ? 'Applying…' : 'Apply plan'}
+              </button>
+            </div>
           ) : null}
 
           {detail.steps.length > 0 ? (
-            <>
-              <h2>Result</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Step</th>
-                    <th scope="col">OK</th>
-                    <th scope="col">Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.steps.map((s, i) => (
-                    <tr key={i}>
-                      <td>{s.step}</td>
-                      <td>{s.ok ? 'yes' : 'no'}</td>
-                      <td>{s.detail}</td>
+            <div className="card">
+              <div className="section-head">
+                <p className="eyebrow">Result</p>
+                <h2>Execution result</h2>
+              </div>
+              <div className="table-wrap" style={{ border: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Step</th>
+                      <th scope="col">Outcome</th>
+                      <th scope="col">Detail</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+                  </thead>
+                  <tbody>
+                    {detail.steps.map((s, i) => (
+                      <tr key={i}>
+                        <td>{s.step}</td>
+                        <td>
+                          <Badge tone={s.ok ? 'ok' : 'bad'}>{s.ok ? 'ok' : 'failed'}</Badge>
+                        </td>
+                        <td style={{ fontSize: 13 }}>{s.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : null}
 
           <p>
@@ -374,11 +470,34 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
                 setConfirmText('');
               }}
             >
-              Back to builder
+              ← Back to builder
             </button>
           </p>
         </>
       ) : null}
     </div>
+  );
+}
+
+function Step({ n, t, state }: { n: string; t: string; state: 'todo' | 'active' | 'done' }): React.JSX.Element {
+  return (
+    <li className={state === 'todo' ? undefined : state} aria-current={state === 'active' ? 'step' : undefined}>
+      <span className="n">Step {n}</span>
+      <span className="t">
+        {state === 'done' ? '✓ ' : ''}
+        {t}
+      </span>
+    </li>
+  );
+}
+
+function ArchRow({ label, value }: { label: string; value: string[] }): React.JSX.Element {
+  return (
+    <li className="health-row">
+      <span className="grow">
+        <span className="name">{label}</span>
+        <div className="detail">{value.length > 0 ? value.join(', ') : '—'}</div>
+      </span>
+    </li>
   );
 }

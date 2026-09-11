@@ -183,7 +183,7 @@ test('ai flow: dashboard AI Builder console drives the same backend', async ({ p
   await page.goto(`/projects/${projectId}/ai`);
   await expect(page.getByRole('heading', { name: /AI Builder/i })).toBeVisible({ timeout: 15_000 });
   await page.getByLabel(/Natural-language request|Describe the backend/i).fill('I need tasks with priorities.');
-  await page.getByRole('button', { name: /Generate Backend/i }).click();
+  await page.getByRole('button', { name: /Generate plan|Generate Backend/i }).click();
   await expect(page.getByText(/Backend plan:|tasks/i).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /^Approve$/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /^Approve( plan)?$/i })).toBeVisible({ timeout: 15_000 });
 });

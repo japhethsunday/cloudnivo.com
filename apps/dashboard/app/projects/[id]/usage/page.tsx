@@ -65,6 +65,11 @@ export default function ProjectUsagePage({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      <div className="section-head">
+        <p className="eyebrow">Project</p>
+        <h2>Usage</h2>
+        <p>Metered activity for this project in {usage.period}, against the organization plan.</p>
+      </div>
       <div className="stat-grid">
         <div className="stat">
           <div className="k">Period</div>
