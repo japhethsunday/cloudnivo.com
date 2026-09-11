@@ -7,6 +7,38 @@
   min-height: 100vh;
 }
 
+/* Light-scoped marketing surface: the landing page follows the light
+   direction while the application keeps full theme support. */
+.mkt {
+  --bg: #ffffff;
+  --bg-muted: #f8fafc;
+  --bg-elevated: #ffffff;
+  --bg-inset: #f1f5f9;
+  --bg-overlay: rgb(15 23 42 / 0.5);
+  --border: #e6ebf2;
+  --border-strong: #cbd8e6;
+  --text: #101828;
+  --text-muted: #667085;
+  --text-faint: #98a2b3;
+  --accent: #2e6fe8;
+  --accent-hover: #2560d4;
+  --accent-contrast: #ffffff;
+  --accent-soft: #e3edfd;
+  --accent-faint: #f1f6fe;
+  --success: #0e9f6e;
+  --success-soft: #e0f5ec;
+  --warning: #b54708;
+  --warning-soft: #fdf3e1;
+  --danger: #d92d20;
+  --danger-soft: #fde8e8;
+  --info: #1073c3;
+  --info-soft: #e0f2fe;
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-md: 0 8px 24px -8px rgb(16 24 40 / 0.12);
+  --shadow-lg: 0 24px 60px -16px rgb(16 24 40 / 0.22);
+  color-scheme: light;
+}
+
 /* ── Top navigation ── */
 
 .nav {
@@ -187,6 +219,64 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
+.grid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.priceCard {
+  display: flex;
+  flex-direction: column;
+}
+.priceCard.featured {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+.priceFlag {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 12px;
+}
+.price {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 8px 0 4px;
+}
+.price span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+.priceList {
+  list-style: none;
+  margin: 16px 0 24px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.priceList li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.priceList .ok {
+  color: var(--success);
+  flex: none;
+  margin-top: 2px;
+}
+.priceCard .btn {
+  margin-top: auto;
+}
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -199,6 +289,17 @@
   border-radius: 12px;
   padding: 24px;
   min-width: 0;
+}
+.grid3 .panel {
+  transition:
+    border-color 200ms ease,
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+.grid3 .panel:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 .panel h3 {
   font-size: 15px;
@@ -368,6 +469,39 @@
 }
 .code .c {
   color: var(--text-faint);
+}
+
+/* ── Console preview frame (reuses app chrome) ───────── */
+
+.console {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  min-width: 0;
+}
+.console .code {
+  border: none;
+  border-radius: 0;
+  background: var(--bg-inset);
+}
+.liveDot {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.liveDot i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
 }
 
 /* ── Security panel ── */
@@ -542,6 +676,9 @@
   .grid3 {
     grid-template-columns: 1fr 1fr;
   }
+  .grid4 {
+    grid-template-columns: 1fr 1fr;
+  }
   .showBody,
   .grid2 {
     grid-template-columns: 1fr;
@@ -582,6 +719,9 @@
     font-size: 32px;
   }
   .grid3 {
+    grid-template-columns: 1fr;
+  }
+  .grid4 {
     grid-template-columns: 1fr;
   }
   .steps {
@@ -754,9 +894,45 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 20px;
   box-shadow: var(--shadow-md);
   min-width: 0;
+  overflow: hidden;
+}
+.infraBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-muted);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.infraBar .dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.infraBar .dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.infraBar .dots i:first-child {
+  background: var(--danger);
+  opacity: 0.7;
+}
+.infraBar .dots i:nth-child(2) {
+  background: var(--warning);
+  opacity: 0.7;
+}
+.infraBar .dots i:nth-child(3) {
+  background: var(--success);
+  opacity: 0.7;
+}
+.infraBody {
+  padding: 20px;
 }
 .infra svg {
   display: block;

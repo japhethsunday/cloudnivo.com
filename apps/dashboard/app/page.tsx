@@ -152,7 +152,7 @@ export default function HomePage(): React.JSX.Element {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${styles.mkt}`}>
       <header className={styles.nav}>
         <div className={styles.navInner}>
           <Link className={styles.brand} href="/" aria-label="CloudNivo home">
@@ -267,18 +267,32 @@ export default function HomePage(): React.JSX.Element {
                 Try it in the console
               </Link>
             </div>
-            <pre className={styles.code} aria-label={`${active.label} example`}>
-              {active.code.map((line, i) => (
-                <span key={i}>
-                  {line.map((tok, j) => (
-                    <span key={j} className={tok.k ? styles.k : tok.s ? styles.s : tok.c ? styles.c : undefined}>
-                      {tok.t}
-                    </span>
-                  ))}
-                  {'\n'}
+            <div className={styles.console}>
+              <div className={styles.infraBar} aria-hidden="true">
+                <span className={styles.dots}>
+                  <i />
+                  <i />
+                  <i />
                 </span>
-              ))}
-            </pre>
+                console — {active.label.toLowerCase()}
+                <span className={styles.liveDot}>
+                  <i />
+                  preview
+                </span>
+              </div>
+              <pre className={styles.code} aria-label={`${active.label} example`}>
+                {active.code.map((line, i) => (
+                  <span key={i}>
+                    {line.map((tok, j) => (
+                      <span key={j} className={tok.k ? styles.k : tok.s ? styles.s : tok.c ? styles.c : undefined}>
+                        {tok.t}
+                      </span>
+                    ))}
+                    {'\n'}
+                  </span>
+                ))}
+              </pre>
+            </div>
           </div>
         </section>
 
@@ -442,14 +456,66 @@ export default function HomePage(): React.JSX.Element {
           <div className={styles.sectionHead}>
             <p className={styles.eyebrow}>Pricing</p>
             <h2 id="price-h">Start free, grow on meters</h2>
-            <p>Free, Pro, Business, and Enterprise plans with metered quotas. Exact limits and usage live in billing — no surprises.</p>
+            <p>Real plans with metered quotas — exact limits and usage live in billing. No surprises.</p>
           </div>
-          <div className={styles.panel}>
-            <h3>Usage-based, reviewable anytime</h3>
-            <p>Quotas, invoices, and payments are computed from real meters. Open billing in the console to see your numbers before spending anything.</p>
-            <Link className="btn" href="/signup">
-              Start on Free
-            </Link>
+          <div className={styles.grid4}>
+            {[
+              {
+                name: 'Free',
+                price: '$0',
+                per: 'forever',
+                desc: 'For prototypes and evaluation. Real limits, no payment required.',
+                features: ['3 projects', '100K API requests / mo', '1 GB storage', '3 team members'],
+                featured: false,
+              },
+              {
+                name: 'Pro',
+                price: '$20',
+                per: '/ mo',
+                desc: 'For production side projects and small teams. 14-day trial.',
+                features: ['15 projects', '5M API requests / mo', '25 GB storage', '10 team members'],
+                featured: true,
+              },
+              {
+                name: 'Business',
+                price: '$99',
+                per: '/ mo',
+                desc: 'For teams with compliance needs and higher scale. 14-day trial.',
+                features: ['50 projects', '50M API requests / mo', '256 GB storage', '50 team members'],
+                featured: false,
+              },
+              {
+                name: 'Enterprise',
+                price: 'Custom',
+                per: '',
+                desc: 'Negotiated limits and dedicated support.',
+                features: ['Negotiated quotas', 'Dedicated support', 'Same envelope, same APIs'],
+                featured: false,
+              },
+            ].map(p => (
+              <div key={p.name} className={`${styles.panel} ${styles.priceCard}${p.featured ? ` ${styles.featured}` : ''}`}>
+                {p.featured ? <span className={styles.priceFlag}>Most popular</span> : null}
+                <h3>{p.name}</h3>
+                <div className={styles.price}>
+                  {p.price}
+                  {p.per ? <span>{p.per}</span> : null}
+                </div>
+                <p>{p.desc}</p>
+                <ul className={styles.priceList}>
+                  {p.features.map(f => (
+                    <li key={f}>
+                      <span className={styles.ok} aria-hidden>
+                        <IconCheck size={15} />
+                      </span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <Link className={`btn${p.featured ? ' btn-primary' : ''}`} href="/signup">
+                  Start building
+                </Link>
+              </div>
+            ))}
           </div>
         </section>
 

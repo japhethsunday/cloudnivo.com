@@ -26,6 +26,15 @@ export function InfraVisual({ compact = false }: { compact?: boolean }): React.J
   const gap = (W - 40) / (SERVICES.length - 1);
   return (
     <figure className={styles.infra} style={{ margin: 0 }} aria-label="CloudNivo infrastructure illustration">
+      <div className={styles.infraBar} aria-hidden="true">
+        <span className={styles.dots}>
+          <i />
+          <i />
+          <i />
+        </span>
+        cloudnivo — infrastructure
+      </div>
+      <div className={styles.infraBody}>
       <svg viewBox={`0 0 ${W} ${compact ? 300 : 300}`} role="img" aria-hidden="true">
         {/* App node */}
         <rect className={styles.node} x={cx - 90} y={topY - 20} width={180} height={40} rx={8} />
@@ -74,6 +83,7 @@ export function InfraVisual({ compact = false }: { compact?: boolean }): React.J
         })}
       </svg>
       <figcaption className={styles.figureTag}>Product illustration — your stack on CloudNivo primitives</figcaption>
+      </div>
     </figure>
   );
 }
