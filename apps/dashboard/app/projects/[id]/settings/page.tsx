@@ -55,7 +55,7 @@ export default function ProjectSettingsPage({
     router.replace('/projects');
   }
 
-  if (error && !project) return <ErrorState message={error} />;
+  if (error && !project) return <ErrorState title="Couldn't load project settings" message={error} />;
   if (!project) return <LoadingSkeleton label="Loading settings" />;
 
   return (
@@ -100,7 +100,7 @@ export default function ProjectSettingsPage({
           </label>
           <input id="del-confirm" value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="off" />
         </div>
-        {error && project ? <ErrorState message={error} /> : null}
+        {error && project ? <ErrorState title="Couldn't delete project" message={error} /> : null}
         <button
           type="button"
           className="btn btn-danger"

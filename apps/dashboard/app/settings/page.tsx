@@ -8,12 +8,13 @@ import { useSession } from '../../components/SessionProvider';
 import { useTheme } from '../../components/ThemeProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState } from '../../components/States';
-import { Badge } from '../../components/ui';
+import { Badge, CopyField } from '../../components/ui';
 
 const TABS = [
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'developer', label: 'Developer' },
+  { id: 'api', label: 'API' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'security', label: 'Security' },
   { id: 'workspace', label: 'Workspace' },
@@ -55,6 +56,7 @@ function SettingsBody(): React.JSX.Element {
           {tab === 'general' ? <GeneralTab /> : null}
           {tab === 'appearance' ? <AppearanceTab /> : null}
           {tab === 'developer' ? <DeveloperTab /> : null}
+          {tab === 'api' ? <ApiTab /> : null}
           {tab === 'notifications' ? <NotificationsTab /> : null}
           {tab === 'security' ? <SecurityTab /> : null}
           {tab === 'workspace' ? <WorkspaceTab /> : null}
@@ -204,6 +206,55 @@ function DeveloperTab(): React.JSX.Element {
   );
 }
 
+function ApiTab(): React.JSX.Element {
+  const [health, setHealth] = useState<string | null>(null);
+  const base = apiBase();
+
+  useEffect(() => {
+    let live = true;
+    void apiFetch<{ status: string }>('/api/v1/health/ready').then(r => {
+      if (live && r.ok && r.data) setHealth(r.data.status);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Control-plane API</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          The same versioned envelope the dashboard uses. Authenticate with a session JWT or a scoped
+          agent token — never a password.
+        </p>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <span className="lbl" id="api-base-label">Base URL</span>
+          <CopyField text={`${base}/api/v1`} label="API base URL" />
+        </div>
+      </div>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Status &amp; contract</h2>
+        <dl className="fact-grid">
+          <dt>Health</dt>
+          <dd>{health ? <Badge tone={health === 'ready' ? 'ok' : 'warn'}>{health}</Badge> : '…'}</dd>
+          <dt>Envelope</dt>
+          <dd>
+            Success <code>{'{ data, meta }'}</code> · errors <code>{'{ error }'}</code>
+          </dd>
+          <dt>Project keys</dt>
+          <dd>
+            Per-project <code>apikey</code> credentials live on each project&apos;s API page.
+          </dd>
+        </dl>
+        <p style={{ marginBottom: 0 }}>
+          <Link href="/developer">Full CLI &amp; SDK reference →</Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab(): React.JSX.Element {
   const { user } = useSession();
   return (
@@ -313,7 +364,7 @@ function SecurityTab(): React.JSX.Element {
               onChange={e => setNext(e.target.value)}
             />
           </div>
-          {error ? <ErrorState message={error} /> : null}
+          {error ? <ErrorState title="Couldn't change password" message={error} /> : null}
           {done ? (
             <p role="status" className="flash-ok">
               Password changed.

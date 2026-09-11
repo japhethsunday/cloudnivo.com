@@ -1,10 +1,10 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 /**
- * Wizard org-scope regression: the organization chosen in the new-project
- * wizard must persist to the workspace selection immediately, so the
- * projects list (which filters by that selection) keeps showing the new
- * project's scope after creation, reloads, and navigation.
+ * Project lifecycle regression (exact user workflow):
+ * Create (wizard UI) → Open → Leave → Return → Open again → Refresh →
+ * Open again. The wizard's organization choice persists to the workspace
+ * selection immediately, so the projects list never loses the new project.
  */
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
@@ -26,7 +26,7 @@ async function api<T>(
   return { status: res.status(), json: (await res.json()) as T };
 }
 
-test('wizard org choice persists across reload and drives the projects filter', async ({
+test('create → open → leave → return → refresh → open keeps working', async ({
   page,
   request,
 }) => {
@@ -51,16 +51,6 @@ test('wizard org choice persists across reload and drives the projects filter', 
   );
   const orgB = orgs.json.data.organizations.find(o => o.slug === `scope${stamp}b`);
   expect(orgB).toBeDefined();
-  const created = await api<{ data: { project: { id: string } } }>(
-    request,
-    'POST',
-    '/api/v1/projects',
-    {
-      token: setupToken,
-      body: { name: `Scope ${stamp}`, slug: `scope${stamp}`, organizationId: orgB!.id },
-    },
-  );
-  expect(created.status).toBe(202);
 
   await page.goto('/login');
   await page.getByLabel(/email/i).fill(`scope-${stamp}@example.com`);
@@ -68,21 +58,33 @@ test('wizard org choice persists across reload and drives the projects filter', 
   await page.getByRole('button', { name: /^log in$/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 
-  // Pick org B in the wizard: the persisted selection must follow at once.
+  // CREATE through the real wizard in org B.
   await page.goto('/projects/new');
   await page.locator('#np-org').selectOption(orgB!.id);
   await expect
     .poll(async () => page.evaluate(() => window.localStorage.getItem('cn_org')), { timeout: 5_000 })
     .toBe(orgB!.id);
 
-  // A reload mid-wizard must keep the scope (root cause of "lost" projects).
+  // A reload mid-wizard must keep the scope.
   await page.reload();
   await expect(page.locator('#np-org')).toHaveValue(orgB!.id);
 
-  // The projects list filter follows the same selection, and the project
-  // created in org B stays visible + openable under it.
+  await page.getByLabel(/project name/i).fill(`Scope ${stamp}`);
+  await page.getByRole('button', { name: /create project and provision/i }).click();
+  // OPEN: provisioning (fake driver locally, real drivers stage it) → open.
+  await page.getByRole('button', { name: /open project/i }).click({ timeout: 120_000 });
+  await expect(page).toHaveURL(new RegExp(`/projects/[0-9a-f-]{36}$`));
+
+  // LEAVE → RETURN → OPEN again.
+  await page.goto('/settings');
   await page.goto('/projects');
   await expect(page.getByLabel('Filter by organization')).toHaveValue(orgB!.id);
-  await page.getByRole('link', { name: new RegExp(`Scope ${stamp}`) }).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${created.json.data.project.id}$`));
+  await page.getByRole('link', { name: new RegExp(`Scope ${stamp}`) }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/projects/[0-9a-f-]{36}$`));
+
+  // REFRESH → OPEN again.
+  await page.reload();
+  await page.goto('/projects');
+  await page.getByRole('link', { name: new RegExp(`Scope ${stamp}`) }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/projects/[0-9a-f-]{36}$`));
 });

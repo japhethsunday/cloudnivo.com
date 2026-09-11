@@ -239,7 +239,7 @@ function BillingBody(): React.JSX.Element {
         ) : null}
       </div>
 
-      {error ? <ErrorState message={error} retry={() => void load()} /> : null}
+      {error ? <ErrorState title="Couldn't load billing" message={error} retry={() => void load()} /> : null}
 
       {orgs.length === 0 ? (
         <EmptyState

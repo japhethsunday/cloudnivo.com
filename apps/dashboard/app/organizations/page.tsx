@@ -256,7 +256,7 @@ function InviteModal({ org, onClose, onSent }: { org: Org; onClose: () => void; 
               <option value="admin">Admin — manage members</option>
             </select>
           </div>
-          {error ? <ErrorState message={error} /> : null}
+      {error ? <ErrorState title="Couldn't load organizations" message={error} /> : null}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn" onClick={onClose}>
               Cancel

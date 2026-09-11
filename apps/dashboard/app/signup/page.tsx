@@ -70,7 +70,7 @@ export default function SignupPage(): React.JSX.Element {
               onChange={e => setPassword(e.target.value)}
             />
           </div>
-          {error ? <ErrorState message={error} /> : null}
+          {error ? <ErrorState title="Couldn't create account" message={error} /> : null}
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
             {busy ? 'Creating account…' : 'Create account'}
           </button>

@@ -6,26 +6,35 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
 import { CommandPalette } from './CommandPalette';
+import { Notifications } from './Notifications';
 import { useSession } from './SessionProvider';
 import { ThemeToggle } from './ThemeToggle';
 import { Menu, ToastProvider } from './ui';
 import {
   IconAccount,
   IconActivity,
-  IconAIBuilder,
   IconAgents,
+  IconAIBuilder,
+  IconAPI,
+  IconAuth,
   IconBilling,
   IconCheck,
   IconChevronDown,
   IconCLI,
   IconCollapse,
+  IconDatabase,
   IconExpand,
+  IconFunctions,
   IconMenu,
   IconOrganizations,
   IconOverview,
   IconProjects,
+  IconRealtime,
   IconSearch,
   IconSettings,
+  IconSQL,
+  IconStorage,
+  IconUsage,
 } from './icons';
 
 interface ProjectLite {
@@ -53,8 +62,22 @@ const WORKSPACE_NAV: NavItem[] = [
 const MANAGE_NAV: NavItem[] = [
   { href: '/agents', label: 'Agent Access', icon: <IconAgents size={16} />, match: p => p === '/agents' },
   { href: '/billing', label: 'Billing', icon: <IconBilling size={16} />, match: p => p === '/billing' },
-  { href: '/account', label: 'Account', icon: <IconAccount size={16} />, match: p => p === '/account' },
   { href: '/settings', label: 'Settings', icon: <IconSettings size={16} />, match: p => p === '/settings' },
+];
+
+const RESOURCES: { suffix: string; label: string; icon: React.ReactNode }[] = [
+  { suffix: '/database', label: 'Database', icon: <IconDatabase size={16} /> },
+  { suffix: '/api', label: 'API', icon: <IconAPI size={16} /> },
+  { suffix: '/auth', label: 'Authentication', icon: <IconAuth size={16} /> },
+  { suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} /> },
+  { suffix: '/realtime', label: 'Realtime', icon: <IconRealtime size={16} /> },
+  { suffix: '/functions', label: 'Functions', icon: <IconFunctions size={16} /> },
+];
+
+const DEVELOPMENT: { suffix: string | null; label: string; icon: React.ReactNode }[] = [
+  { suffix: '/sql', label: 'SQL Editor', icon: <IconSQL size={16} /> },
+  { suffix: '/ai', label: 'AI Builder', icon: <IconAIBuilder size={16} /> },
+  { suffix: null, label: 'CLI & SDK', icon: <IconCLI size={16} /> },
 ];
 
 function isAuthRoute(pathname: string): boolean {
@@ -164,8 +187,15 @@ function ShellBody({
     ? (projects.find(p => p.id === projectIdFromPath(pathname)) ?? project)
     : null;
   const orgProjects = org ? projects.filter(p => p.organizationId === org.id) : projects;
-  const aiProject = viewingProject ?? project;
-  const aiHref = aiProject ? `/projects/${aiProject.id}/ai` : '/projects';
+  /** Project scoping the resource/development nav: the viewed project, else the selected one. */
+  const scopeProject = viewingProject ?? project;
+  const projHref = (suffix: string): string => (scopeProject ? `/projects/${scopeProject.id}${suffix}` : '/projects');
+  const projActive = (suffix: string): boolean | undefined => {
+    if (!scopeProject) return undefined;
+    const href = `/projects/${scopeProject.id}${suffix}`;
+    return pathname === href || pathname.startsWith(`${href}/`) ? true : undefined;
+  };
+  const usageHref = scopeProject ? `/projects/${scopeProject.id}/usage` : '/projects';
 
   function pickOrg(id: string): void {
     setOrgId(id);
@@ -194,43 +224,15 @@ function ShellBody({
 
   return (
     <div className={`shell${collapsed ? ' collapsed' : ''}${navOpen ? ' nav-open' : ''}`}>
-      <div className="mobilebar">
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
-          aria-expanded={navOpen}
-          onClick={() => setNavOpen(o => !o)}
-        >
-          <IconMenu size={18} />
-        </button>
-        <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
-          <span className="brand-mark">C</span>CloudNivo
-        </Link>
-        <span className="spacer" />
-        <button type="button" className="icon-btn" aria-label="Search and commands" onClick={openPalette}>
-          <IconSearch size={17} />
-        </button>
-        {user ? <span className="avatar" aria-label={user.email}>{user.email.slice(0, 1)}</span> : null}
-      </div>
       <button type="button" className="scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />
       <aside className="sidebar" aria-label="Sidebar">
         <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
           <span className="brand-mark">C</span>CloudNivo
         </Link>
 
-        <button type="button" className="search-trigger" onClick={openPalette} aria-label="Open command palette">
-          <IconSearch size={16} />
-          <span style={{ flex: 1, textAlign: 'left' }}>Search…</span>
-          <span className="kbd-inline">⌘K</span>
-        </button>
-
-        <div>
+        <div className="only-mobile">
           <p className="nav-label">Organization</p>
           <OrgMenu org={org} orgs={orgs} onPick={pickOrg} />
-        </div>
-
-        <div>
           <p className="nav-label">Project</p>
           <ProjectMenu project={project} projects={orgProjects} onPick={pickProject} />
         </div>
@@ -243,7 +245,7 @@ function ShellBody({
           </div>
         ) : null}
 
-        <nav className="nav" aria-label="Workspace">
+        <nav className="nav" aria-label="Primary">
           <div className="nav-group">
             <p className="nav-context">Workspace</p>
             {WORKSPACE_NAV.map(l => (
@@ -256,22 +258,55 @@ function ShellBody({
             ))}
           </div>
           <div className="nav-group">
+            <p className="nav-context">Resources</p>
+            {RESOURCES.map(r => (
+              <Link key={r.suffix} href={projHref(r.suffix)} aria-current={projActive(r.suffix)}>
+                <span className="nav-icon" aria-hidden>
+                  {r.icon}
+                </span>
+                {r.label}
+              </Link>
+            ))}
+          </div>
+          <div className="nav-group">
             <p className="nav-context">Development</p>
-            <Link href={aiHref} aria-current={pathname.endsWith('/ai') ? 'page' : undefined}>
-              <span className="nav-icon" aria-hidden>
-                <IconAIBuilder size={16} />
-              </span>
-              AI Builder
-            </Link>
-            <Link href="/developer" aria-current={pathname === '/developer' ? 'page' : undefined}>
-              <span className="nav-icon" aria-hidden>
-                <IconCLI size={16} />
-              </span>
-              CLI &amp; SDK
-            </Link>
+            {DEVELOPMENT.map(d =>
+              d.suffix === null ? (
+                <Link
+                  key="cli"
+                  href="/developer"
+                  aria-current={pathname === '/developer' ? 'page' : undefined}
+                >
+                  <span className="nav-icon" aria-hidden>
+                    {d.icon}
+                  </span>
+                  {d.label}
+                </Link>
+              ) : (
+                <Link key={d.suffix} href={projHref(d.suffix)} aria-current={projActive(d.suffix)}>
+                  <span className="nav-icon" aria-hidden>
+                    {d.icon}
+                  </span>
+                  {d.label}
+                </Link>
+              ),
+            )}
           </div>
           <div className="nav-group">
             <p className="nav-context">Management</p>
+            <Link
+              href={usageHref}
+              aria-current={
+                scopeProject && (pathname === usageHref || pathname.startsWith(`${usageHref}/`))
+                  ? 'page'
+                  : undefined
+              }
+            >
+              <span className="nav-icon" aria-hidden>
+                <IconUsage size={16} />
+              </span>
+              Usage
+            </Link>
             {MANAGE_NAV.map(l => (
               <Link key={l.href} href={l.href} aria-current={l.match(pathname) ? 'page' : undefined}>
                 <span className="nav-icon" aria-hidden>
@@ -294,16 +329,47 @@ function ShellBody({
             {collapsed ? <IconExpand size={15} /> : <IconCollapse size={15} />}
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
+        </div>
+      </aside>
+      <div className="content">
+        <header className="topbar" aria-label="Workspace">
+          <button
+            type="button"
+            className="icon-btn only-mobile"
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(o => !o)}
+          >
+            <IconMenu size={18} />
+          </button>
+          <div className="topbar-switchers only-desktop">
+            <OrgMenu org={org} orgs={orgs} onPick={pickOrg} />
+            <ProjectMenu project={project} projects={orgProjects} onPick={pickProject} />
+          </div>
+          <span className="spacer" />
+          <button
+            type="button"
+            className="search-trigger topbar-search"
+            onClick={openPalette}
+            aria-label="Open command palette"
+          >
+            <IconSearch size={16} />
+            <span className="search-text" style={{ flex: 1, textAlign: 'left' }}>
+              Search…
+            </span>
+            <span className="kbd-inline">⌘K</span>
+          </button>
+          <Notifications />
           <AccountMenu
             email={user?.email ?? null}
             onLogout={doLogout}
             onAccount={() => router.push('/account')}
           />
-        </div>
-      </aside>
-      <main id="main" className="main" tabIndex={-1}>
-        {children}
-      </main>
+        </header>
+        <main id="main" className="main" tabIndex={-1}>
+          {children}
+        </main>
+      </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
@@ -438,19 +504,19 @@ function AccountMenu({
   return (
     <Menu
       label={`Account: ${email}`}
-      up
       button={
         <>
           <span className="avatar" aria-hidden>
             {email.slice(0, 1)}
           </span>
-          <span className="grow" style={{ fontWeight: 500, fontSize: 12 }}>
+          <span className="grow account-email">
             {email}
           </span>
         </>
       }
     >
       <button type="button" role="menuitem" onClick={onAccount}>
+        <IconAccount size={14} aria-hidden />
         Account settings
       </button>
       <button type="button" role="menuitem" onClick={onLogout}>

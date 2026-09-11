@@ -120,7 +120,7 @@ function ActivityBody(): React.JSX.Element {
         </button>
       </div>
 
-      {error ? <ErrorState message={error} retry={() => void load()} /> : null}
+      {error ? <ErrorState title="Couldn't load activity" message={error} retry={() => void load()} /> : null}
 
       {!items || !projects ? (
         <LoadingSkeleton label="Loading activity" rows={5} />

@@ -129,7 +129,7 @@ function DashboardBody(): React.JSX.Element {
         </div>
       </div>
 
-      {error ? <ErrorState message={error} retry={() => void load()} /> : null}
+      {error ? <ErrorState title="Couldn't load workspace" message={error} retry={() => void load()} /> : null}
 
       {!projects ? (
         <LoadingSkeleton label="Loading dashboard" rows={4} />

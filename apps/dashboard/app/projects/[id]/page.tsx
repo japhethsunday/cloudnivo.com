@@ -81,7 +81,7 @@ export default function ProjectOverviewPage({
     void load();
   }, [load]);
 
-  if (error && !jobs) return <ErrorState message={error} retry={() => void load()} />;
+  if (error && !jobs) return <ErrorState title="Couldn't load project overview" message={error} retry={() => void load()} />;
   if (!jobs || !counts) return <LoadingSkeleton label="Loading overview" rows={5} />;
 
   const recent = jobs.slice(0, 5);

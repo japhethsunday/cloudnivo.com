@@ -84,7 +84,7 @@ export default function ProjectLogsPage({
     };
   }, [id, activeFn]);
 
-  if (error && !jobs) return <ErrorState message={error} />;
+  if (error && !jobs) return <ErrorState title="Couldn't load logs" message={error} />;
   if (!jobs) return <LoadingSkeleton label="Loading logs" />;
 
   const q = jobQuery.trim().toLowerCase();

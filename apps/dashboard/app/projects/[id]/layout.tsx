@@ -77,7 +77,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
     return () => clearInterval(t);
   }, [load]);
 
-  if (error && !project) return <ErrorState message={error} retry={() => void load()} />;
+  if (error && !project) return <ErrorState title="Couldn't open project" message={error} retry={() => void load()} />;
   if (!project) return <LoadingSkeleton label="Loading project" rows={4} />;
 
   const base = `/projects/${id}`;
@@ -99,7 +99,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
               {health === 'unknown' ? 'health unknown' : health}
             </span>
             <span aria-hidden>·</span>
-            <span>{project.region}</span>
+            <span title="Environment / region">Env · {project.region}</span>
             <span aria-hidden>·</span>
             <code title={project.id}>{project.id.slice(0, 8)}…</code>
             <CopyButton text={project.id} label="Copy ID" />

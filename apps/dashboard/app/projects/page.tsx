@@ -90,7 +90,7 @@ function ProjectsBody(): React.JSX.Element {
         </Link>
       </div>
 
-      {error ? <ErrorState message={error} retry={() => void load()} /> : null}
+      {error ? <ErrorState title="Couldn't load projects" message={error} retry={() => void load()} /> : null}
 
       {!projects ? (
         <LoadingTable label="Loading projects" />

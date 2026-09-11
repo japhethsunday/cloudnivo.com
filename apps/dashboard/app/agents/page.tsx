@@ -179,7 +179,7 @@ function AgentsBody(): React.JSX.Element {
         </select>
       </div>
 
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <ErrorState title="Couldn't load agent access" message={error} /> : null}
 
       {!orgId ? (
         <EmptyState

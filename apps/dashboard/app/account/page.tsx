@@ -10,18 +10,18 @@ import { useSession } from '../../components/SessionProvider';
 import { useTheme } from '../../components/ThemeProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
-import { Badge, useToast } from '../../components/ui';
+import { useToast } from '../../components/ui';
 
 interface ProjectKey { id: string }
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile' },
   { id: 'security', label: 'Security' },
-  { id: 'agents', label: 'Agent access' },
   { id: 'api-access', label: 'API access' },
-  { id: 'organizations', label: 'Organizations' },
-  { id: 'appearance', label: 'Appearance' },
+  { id: 'agents', label: 'Agent access' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'sessions', label: 'Sessions' },
   { id: 'danger', label: 'Danger zone' },
 ];
 
@@ -34,7 +34,7 @@ export default function AccountPage(): React.JSX.Element {
 }
 
 function AccountBody(): React.JSX.Element {
-  const { user, orgs, token, logout, refresh } = useSession();
+  const { user, token, logout, refresh } = useSession();
   const router = useRouter();
   const toast = useToast();
   const [active, setActive] = useState('profile');
@@ -126,49 +126,8 @@ function AccountBody(): React.JSX.Element {
           {active === 'api-access' ? <ApiAccessSection keyCounts={keyCounts} /> : null}
           {active === 'appearance' ? <AppearanceSection /> : null}
           {active === 'notifications' ? <NotificationsSection email={user?.email ?? ''} /> : null}
+          {active === 'sessions' ? <SessionsSection /> : null}
           {active === 'danger' ? <DangerSection /> : null}
-          {active === 'organizations' ? (
-            <div className="card">
-              <h2 style={{ marginTop: 0 }}>Organization memberships</h2>
-              {orgs.length === 0 ? (
-                <EmptyState
-                  title="No memberships"
-                  hint="Create or join an organization to get started."
-                  action={
-                    <Link className="btn btn-primary" href="/organizations">
-                      Go to organizations
-                    </Link>
-                  }
-                />
-              ) : (
-                <div className="table-wrap" style={{ border: 0 }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Organization</th>
-                        <th scope="col">Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orgs.map(o => (
-                        <tr key={o.id}>
-                          <td>
-                            {o.name}
-                            <div className="muted" style={{ fontSize: 12 }}>
-                              {o.slug}
-                            </div>
-                          </td>
-                          <td>
-                            <Badge tone={o.role === 'owner' ? 'info' : 'muted'}>{o.role}</Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
       </div>
     </section>
@@ -231,7 +190,7 @@ function ProfileSection({
           <input id="profile-email" value={email} disabled aria-describedby="email-note" />
           <span className="hint" id="email-note">Email identifies your account and cannot be changed here.</span>
         </div>
-        {error ? <ErrorState message={error} /> : null}
+        {error ? <ErrorState title="Couldn't save profile" message={error} /> : null}
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save profile'}
         </button>
@@ -295,7 +254,7 @@ function SecuritySection({ expiry }: { expiry: string | null }): React.JSX.Eleme
               onChange={e => setNext(e.target.value)}
             />
           </div>
-          {error ? <ErrorState message={error} /> : null}
+        {error ? <ErrorState title="Couldn't change password" message={error} /> : null}
           {done ? (
             <p role="status" className="flash-ok">
               Password changed. Use it next time you log in.
@@ -394,6 +353,54 @@ function NotificationsSection({ email }: { email: string }): React.JSX.Element {
           </Link>
         </li>
       </ul>
+    </div>
+  );
+}
+
+function SessionsSection(): React.JSX.Element {
+  const { token, logout } = useSession();
+  const router = useRouter();
+  const expiry = sessionExpiresAt(token);
+
+  function doLogout(): void {
+    logout();
+    router.replace('/login');
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="card">
+        <div className="section-head">
+          <p className="eyebrow">Account</p>
+          <h2>Sessions</h2>
+          <p>Signed-in browsers holding a session token. Sessions are short-lived and verified server-side.</p>
+        </div>
+        <ul className="health-list">
+          <li className="health-row">
+            <span className="dot ok" aria-hidden />
+            <span className="grow">
+              <span className="name">This browser</span>
+              <div className="detail">
+                Current session{expiry ? ` · expires ${new Date(expiry).toLocaleString()}` : ' · expiry unknown'}
+              </div>
+            </span>
+          </li>
+        </ul>
+        <div style={{ marginTop: 12 }}>
+          <button type="button" className="btn" onClick={doLogout}>
+            Log out this browser
+          </button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="section-head">
+          <h2 style={{ fontSize: 15 }}>Machine credentials</h2>
+          <p>Long-lived access for agents and CI lives under Agent access — scoped, expiring, revocable.</p>
+        </div>
+        <Link className="btn" href="/agents">
+          Review agent tokens
+        </Link>
+      </div>
     </div>
   );
 }

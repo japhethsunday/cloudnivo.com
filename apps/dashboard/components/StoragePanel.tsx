@@ -427,7 +427,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
                   src={preview.url}
                   title={preview.name}
                   sandbox=""
-                  style={{ width: '100%', height: 320, background: '#fff' }}
+                  style={{ width: '100%', height: 320, background: 'var(--bg-inset)' }}
                 />
               )}
               <p>

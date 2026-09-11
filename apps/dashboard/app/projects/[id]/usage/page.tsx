@@ -53,7 +53,7 @@ export default function ProjectUsagePage({
     void load();
   }, [load]);
 
-  if (error && !usage) return <ErrorState message={error} />;
+  if (error && !usage) return <ErrorState title="Couldn't load usage" message={error} />;
   if (!usage) return <LoadingSkeleton label="Loading usage" />;
 
   const mine = usage.slices

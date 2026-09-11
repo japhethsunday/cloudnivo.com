@@ -39,14 +39,18 @@ export function ErrorState({
   message,
   retry,
   details,
+  title = 'Request failed',
+  retryLabel = 'Try again',
 }: {
   message: string;
   retry?: () => void;
   details?: string;
+  title?: string;
+  retryLabel?: string;
 }): React.JSX.Element {
   return (
     <div className="error-box" role="alert" style={{ marginBottom: 12 }}>
-      <strong>Something went wrong</strong>
+      <strong>{title}</strong>
       <p className="muted" style={{ margin: '6px 0 0' }}>
         {message}
       </p>
@@ -70,7 +74,7 @@ export function ErrorState({
       {retry ? (
         <div style={{ marginTop: 10 }}>
           <button type="button" className="btn btn-sm" onClick={retry}>
-            Try again
+            {retryLabel}
           </button>
         </div>
       ) : null}

@@ -188,7 +188,7 @@ function Wizard(): React.JSX.Element {
               ))}
             </select>
           </div>
-          {error ? <ErrorState message={error} /> : null}
+          {error ? <ErrorState title="Couldn't create project" message={error} /> : null}
           <button type="submit" className="btn btn-primary btn-block" disabled={busy || !orgId}>
             {busy ? 'Creating…' : '4 · Create project and provision'}
           </button>
@@ -221,7 +221,7 @@ function Wizard(): React.JSX.Element {
               </div>
             </li>
           </ol>
-          {stage === 'failed' && error ? <ErrorState message={error} /> : null}
+          {stage === 'failed' && error ? <ErrorState title="Provisioning failed" message={error} /> : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {stage === 'done' && projectId ? (
               <button type="button" className="btn btn-primary" onClick={() => router.push(`/projects/${projectId}`)}>
