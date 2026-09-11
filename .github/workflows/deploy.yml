@@ -37,12 +37,12 @@ jobs:
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           railway link --project "$RAILWAY_PROJECT_ID" --environment staging
-          railway run --service cloudnivo-api -- npm run db:migrate
-          railway run --service cloudnivo-api -- npm run db:seed
+          railway run --service cloudnivo-api-staging -- npm run db:migrate
+          railway run --service cloudnivo-api-staging -- npm run db:seed
       - name: Deploy API, worker, realtime
         run: |
           set -euo pipefail
-          for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
+          for svc in cloudnivo-api-staging cloudnivo-worker-staging cloudnivo-realtime-staging; do
             railway up --service "$svc" --environment staging --detach
           done
       - name: Readiness gate
