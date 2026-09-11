@@ -134,10 +134,14 @@ jobs:
       - name: Boot API + dashboard
         run: |
           set -euo pipefail
+          # E2E drives many parallel browser+API flows from one IP; budgets are
+          # raised for this harness only (429 behavior stays covered by unit
+          # tests in apps/api, same rationale as tests/load/run.ts).
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           DATABASE_URL=postgres://u:p@localhost:5432/db \
           CORS_ORIGINS=http://127.0.0.1:3000 API_PORT=3001 \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
+          AUTH_RATE_MAX=1000 RATE_LIMIT_MAX_REQUESTS=10000 \
           nohup node apps/api/dist/index.js > /tmp/cn-api.log 2>&1 &
           echo $! > /tmp/cn-api.pid
           (cd apps/dashboard && nohup npx next start -p 3000 > /tmp/cn-dash.log 2>&1 & echo $! > /tmp/cn-dash.pid)
