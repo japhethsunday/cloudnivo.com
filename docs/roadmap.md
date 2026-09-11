@@ -151,6 +151,43 @@ versioned API envelope, dashboard shell, docs, green
   project storms green; automated backup + verify tooling (`db:backup`,
   `db:verify-backup`, CI-verified) with tamper-evident manifests.
 
+## Phase 12 — Billing + usage metering (DONE)
+
+- `@cloudnivo/billing`: org-scoped plans (`free`/`pro`/`business`/`enterprise`),
+  subscriptions, invoices, payments, and usage metering (counters + gauges,
+  UTC `YYYY-MM` periods, quota checks with 50/75/90/100 warnings).
+- Provider boundary (`manual` default — no charges; webhook interface for
+  Stripe-compatible providers): HMAC-verified, idempotent webhooks; no payment
+  credentials ever accepted, stored, logged, or returned (provider refs only).
+- Billing API (org reads for any member; mutations owner/admin-gated) + usage
+  recording at API-route choke points + OpenAPI paths; dashboard usage/billing
+  views; `packages/cli` + `packages/sdk` on the same backend.
+- Green `lint → typecheck → test → build` (unit + HTTP E2E incl. quota,
+  webhook, and isolation cases; Drizzle live test gated).
+
+## Phase 13 — Agent access tokens (DONE)
+
+- `@cloudnivo/agents`: dedicated `cn_agent_…` credentials (sha256 hash-only,
+  raw shown once, never logged/audited) with granular scopes
+  (`projects.*`, `database.*`, `functions.*`, `storage.*`, `realtime.*`,
+  `logs.read`, `environment.*`, `usage.read`/`billing.read`), per-token
+  project allow-lists, expiry, instant revocation, and per-token rate limits
+  (`AGENT_RATE_MAX`) on top of IP budgets.
+- Approval gate for destructive operations: `428 APPROVAL_REQUIRED` with an
+  approval id bound to exact method + path + body (24h TTL, single-use);
+  approve/reject in dashboard inbox or API with `X-Approval-Id` replay.
+- Enforcement in every plane (projects, data, storage, functions, realtime WS
+  via `?token=`, AI builder, billing reads); agents can never manage API keys,
+  reveal DB credentials, invite members, or touch customer-auth flows.
+- Activity feed (lifecycle, denials with reasons, approvals, mutations — token
+  ids only, never raw values) + Drizzle store (`0006` migration).
+- Dashboard Agents console (tokens, scope picker with dangerous flags,
+  approvals inbox, activity) + Account → Agent access; `cloudnivo agent …`
+  CLI (0600 credentials file, env-var override) + SDK (`agentWhoami`,
+  `createAgentToken`, approval-aware mutations). See `docs/agent-tokens.md`.
+- 20+ new tests (service, HTTP E2E, rate-limit, realtime authz matrix, CLI/SDK,
+  Playwright smoke); green `lint → typecheck → test → build` (342 passed).
+
 ## Non-goals for Phase 1
 
 No real persistence in routes, no OAuth/RLS/rotation, no WS server, no cloud

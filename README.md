@@ -77,7 +77,7 @@
 
 Every project gets isolated infrastructure per environment — Postgres, auth, storage, realtime, and versioned APIs — behind one coherent control plane:
 
-| Capability                                            | Status (Phase 7)                                                    | Next                                  |
+| Capability                                            | Status (Phase 13)                                                   | Next                                  |
 | ----------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------- |
 | Organizations, projects, environments, API keys, RBAC | Live via API (memory default, Drizzle with `CONTROL_STORE=drizzle`) | Polish, quotas                        |
 | Platform accounts + org invites                       | Done — signup/login/me, opaque invite tokens, Playwright smoke      | OAuth, password reset                 |
@@ -87,7 +87,9 @@ Every project gets isolated infrastructure per environment — Postgres, auth, s
 | Realtime (WS, CDC, broadcast, presence)               | Done — gateway + LISTEN/NOTIFY CDC + memory/Redis bus               | Storage webhooks → realtime events    |
 | Functions (deploy, invoke, versions, logs, env)       | Done — worker isolates + container runtime + console                | SDK data-plane access, CLI            |
 | Provisioning (`Project → Infrastructure`)             | Done — Docker provider (+ container host mode)                      | Cloud drivers (Railway/VPS/K8s)       |
-| Dashboard                                             | Database, API, Auth, Storage, Realtime + Functions consoles         | Live data wiring (Phase 8)            |
+| Billing + usage metering                              | Done — plans, quotas, manual provider (no charges), webhooks        | Stripe provider, portals              |
+| Agent access tokens (`cn_agent_*`)                    | Done — scopes, approval-gated destructives, activity, UI/CLI/SDK    | Fine-grained policies, audit export   |
+| Dashboard                                             | Database, API, Auth, Storage, Realtime, Functions, Agents consoles  | Live data wiring polish               |
 
 ## At a glance
 
@@ -331,7 +333,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 8 (this release): durable control plane (`CONTROL_STORE=drizzle`, migrations + seed), platform signup/login/me, org invites, Playwright smoke, gated live coverage, real function SDK data-plane. Phase 9: CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 13 (this release): agent access tokens (`cn_agent_*`, scopes, approval-gated destructives, activity, dashboard/CLI/SDK — see `docs/agent-tokens.md`). Phase 12: billing + usage metering (plans, quotas, manual provider default). Phase 9: CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 
