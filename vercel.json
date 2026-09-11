@@ -3,5 +3,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build:packages && npm run build --workspace=@cloudnivo/dashboard",
   "outputDirectory": "apps/dashboard/.next",
-  "installCommand": "npm ci --no-audit --no-fund"
+  "installCommand": "npm ci --no-audit --no-fund --include=dev"
 }
