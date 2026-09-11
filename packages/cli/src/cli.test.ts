@@ -132,3 +132,83 @@ describe('cli agent commands', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('cli automation commands', () => {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLOUDNIVO_TOKEN: 't', CLOUDNIVO_API_URL: 'http://x:3001' };
+
+  function stub(routes: [method: string, part: string, body: unknown][]): string[] {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        const method = init.method ?? 'GET';
+        const path = String(url).split('/api')[1] ?? String(url);
+        calls.push(`${method} ${path}`);
+        const match = routes.find(([m, part]) => {
+          if (m !== method) return false;
+          if (part.endsWith('$')) return path.endsWith(part.slice(0, -1));
+          return path.includes(part);
+        })?.[2] ?? { data: {} };
+        return new Response(JSON.stringify(match), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  it('queues: create, publish, consume, ack, purge', async () => {
+    const calls = stub([
+      ['POST', '/messages$', { data: { message: { id: 'm1' }, duplicate: false } }],
+      ['POST', '/consume$', { data: { messages: [{ id: 'm1', status: 'leased', body: {} }] } }],
+      ['POST', '/ack$', { data: { message: { id: 'm1' } } }],
+      ['POST', '/purge$', { data: { purged: 2 } }],
+      ['POST', '/queues$', { data: { queue: { id: 'q1', name: 'jobs' } } }],
+      ['GET', '/queues$', { data: { queues: [{ id: 'q1', name: 'jobs' }] } }],
+    ]);
+    expect(await run(['queues', 'create', '--project', 'p1', '--name', 'jobs'], env)).toContain('q1');
+    expect(
+      await run(['queues', 'publish', '--project', 'p1', '--queue', 'jobs', '--body', '{"n":1}'], env),
+    ).toContain('m1');
+    expect(await run(['queues', 'consume', '--project', 'p1', '--queue', 'q1'], env)).toContain('m1');
+    expect(await run(['queues', 'ack', '--project', 'p1', '--queue', 'q1', '--message', 'm1'], env)).toContain('acked');
+    expect(await run(['queues', 'purge', '--project', 'p1', '--queue', 'q1'], env)).toContain('purged 2');
+    expect(calls.join('|')).toContain('POST /v1/projects/p1/queues/q1/consume');
+    vi.unstubAllGlobals();
+  });
+
+  it('schedules, webhooks, metrics, and diagnose', async () => {
+    const calls = stub([
+      ['POST', '/trigger$', { data: { ok: true, error: null } }],
+      ['POST', '/schedules$', { data: { schedule: { id: 's1', nextRunAt: null } } }],
+      ['POST', '/webhooks$', { data: { webhook: { id: 'w1' }, secret: 'whsec_x' } }],
+      ['POST', '/test$', { data: { delivery: { id: 'd1', status: 'pending' } } }],
+      ['GET', '/metrics', { data: { requests: 3, errors: 0, p50Ms: 1, p95Ms: 2 } }],
+      ['POST', '/diagnose$', {
+        data: { diagnosis: { healthy: true, probableCause: 'none', affectedService: 'none', evidence: [], suggestedFix: 'x', confidence: 'high' } },
+      }],
+    ]);
+    expect(
+      await run(['schedules', 'create', '--project', 'p1', '--name', 'n', '--function', 'f', '--cron', '0 * * * *'], env),
+    ).toContain('s1');
+    expect(await run(['schedules', 'trigger', '--project', 'p1', '--schedule', 's1'], env)).toContain('fired');
+    expect(
+      await run(['webhooks', 'create', '--project', 'p1', '--name', 'w', '--url', 'https://example.com/h', '--events', 'job.failed'], env),
+    ).toContain('whsec_x');
+    expect(await run(['webhooks', 'test', '--project', 'p1', '--webhook', 'w1'], env)).toContain('d1');
+    expect(await run(['metrics', '--org', 'o1', '--project', 'p1'], env)).toContain('requests=3');
+    expect(await run(['ai', 'diagnose', '--project', 'p1'], env)).toContain('healthy');
+    expect(calls.join('|')).toContain('POST /v1/projects/p1/ai/diagnose');
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects unknown groups and bad JSON bodies', async () => {
+    stub([['GET', '/queues', { data: { queues: [{ id: 'q1', name: 'jobs' }] } }]]);
+    await expect(run(['nope'], env)).rejects.toThrow(/Unknown command/);
+    await expect(
+      run(['queues', 'publish', '--project', 'p1', '--queue', 'q', '--body', '{bad'], env),
+    ).rejects.toThrow(/valid JSON/);
+    vi.unstubAllGlobals();
+  });
+});

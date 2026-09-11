@@ -20,6 +20,7 @@
     "@cloudnivo/api-engine": "0.1.0",
     "@cloudnivo/auth": "0.1.0",
     "@cloudnivo/agents": "0.1.0",
+    "@cloudnivo/automation": "0.1.0",
     "@cloudnivo/billing": "0.1.0",
     "@cloudnivo/cache": "0.1.0",
     "@cloudnivo/config": "0.1.0",

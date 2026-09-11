@@ -12,11 +12,14 @@ import {
 } from '@cloudnivo/database';
 import {
   CachingIntrospectionService,
+  CsvError,
   DataEngine,
   KeyError,
   buildOpenApiDoc,
   issueKey,
   keyCanWrite,
+  parseCsv,
+  serializeCsv,
   verifyKey,
   type IssuedKey,
   type KeyRole,
@@ -293,7 +296,7 @@ function cmp(a: unknown, op: string, b: unknown): boolean {
 
 // ── Routing ───────────────────────────────────────────────────────────
 
-const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage', 'functions']);
+const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage', 'functions', 'queues', 'schedules', 'webhooks']);
 
 /** True when /projects/:id/<seg>... belongs to the data plane. */
 export function isDataRoute(rest: string[], method: string): boolean {
@@ -652,6 +655,110 @@ export async function handleDataRoutes(
     const creds = await credsForProject(ctx, caller.project);
     const schema = await introspect(ctx, caller.project.id, creds);
     const engine = new DataEngine((text, params) => ctx.data.exec(creds, text, params));
+
+    // ── CSV export (same auth/filters as list; capped, streamed as attachment) ──
+    if (rowId === 'export' && req.method === 'GET') {
+      const filters: string[] = [];
+      for (const [k, v] of query) {
+        if (['select', 'order', 'limit', 'offset'].includes(k)) continue;
+        filters.push(`${k}=${v}`);
+      }
+      const scope = ownerFilterFor(schema, seg, caller);
+      if (scope) filters.push(scope);
+      const EXPORT_CAP = 10_000;
+      const pageSize = Math.min(1000, Math.max(1, config.PROVISION_MAX_SQL_ROWS));
+      const all: Record<string, unknown>[] = [];
+      let offset = 0;
+      let truncated = false;
+      for (;;) {
+        const page = await engine.list(schema, seg, {
+          select: query.get('select'),
+          filters,
+          order: query.get('order'),
+          limit: pageSize,
+          offset,
+          maxLimit: config.PROVISION_MAX_SQL_ROWS,
+        });
+        all.push(...page.rows);
+        if (all.length >= EXPORT_CAP) {
+          truncated = true;
+          all.length = EXPORT_CAP;
+          break;
+        }
+        if (page.rows.length === 0) break;
+        offset += page.rows.length;
+        if (page.rows.length < pageSize) break;
+      }
+      const table = schema.tables.find(t => t.name === seg);
+      const headers =
+        table && table.columns.length > 0
+          ? table.columns.map(c => c.name)
+          : [...new Set(all.flatMap(r => Object.keys(r)))];
+      const csv = serializeCsv(headers, all);
+      auditMutation(ctx, req, caller, 'data.exported', seg);
+      logger.info('data.request', {
+        project: projectId,
+        table: seg,
+        method: 'GET',
+        status: 200,
+        latencyMs: Date.now() - start,
+        caller: caller.kind,
+        rows: all.length,
+        truncated,
+      });
+      const filename = `${seg.replace(/[^A-Za-z0-9_-]/g, '_')}.csv`;
+      res.writeHead(200, {
+        ...baseHeaders,
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': Buffer.byteLength(csv),
+        'X-Export-Truncated': truncated ? 'true' : 'false',
+      });
+      res.end(csv);
+      return true;
+    }
+
+    // ── CSV import (insert-only; per-row errors collected, never partial-silent) ──
+    if (rowId === 'import' && req.method === 'POST') {
+      requireWrite(caller);
+      const raw = (await readJson()) as { csv?: unknown };
+      if (!raw || typeof raw.csv !== 'string') {
+        throw new ApiError('VALIDATION_ERROR', 'Request body must be { csv: string }', 400);
+      }
+      let parsed: { headers: string[]; rows: Record<string, string>[] };
+      try {
+        parsed = parseCsv(raw.csv);
+      } catch (err) {
+        if (err instanceof CsvError) throw new ApiError(err.code, err.message, err.status);
+        throw err;
+      }
+      const table = schema.tables.find(t => t.name === seg);
+      if (!table) throw new ApiError('NOT_FOUND', `Table not found: ${seg}`, 404);
+      const known = new Set(table.columns.map(c => c.name));
+      const unknown = parsed.headers.filter(h => !known.has(h));
+      if (unknown.length > 0) {
+        throw new ApiError('VALIDATION_ERROR', `Unknown columns: ${unknown.join(', ')}`, 400);
+      }
+      let inserted = 0;
+      const errors: { row: number; error: string }[] = [];
+      for (let i = 0; i < parsed.rows.length; i++) {
+        try {
+          const payload = forceOwnerInsert(schema, seg, caller, parsed.rows[i] as Record<string, unknown>);
+          await engine.create(schema, seg, payload);
+          inserted += 1;
+        } catch (err) {
+          const message = err instanceof Error ? err.message.slice(0, 200) : 'insert failed';
+          errors.push({ row: i + 2, error: message });
+          if (errors.length >= 50) break;
+        }
+      }
+      auditMutation(ctx, req, caller, 'data.imported', seg);
+      return finish(
+        200,
+        ok({ inserted, failed: parsed.rows.length - inserted, errors, truncatedErrors: errors.length >= 50 }, requestId),
+        { caller: caller.kind },
+      );
+    }
 
     if (rowId === undefined) {
       if (req.method === 'GET') {

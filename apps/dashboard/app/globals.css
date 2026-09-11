@@ -2135,6 +2135,28 @@ kbd,
   color: var(--text-muted);
 }
 
+/* ── Throughput bars (real buckets, CSS only) ──────────── */
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+  padding: 4px 2px 0;
+  overflow-x: auto;
+}
+.bars .bar {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  opacity: 0.75;
+}
+.bars .bar.errors {
+  background: var(--danger);
+  opacity: 0.85;
+}
+
 /* ── Application topbar ──────────────────────────────── */
 
 .content {
@@ -2215,7 +2237,6 @@ kbd,
 }
 
 /* ── Notifications ───────────────────────────────────── */
-
 .notif {
   position: relative;
   flex: none;

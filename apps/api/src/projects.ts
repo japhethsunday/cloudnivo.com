@@ -24,6 +24,7 @@ import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { generateDbPassword, mustOwnProject, toTenantError } from './registry.js';
 import { auditAgent, gateDestructive, requireAgent, sendApprovalRequired } from './agents.js';
+import { emitAutomationEvent } from './automation.js';
 import { storageFor } from './storage.js';
 
 export function sendJson(
@@ -352,8 +353,20 @@ export async function handleProjectRoutes(
             });
             await ctx.registry.saveCredential(project.id, result.database.dbUser, password);
           }
+          void emitAutomationEvent(ctx, {
+            type: 'job.completed',
+            organizationId: project.organizationId,
+            projectId: project.id,
+            payload: { jobId: job.id, kind: 'provision' },
+          }).catch(() => undefined);
         } catch {
           // Job record + audit already reflect the failure; never leak here.
+          void emitAutomationEvent(ctx, {
+            type: 'job.failed',
+            organizationId: project.organizationId,
+            projectId: project.id,
+            payload: { jobId: job.id, kind: 'provision' },
+          }).catch(() => undefined);
         }
       })();
       logger.info('projects.create.accepted', { project: project.id });
@@ -470,6 +483,12 @@ export async function handleProjectRoutes(
         } catch (err) {
           const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
           logger.warn('projects.delete.infra_failed', { project: project.id });
+          void emitAutomationEvent(ctx, {
+            type: 'job.failed',
+            organizationId: project.organizationId,
+            projectId: project.id,
+            payload: { kind: 'delete' },
+          }).catch(() => undefined);
           sendJson(res, status, body, baseHeaders);
           return true;
         }
@@ -485,6 +504,12 @@ export async function handleProjectRoutes(
       }
       logger.info('projects.delete', { project: project.id });
       auditSuccess('project.delete', project.organizationId, project.id, project.slug);
+      void emitAutomationEvent(ctx, {
+        type: 'project.deleted',
+        organizationId: project.organizationId,
+        projectId: project.id,
+        payload: { jobId, slug: project.slug },
+      }).catch(() => undefined);
       sendJson(res, 200, ok({ deleted: true, jobId }, requestId), baseHeaders);
       return true;
     }
@@ -663,9 +688,21 @@ export async function handleProjectRoutes(
           body.action === 'stop' ? 'stopped' : body.action === 'start' ? 'running' : 'ready';
         await ctx.registry.updateDatabaseStatus(project.id, next);
         auditSuccess(`database.${body.action}`, project.organizationId, project.id, body.action);
+        void emitAutomationEvent(ctx, {
+          type: 'job.completed',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          payload: { jobId, kind: body.action },
+        }).catch(() => undefined);
         sendJson(res, 200, ok({ jobId, status: next }, requestId), baseHeaders);
       } catch (err) {
         const { status, body } = toPublicError(mapInfraErrorCaught(err), requestId);
+        void emitAutomationEvent(ctx, {
+          type: 'job.failed',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          payload: { kind: 'database-action' },
+        }).catch(() => undefined);
         sendJson(res, status, body, baseHeaders);
       }
       return true;

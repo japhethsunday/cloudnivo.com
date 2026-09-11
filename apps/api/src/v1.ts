@@ -3,10 +3,13 @@ import { randomUUID } from 'node:crypto';
 import {
   ApiError,
   checkRateLimit,
+  classifyService,
   corsHeaders,
   ok,
+  routeTemplate,
   securityHeaders,
   toPublicError,
+  RequestMetrics,
   type RateLimitStore,
 } from '@cloudnivo/api-core';
 import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
@@ -53,6 +56,8 @@ import { handleStorageRoutes, isStorageRoute } from './storage.js';
 import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 import { handleAiRoutes, isAiRoute } from './ai.js';
+import { handleAutomationRoutes, isAutomationRoute } from './automation.js';
+import { handleMetricsRoutes, isMetricsRoute } from './metrics.js';
 import { handleBillingRoutes, isBillingRoute } from './billing.js';
 import { agentSessionFor, handleAgentRoutes, isAgentRoute, looksLikeAgentToken } from './agents.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
@@ -76,6 +81,8 @@ export interface ApiContext {
   audit: AuditSink;
   /** Central billing + usage metering (memory or drizzle, mirrors the other stores). */
   billing: BillingService;
+  /** Process-local request metrics ring (labeled "since boot" everywhere it surfaces). */
+  metrics: RequestMetrics;
   /** Durable control-plane connection (CONTROL_STORE=drizzle only). */
   controlDb: DatabaseService | null;
   /** Per-project customer-auth handles (service + dev outbox), cached. */
@@ -111,6 +118,7 @@ export function createContext(config: AppConfig): ApiContext {
   const keys = new MemoryKeyStore();
   const jobs = new MemoryJobStore();
   const billing = new BillingService(new MemoryBillingStore());
+  const metrics = new RequestMetrics();
   const audit: AuditSink = {
     record: (event, fields) => {
       void registry
@@ -137,6 +145,7 @@ export function createContext(config: AppConfig): ApiContext {
     jobs,
     audit,
     billing,
+    metrics,
     controlDb: null,
     customerAuth: new Map(),
   };
@@ -162,6 +171,10 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
   ctx.keys = new DrizzleKeyStore(svc.db);
   ctx.jobs = new DrizzleJobStore(svc.db);
   ctx.billing = new BillingService(new DrizzleBillingStore(svc.db));
+  const { AutomationService, DrizzleAutomationStore } = await import('@cloudnivo/automation');
+  (ctx as unknown as { __automation?: unknown }).__automation = {
+    service: new AutomationService(new DrizzleAutomationStore(svc.db)),
+  };
   const { DrizzleStorageMetadataStore } = await import('@cloudnivo/storage');
   (ctx as unknown as { __storageMeta?: unknown }).__storageMeta = new DrizzleStorageMetadataStore(
     svc.db,
@@ -234,6 +247,27 @@ export async function handleRequest(
     ...corsHeaders(origin, ctx.config.corsOrigins),
     'X-Request-Id': requestId,
   };
+
+  // Request metrics: recorded on every response via `finish` (process-local
+  // ring; project slice comes from the URL, never from client claims).
+  const metricsStart = Date.now();
+  const metricsProject = /^\/api\/v1\/projects\/([^/]+)/.exec(url.pathname)?.[1] ?? null;
+  const metricsMethod = req.method ?? 'GET';
+  const metricsPath = url.pathname;
+  res.on('finish', () => {
+    try {
+      ctx.metrics.record({
+        service: classifyService(metricsPath),
+        route: routeTemplate(metricsPath),
+        method: metricsMethod,
+        status: res.statusCode,
+        latencyMs: Date.now() - metricsStart,
+        projectId: metricsProject,
+      });
+    } catch {
+      // Metrics must never break responses.
+    }
+  });
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, baseHeaders);
@@ -319,6 +353,12 @@ export async function handleRequest(
     // Agent access tokens (management by org owners/admins; agent self-service).
     if (isAgentRoute(url.pathname, req.method ?? 'GET')) {
       const handled = await handleAgentRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
+    // Request metrics (org-scoped reads over the process-local ring).
+    if (isMetricsRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handleMetricsRoutes(req, res, ctx, logger, baseHeaders, requestId);
       if (handled) return;
     }
 
@@ -415,6 +455,20 @@ export async function handleRequest(
           routeHeaders,
           requestId,
           rest,
+        );
+        if (handled) return;
+      }
+      // Automation: queues, schedules, outbound webhooks (session/agent members).
+      if (isAutomationRoute(rest, req.method ?? 'GET')) {
+        const handled = await handleAutomationRoutes(
+          req,
+          res,
+          ctx,
+          logger,
+          routeHeaders,
+          requestId,
+          rest,
+          async () => readJson(req),
         );
         if (handled) return;
       }

@@ -410,6 +410,16 @@ export function IconExpand(props: IconProps): React.JSX.Element {
   );
 }
 
+export function IconWorkflows(props: IconProps): React.JSX.Element {
+  return (
+    <Icon {...props}>
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </Icon>
+  );
+}
+
 export function IconCollapse(props: IconProps): React.JSX.Element {
   return (
     <Icon {...props} strokeWidth={2}>
@@ -445,4 +455,6 @@ export const ICON_MAP: Record<string, React.ComponentType<IconProps>> = {
   api: IconAPI,
   realtime: IconRealtime,
   key: IconAgents,
+  automation: IconWorkflows,
+  metrics: IconUsage,
 };

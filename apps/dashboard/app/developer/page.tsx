@@ -81,7 +81,18 @@ node packages/cli/dist/bin.js agent deploy \\
 
 node packages/cli/dist/bin.js ai approve --project <project-id> --plan <plan-id>
 node packages/cli/dist/bin.js ai apply --project <project-id> --plan <plan-id>
-node packages/cli/dist/bin.js ai usage --project <project-id>`}
+node packages/cli/dist/bin.js ai usage --project <project-id>
+node packages/cli/dist/bin.js ai diagnose --project <project-id>`}
+              />
+              <Snippet
+                title="Queues, schedules, webhooks, metrics"
+                code={`node packages/cli/dist/bin.js queues publish \\
+  --project <project-id> --queue jobs --body '{"n":1}'
+node packages/cli/dist/bin.js schedules create \\
+  --project <project-id> --name nightly --function report --cron "0 2 * * *"
+node packages/cli/dist/bin.js webhooks create \\
+  --project <project-id> --name ops --url https://example.com/hook --events job.failed
+node packages/cli/dist/bin.js metrics --org <org-id> --project <project-id> --window 24h`}
               />
             </div>
           </div>

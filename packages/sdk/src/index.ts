@@ -285,4 +285,172 @@ export class CloudNivoClient {
   }): Promise<{ project: { id: string }; jobId: string }> {
     return request(this.opts, 'POST', '/api/v1/projects', input);
   }
+
+  // ── Automation: queues ──
+  async listQueues(projectId: string): Promise<{ queues: { id: string; name: string }[] }> {
+    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/queues`);
+  }
+
+  async createQueue(projectId: string, input: { name: string; maxDeliveries?: number }): Promise<{ queue: { id: string; name: string } }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues`, input);
+  }
+
+  async publishMessage(
+    projectId: string,
+    queueId: string,
+    body: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<{ message: { id: string }; duplicate: boolean }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/messages`, {
+      body,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    });
+  }
+
+  async consumeMessages(
+    projectId: string,
+    queueId: string,
+    opts: { limit?: number; leaseMs?: number } = {},
+  ): Promise<{ messages: { id: string; body: Record<string, unknown>; status: string }[] }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/consume`, {
+      limit: opts.limit ?? 1,
+      leaseMs: opts.leaseMs ?? 30_000,
+    });
+  }
+
+  async ackMessage(projectId: string, queueId: string, messageId: string): Promise<{ message: { id: string } }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/messages/${messageId}/ack`, {});
+  }
+
+  async listMessages(projectId: string, queueId: string): Promise<{ messages: { id: string; status: string }[] }> {
+    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/queues/${queueId}/messages`);
+  }
+
+  async deleteQueue(projectId: string, queueId: string): Promise<{ deleted: boolean }> {
+    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/queues/${queueId}`);
+  }
+
+  async purgeQueue(projectId: string, queueId: string, statuses: string[]): Promise<{ purged: number }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/purge`, { statuses });
+  }
+
+  // ── Automation: schedules ──
+  async listSchedules(projectId: string): Promise<{ schedules: { id: string; name: string; cron: string }[] }> {
+    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/schedules`);
+  }
+
+  async createSchedule(
+    projectId: string,
+    input: { name: string; functionSlug: string; cron: string; payload?: Record<string, unknown> },
+  ): Promise<{ schedule: { id: string; nextRunAt: string | null } }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/schedules`, input);
+  }
+
+  async triggerSchedule(projectId: string, scheduleId: string): Promise<{ ok: boolean; error: string | null }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/schedules/${scheduleId}/trigger`, {});
+  }
+
+  async patchSchedule(
+    projectId: string,
+    scheduleId: string,
+    patch: { name?: string; cron?: string; payload?: Record<string, unknown>; enabled?: boolean },
+  ): Promise<{ schedule: { id: string } }> {
+    return request(this.opts, 'PATCH', `/api/v1/projects/${projectId}/schedules/${scheduleId}`, patch);
+  }
+
+  async deleteSchedule(projectId: string, scheduleId: string): Promise<{ deleted: boolean }> {
+    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/schedules/${scheduleId}`);
+  }
+
+  // ── Automation: webhooks ──
+  async listWebhooks(projectId: string): Promise<{ webhooks: { id: string; name: string; url: string }[] }> {
+    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/webhooks`);
+  }
+
+  async createWebhook(
+    projectId: string,
+    input: { name: string; url: string; eventTypes: string[]; maxAttempts?: number },
+  ): Promise<{ webhook: { id: string }; secret: string }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks`, input);
+  }
+
+  async listDeliveries(projectId: string, webhookId: string): Promise<{ deliveries: { id: string; status: string }[] }> {
+    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries`);
+  }
+
+  async testWebhook(projectId: string, webhookId: string): Promise<{ delivery: { id: string; status: string } }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/test`, {});
+  }
+
+  async replayDelivery(projectId: string, webhookId: string, deliveryId: string): Promise<{ delivery: { id: string } }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries/${deliveryId}/replay`, {});
+  }
+
+  async rotateWebhook(projectId: string, webhookId: string): Promise<{ webhook: { id: string }; secret: string }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/rotate`, {});
+  }
+
+  async patchWebhook(
+    projectId: string,
+    webhookId: string,
+    patch: { name?: string; url?: string; eventTypes?: string[]; enabled?: boolean; maxAttempts?: number },
+  ): Promise<{ webhook: { id: string } }> {
+    return request(this.opts, 'PATCH', `/api/v1/projects/${projectId}/webhooks/${webhookId}`, patch);
+  }
+
+  async deleteWebhook(projectId: string, webhookId: string): Promise<{ deleted: boolean }> {
+    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/webhooks/${webhookId}`);
+  }
+
+  // ── Metrics (process-local, since boot) ──
+  async projectMetrics(
+    organizationId: string,
+    projectId: string,
+    window: string = '1h',
+  ): Promise<{ requests: number; errors: number; p50Ms: number; p95Ms: number }> {
+    return request(
+      this.opts,
+      'GET',
+      `/api/v1/organizations/${organizationId}/metrics?window=${encodeURIComponent(window)}&projectId=${encodeURIComponent(projectId)}`,
+    );
+  }
+
+  // ── AI Debugger (deterministic analysis over real evidence) ──
+  async aiDiagnose(
+    projectId: string,
+    input: { ref?: string; note?: string } = {},
+  ): Promise<{
+    diagnosis: {
+      healthy: boolean;
+      probableCause: string;
+      affectedService: string;
+      evidence: { source: string; ref: string; excerpt: string }[];
+      suggestedFix: string;
+      confidence: string;
+    };
+  }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/ai/diagnose`, input);
+  }
+
+  // ── CSV data portability ──
+  async exportTable(projectId: string, table: string): Promise<string> {
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const headers: Record<string, string> = {};
+    if (this.opts.token) headers['Authorization'] = `Bearer ${this.opts.token}`;
+    if (this.opts.apikey) headers['apikey'] = this.opts.apikey;
+    const res = await fetchImpl(
+      `${this.opts.baseUrl}/api/v1/projects/${projectId}/${table}/export`,
+      { headers },
+    );
+    if (!res.ok) throw new SdkError('EXPORT_FAILED', `Export failed: HTTP ${res.status}`, res.status);
+    return res.text();
+  }
+
+  async importTable(
+    projectId: string,
+    table: string,
+    csv: string,
+  ): Promise<{ inserted: number; failed: number; errors: { row: number; error: string }[] }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/${table}/import`, { csv });
+  }
 }

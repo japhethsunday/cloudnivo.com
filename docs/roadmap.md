@@ -188,6 +188,34 @@ versioned API envelope, dashboard shell, docs, green
 - 20+ new tests (service, HTTP E2E, rate-limit, realtime authz matrix, CLI/SDK,
   Playwright smoke); green `lint → typecheck → test → build` (342 passed).
 
+## Phase 14 — Automation, observability, data portability (DONE)
+
+- `@cloudnivo/automation`: per-project queues (leases, idempotent publish,
+  retries, dead-letter set, purge), cron schedules invoking functions (UTC,
+  precomputed next runs, worker firing, manual trigger), and outbound
+  webhooks (hash-only `whsec_` secrets with rotation, SSRF-guarded URLs,
+  HMAC-signed deliveries, backoff retries, history, replay, test sends).
+- Event fan-out from real completions (provision/lifecycle jobs, deploys via
+  completion hook, invocations, AI applies, project deletes); worker drains
+  retries + due schedules. Memory default, `automation_*` tables (`0007`)
+  under `CONTROL_STORE=drizzle`.
+- Request metrics: process-local ring (service/route/status/latency) with
+  tenant-scoped reads (`automation.read`), since-boot labeled; dashboard
+  Metrics (totals, p50/p95, per-service, top routes, throughput bars).
+- CSV portability on every table (`export` capped/streamed, `import`
+  insert-only with per-row errors) reusing engine auth, filters, and owner
+  scoping; per-table Export/Import in the database console.
+- AI Debugger: deterministic `POST /ai/diagnose` over failed jobs, function
+  error logs, and failed plans (cause, service, evidence, fix, honest
+  confidence) + Builder panel section; `ai diagnose` in CLI/SDK.
+- New `automation.read`/`automation.write` agent scopes; SDK + CLI coverage
+  (`queues`, `schedules`, `webhooks`, `metrics` groups); dashboard
+  Automations + Metrics project tabs, sidebar/palette wiring.
+- 40+ new tests (cron/signing/service, HTTP E2E incl. isolation + signed
+  delivery paths, CSV engine, diagnose rules, SDK/CLI, Playwright incl. UI
+  pages); green `lint → typecheck → test → build`.
+- See `docs/automation.md`.
+
 ## Non-goals for Phase 1
 
 No real persistence in routes, no OAuth/RLS/rotation, no WS server, no cloud

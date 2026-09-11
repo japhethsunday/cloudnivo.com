@@ -22,3 +22,13 @@ cloudnivo ai usage --project <id>                      # counters
 
 Approval and destructive-confirmation rules match the dashboard exactly —
 the CLI is a thin client over the same routes.
+
+## Automation, metrics, debugger (Phase 14)
+
+```bash
+cloudnivo ai diagnose --project <id> [--ref <job|function>] [--note "..."]
+cloudnivo queues create|list|publish|consume|ack|purge --project <id> ...
+cloudnivo schedules create|list|trigger|pause|resume|delete --project <id> ...
+cloudnivo webhooks create|list|deliveries|test|replay|rotate|delete --project <id> ...
+cloudnivo metrics --org <org> --project <id> [--window 1h|6h|24h|7d]
+```

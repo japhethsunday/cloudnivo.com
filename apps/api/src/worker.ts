@@ -213,6 +213,20 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
           pruned: agents.pruned,
         });
       }
+      const { drainAutomationOnce } = await import('./automation.js');
+      const automation = await drainAutomationOnce(ctx, `worker-${Date.now()}`);
+      if (
+        automation.deliveries.retried + automation.schedules.fired + automation.schedules.failed >
+        0
+      ) {
+        logger.info('worker.automation_drain', {
+          deliveriesRetried: automation.deliveries.retried,
+          deliveriesSucceeded: automation.deliveries.succeeded,
+          deliveriesFailed: automation.deliveries.failed,
+          schedulesFired: automation.schedules.fired,
+          schedulesFailed: automation.schedules.failed,
+        });
+      }
     } catch (err) {
       logger.warn('worker.drain_failed', {
         error: err instanceof Error ? err.message.slice(0, 200) : 'unknown',

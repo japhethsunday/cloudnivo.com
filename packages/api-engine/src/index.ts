@@ -1,4 +1,5 @@
 export * from './query-builder.js';
+export * from './csv.js';
 export * from './introspection.js';
 export * from './engine.js';
 export * from './keys.js';

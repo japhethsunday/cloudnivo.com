@@ -46,6 +46,58 @@ describe('sdk client', () => {
     vi.unstubAllGlobals();
   });
 
+  it('drives automation, metrics, diagnose, and CSV through typed methods', async () => {
+    const seen: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        seen.push(`${init.method ?? 'GET'} ${String(url)}`);
+        const u = String(url);
+        const body = u.includes('/queues') && (init.method ?? 'GET') === 'POST' && !u.includes('/messages') && !u.includes('/consume')
+          ? { data: { queue: { id: 'q1', name: 'jobs' } } }
+          : u.includes('/messages') && (init.method ?? 'GET') === 'POST'
+            ? { data: { message: { id: 'm1' }, duplicate: false } }
+            : u.includes('/schedules') && (init.method ?? 'GET') === 'POST'
+              ? { data: { schedule: { id: 's1', nextRunAt: null } } }
+              : u.includes('/webhooks') && (init.method ?? 'GET') === 'POST'
+                ? { data: { webhook: { id: 'w1' }, secret: 'whsec_x' } }
+                : u.includes('/metrics')
+                  ? { data: { requests: 7, errors: 0, p50Ms: 3, p95Ms: 9 } }
+                  : u.includes('/diagnose')
+                    ? { data: { diagnosis: { healthy: true } } }
+                    : u.includes('/import')
+                      ? { data: { inserted: 2, failed: 0, errors: [] } }
+                      : { data: {} };
+        if (u.includes('/export')) {
+          return new Response('id\n1\n', { status: 200, headers: { 'Content-Type': 'text/csv' } });
+        }
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    const client = new CloudNivoClient({ baseUrl: 'http://x:3001', token: 't' });
+    await client.createQueue('p', { name: 'jobs' });
+    await client.publishMessage('p', 'q1', { n: 1 }, 'k1');
+    await client.consumeMessages('p', 'q1');
+    await client.ackMessage('p', 'q1', 'm1');
+    await client.createSchedule('p', { name: 'n', functionSlug: 'f', cron: '0 * * * *' });
+    await client.triggerSchedule('p', 's1');
+    await client.createWebhook('p', { name: 'w', url: 'https://example.com/h', eventTypes: ['job.failed'] });
+    await client.listDeliveries('p', 'w1');
+    const m = await client.projectMetrics('o', 'p');
+    expect(m.requests).toBe(7);
+    const d = await client.aiDiagnose('p', {});
+    expect(d.diagnosis.healthy).toBe(true);
+    expect(await client.exportTable('p', 'users')).toContain('id');
+    const imp = await client.importTable('p', 'users', 'id\n1\n');
+    expect(imp.inserted).toBe(2);
+    expect(seen.some(s => s.includes('/queues') && s.startsWith('POST'))).toBe(true);
+    expect(seen.some(s => s.includes('/diagnose'))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
   it('drives the agent surface with bearer auth and approval headers', async () => {
     const seen: { url: string; auth: string | null; approval: string | null }[] = [];
     vi.stubGlobal(

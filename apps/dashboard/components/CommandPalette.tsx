@@ -27,6 +27,7 @@ import {
   IconSQL,
   IconStorage,
   IconUsage,
+  IconWorkflows,
 } from './icons';
 
 interface ProjectLite {
@@ -62,7 +63,9 @@ const PROJECT_SECTIONS: { suffix: string; label: string; icon: React.ReactNode }
   { suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} /> },
   { suffix: '/realtime', label: 'Realtime', icon: <IconRealtime size={16} /> },
   { suffix: '/functions', label: 'Functions', icon: <IconFunctions size={16} /> },
+  { suffix: '/automations', label: 'Automations', icon: <IconWorkflows size={16} /> },
   { suffix: '/logs', label: 'Logs', icon: <IconLogs size={16} /> },
+  { suffix: '/metrics', label: 'Metrics', icon: <IconUsage size={16} /> },
   { suffix: '/usage', label: 'Usage', icon: <IconUsage size={16} /> },
   { suffix: '/ai', label: 'AI Builder', icon: <IconAIBuilder size={16} /> },
   { suffix: '/settings', label: 'Project settings', icon: <IconSettings size={16} /> },

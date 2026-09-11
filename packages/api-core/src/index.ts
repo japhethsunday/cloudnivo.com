@@ -223,3 +223,5 @@ export async function checkRateLimit(
   const count = await store.incr(key, ttl);
   return { allowed: count <= opts.max, remaining: Math.max(0, opts.max - count) };
 }
+
+export * from './metrics.js';

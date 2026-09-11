@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, apiFetchRaw } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 import { StatusDot, statusTone } from './ui';
 
@@ -296,12 +296,100 @@ export function ProjectDatabase({
                   ))}
                 </tbody>
               </table>
+              <CsvActions projectId={projectId} table={t.name} />
             </details>
           ))
         )}
       </div>
 
       <QueryCard sql={sql} setSql={setSql} result={result} error={error} busy={busy} onRun={runSql} onClear={() => { setResult(null); setError(null); }} />
+    </div>
+  );
+}
+
+function CsvActions({ projectId, table }: { projectId: string; table: string }): React.JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ inserted: number; failed: number } | null>(null);
+
+  async function onExport(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetchRaw(`/api/v1/projects/${projectId}/${table}/export`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        setError(`Export failed (HTTP ${res.status})${text ? `: ${text.slice(0, 160)}` : ''}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${table}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFile(file: File): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const text = await file.text();
+      const r = await apiFetch<{ inserted: number; failed: number; errors: { row: number; error: string }[] }>(
+        `/api/v1/projects/${projectId}/${table}/import`,
+        { method: 'POST', body: { csv: text } },
+      );
+      if (!r.ok || !r.data) {
+        setError(r.error ?? 'Import failed');
+        return;
+      }
+      setResult({ inserted: r.data.inserted, failed: r.data.failed });
+      if (r.data.failed > 0) {
+        setError(
+          r.data.errors
+            .slice(0, 3)
+            .map(e => `row ${e.row}: ${e.error}`)
+            .join('; '),
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void onExport()}>
+        {busy ? 'Working…' : 'Export CSV'}
+      </button>
+      <label className="btn btn-sm" style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
+        {busy ? 'Working…' : 'Import CSV'}
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          hidden
+          disabled={busy}
+          aria-label={`Import CSV into ${table}`}
+          onChange={e => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void onFile(f);
+          }}
+        />
+      </label>
+      {result ? (
+        <span className="muted" role="status" style={{ fontSize: 12 }}>
+          {result.inserted} inserted{result.failed > 0 ? `, ${result.failed} rejected` : ''}
+        </span>
+      ) : null}
+      {error ? <span role="alert" style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</span> : null}
     </div>
   );
 }

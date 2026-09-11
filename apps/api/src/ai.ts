@@ -12,6 +12,7 @@ import {
   builderFromConfig,
   contextToExisting,
   levelForRole,
+  diagnose,
   type AIBackendBuilder,
   type DestructiveOp,
   type ProjectContext,
@@ -33,6 +34,7 @@ import {
 } from './agents.js';
 import { storageFor } from './storage.js';
 import { functionsFor } from './functions.js';
+import { emitAutomationEvent } from './automation.js';
 import { ensureProjectFeed, realtimeFor } from './realtime.js';
 
 /**
@@ -339,6 +341,11 @@ const ApproveBody = z.object({
   confirmations: z.array(z.string()).max(10).default([]),
 });
 
+const DiagnoseBody = z.object({
+  ref: z.string().min(1).max(100).optional(),
+  note: z.string().max(2000).optional(),
+});
+
 // ── Handler ─────────────────────────────────────────────────────────
 
 export async function handleAiRoutes(
@@ -476,6 +483,55 @@ export async function handleAiRoutes(
         200,
         ok({ history: state.builder.getHistory(projectId) }, requestId),
       );
+    }
+
+    // POST /ai/diagnose — deterministic failure analysis over real evidence.
+    if (head === 'diagnose' && extra.length === 0 && req.method === 'POST') {
+      await gateAi({ scope: 'projects.read', action: 'ai.diagnose' });
+      await aiLimit(ctx, req, `diagnose:${member.userId}:${projectId}`);
+      const parsed = parseBody(DiagnoseBody, await readJson());
+      const ref = parsed.ref?.slice(0, 100) ?? null;
+      const jobs = await ctx.jobs.listByProject(projectId).catch(() => []);
+      const scopedJobs = (ref ? jobs.filter(j => j.id === ref || j.kind === ref) : jobs)
+        .slice(-20)
+        .map(j => ({
+          id: j.id,
+          kind: j.kind,
+          status: j.status,
+          lastError: j.lastError,
+          updatedAt: j.updatedAt,
+        }));
+      const functionErrors: { function: string; message: string; at: string }[] = [];
+      try {
+        const fns = await functionsFor(ctx).service.listFunctions(projectId);
+        const scoped = ref ? fns.filter(f => f.id === ref || f.slug === ref) : fns.slice(0, 10);
+        for (const fn of scoped) {
+          const logs = await functionsFor(ctx).service.getFunctionLogs(projectId, fn.id, { level: 'error', limit: 5 });
+          for (const l of logs) {
+            functionErrors.push({ function: fn.slug, message: l.message, at: l.timestamp });
+          }
+        }
+      } catch {
+        // Functions surface is best-effort; jobs + plans still diagnose.
+      }
+      const history = state.builder.getHistory(projectId);
+      const planFailures = history
+        .filter(h => h.result === 'error')
+        .slice(0, 5)
+        .map(h => ({ planId: h.resource, summary: h.detail, error: h.detail, at: h.createdAt }));
+      const diagnosis = diagnose({
+        jobs: scopedJobs,
+        functionErrors: functionErrors.slice(0, 10),
+        planFailures,
+        note: parsed.note,
+      });
+      ctx.audit.record('ai.diagnosed', {
+        projectId,
+        organizationId: member.organizationId,
+        userId: member.userId,
+      });
+      auditAi('ai.diagnose');
+      return finish(200, ok({ diagnosis }, requestId));
     }
 
     // GET /ai/plans/:id — detail with preview + migration SQL.
@@ -623,6 +679,14 @@ export async function handleAiRoutes(
         },
       );
       auditAi(outcome.ok ? 'ai.plan.applied' : 'ai.plan.failed');
+      if (outcome.ok) {
+        void emitAutomationEvent(ctx, {
+          type: 'ai.plan.applied',
+          organizationId: member.organizationId,
+          projectId,
+          payload: { planId: stored.id, rolledBack: outcome.rolledBack },
+        }).catch(() => undefined);
+      }
       return finish(
         outcome.ok ? 200 : 500,
         ok(

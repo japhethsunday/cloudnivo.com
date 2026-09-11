@@ -777,3 +777,127 @@ export const agentActivity = pgTable(
     index('agent_activity_created_idx').on(t.createdAt),
   ],
 );
+
+/**
+ * Phase 14 — automation (queues, schedules, webhooks, deliveries).
+ * Tenant scoping mirrors the agent tables: every row carries
+ * `organizationId` + `projectId` so authorization never trusts client IDs.
+ */
+export const automationQueues = pgTable(
+  'automation_queues',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    name: varchar('name', { length: 64 }).notNull(),
+    maxDeliveries: integer('max_deliveries').notNull().default(5),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('automation_queues_project_idx').on(t.projectId),
+    unique('automation_queues_project_name_ux').on(t.projectId, t.name),
+  ],
+);
+
+export const automationMessages = pgTable(
+  'automation_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    queueId: uuid('queue_id')
+      .notNull()
+      .references(() => automationQueues.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    body: jsonb('body').notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 128 }),
+    status: varchar('status', { length: 20 }).notNull().default('queued'),
+    deliveries: integer('deliveries').notNull().default(0),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('automation_messages_queue_idx').on(t.queueId),
+    index('automation_messages_status_idx').on(t.status),
+  ],
+);
+
+export const automationSchedules = pgTable(
+  'automation_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    name: varchar('name', { length: 64 }).notNull(),
+    functionSlug: varchar('function_slug', { length: 100 }).notNull(),
+    cron: varchar('cron', { length: 100 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    lastStatus: varchar('last_status', { length: 20 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('automation_schedules_project_idx').on(t.projectId),
+    index('automation_schedules_next_idx').on(t.nextRunAt),
+    unique('automation_schedules_project_name_ux').on(t.projectId, t.name),
+  ],
+);
+
+export const automationWebhooks = pgTable(
+  'automation_webhooks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    name: varchar('name', { length: 64 }).notNull(),
+    url: varchar('url', { length: 2000 }).notNull(),
+    eventTypes: jsonb('event_types').notNull(),
+    secretPrefix: varchar('secret_prefix', { length: 16 }).notNull(),
+    secretHash: varchar('secret_hash', { length: 64 }).notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    maxAttempts: integer('max_attempts').notNull().default(6),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('automation_webhooks_project_idx').on(t.projectId),
+    unique('automation_webhooks_project_name_ux').on(t.projectId, t.name),
+  ],
+);
+
+export const automationDeliveries = pgTable(
+  'automation_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    webhookId: uuid('webhook_id')
+      .notNull()
+      .references(() => automationWebhooks.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    eventType: varchar('event_type', { length: 40 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    attempts: jsonb('attempts').notNull(),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('automation_deliveries_webhook_idx').on(t.webhookId),
+    index('automation_deliveries_status_idx').on(t.status),
+    index('automation_deliveries_next_idx').on(t.nextAttemptAt),
+  ],
+);

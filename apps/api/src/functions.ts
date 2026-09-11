@@ -29,6 +29,7 @@ import {
   verifyAgentAccess,
 } from './agents.js';
 import { verifyCustomerCaller } from './customer-auth.js';
+import { emitAutomationEvent } from './automation.js';
 import { storageFor } from './storage.js';
 import { realtimeFor } from './realtime.js';
 
@@ -76,6 +77,15 @@ export function functionsFor(ctx: ApiContext): FunctionState {
       logRetentionDays: c.FUNCTION_LOG_RETENTION_DAYS,
     },
     maxEnvValueBytes: c.FUNCTION_MAX_ENV_VALUE_BYTES,
+    onDeployComplete: info => {
+      if (info.status !== 'ready') return;
+      void emitAutomationEvent(ctx, {
+        type: 'function.deployed',
+        organizationId: info.organizationId,
+        projectId: info.projectId,
+        payload: { slug: info.slug, version: info.version },
+      }).catch(() => undefined);
+    },
   });
   const state = { service, runtime };
   (ctx as unknown as { __fn?: FunctionState }).__fn = state;
@@ -495,6 +505,12 @@ export async function handleFunctionRoutes(
         sdkHooks: await sdkHooksFor(ctx, projectId, auth),
       });
       ctx.audit.record('function.invoked', { projectId, userId: auth.userId ?? undefined });
+      void emitAutomationEvent(ctx, {
+        type: 'function.invoked',
+        organizationId: (await ctx.registry.getProject(projectId).catch(() => null))?.organizationId ?? '',
+        projectId,
+        payload: { slug: head, status: outcome.result.status },
+      }).catch(() => undefined);
       if (auth.agent) {
         const invokedProject = await ctx.registry.getProject(projectId).catch(() => null);
         const svc = agentServiceFor(ctx);

@@ -39,6 +39,8 @@ export const AGENT_SCOPES: readonly ScopeDefinition[] = [
   { scope: 'environment.write', service: 'environment', description: 'Write function env vars and auth config', dangerous: false, enforcedBy: 'env/auth-config writes' },
   { scope: 'usage.read', service: 'usage', description: 'Read metered usage summaries', dangerous: false, enforcedBy: 'billing usage read' },
   { scope: 'billing.read', service: 'billing', description: 'Read plans, invoices, payments', dangerous: false, enforcedBy: 'billing reads' },
+  { scope: 'automation.read', service: 'automation', description: 'Read queues, schedules, webhooks, deliveries, metrics', dangerous: false, enforcedBy: 'automation + metrics reads' },
+  { scope: 'automation.write', service: 'automation', description: 'Manage queues, schedules, webhooks; publish and consume', dangerous: false, enforcedBy: 'automation writes' },
 ] as const;
 
 export type AgentScope = (typeof AGENT_SCOPES)[number]['scope'];

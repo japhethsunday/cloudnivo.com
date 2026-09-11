@@ -231,6 +231,7 @@ tests/           Cross-package integration tests
 | [`provisioning`](packages/provisioning/src/index.ts) | `ProvisioningService`                        | Docker provider (+ host modes)      | Railway/VPS/K8s drivers |
 | [`api-core`](packages/api-core/src/index.ts)         | envelope + guards                            | shared by both apps                 | — (stable)              |
 | [`api-engine`](packages/api-engine/src/index.ts)     | introspection + CRUD engine + keys + OpenAPI | live Postgres via provider backends | RLS, nested resources   |
+| [`automation`](packages/automation/src/index.ts)     | queues + schedules + webhooks service        | memory (Drizzle `automation_*`)     | durable time-series     |
 
 ## API
 

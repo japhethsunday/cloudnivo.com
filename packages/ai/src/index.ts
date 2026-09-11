@@ -9,3 +9,4 @@ export * from './scanner.js';
 export * from './audit.js';
 export * from './planner.js';
 export * from './openapi.js';
+export * from './diagnose.js';

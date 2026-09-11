@@ -45,6 +45,19 @@ export interface FunctionServiceOptions {
   limits: FunctionLimits;
   /** Max env value bytes (platform-wide; secrets included). */
   maxEnvValueBytes: number;
+  /**
+   * Deploy completion hook (control-plane wiring only). Fires exactly once
+   * per deploy pipeline run with the terminal status — used for webhook
+   * fan-out, audit, and metrics. Must never throw (failures are swallowed).
+   */
+  onDeployComplete?: (info: {
+    projectId: string;
+    organizationId: string;
+    slug: string;
+    version: number;
+    status: 'ready' | 'failed';
+    error: string | null;
+  }) => void;
 }
 
 interface StoredEnv {
@@ -385,8 +398,30 @@ export class FunctionService {
       job.status = 'ready';
       this.jobLog(job, `READY — v${version.version} active`);
       this.metricsFor(fn.id).activeVersions = 1;
+      this.completed(fn, version.version, 'ready', null);
     } catch (err) {
       fail(err instanceof FunctionError ? err.message : 'Deployment failed');
+      this.completed(fn, job.version, 'failed', fn.lastError);
+    }
+  }
+
+  private completed(
+    fn: FunctionRecord,
+    version: number,
+    status: 'ready' | 'failed',
+    error: string | null,
+  ): void {
+    try {
+      this.opts.onDeployComplete?.({
+        projectId: fn.projectId,
+        organizationId: fn.organizationId,
+        slug: fn.slug,
+        version,
+        status,
+        error,
+      });
+    } catch {
+      // Completion hooks must never break deployments.
     }
   }
 

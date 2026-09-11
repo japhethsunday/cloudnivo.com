@@ -46,6 +46,35 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagRef, setDiagRef] = useState('');
+  const [diagNote, setDiagNote] = useState('');
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+  const [diagnosis, setDiagnosis] = useState<{
+    healthy: boolean;
+    probableCause: string;
+    affectedService: string;
+    evidence: { source: string; ref: string; excerpt: string; at: string }[];
+    suggestedFix: string;
+    confidence: string;
+  } | null>(null);
+
+  async function diagnose(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setDiagBusy(true);
+    setDiagError(null);
+    const r = await apiFetch<{ diagnosis: NonNullable<typeof diagnosis> }>(`${base}/diagnose`, {
+      method: 'POST',
+      body: { ref: diagRef.trim() || undefined, note: diagNote.trim() || undefined },
+    });
+    setDiagBusy(false);
+    if (!r.ok || !r.data) {
+      setDiagError(r.error ?? 'Diagnosis failed');
+      return;
+    }
+    setDiagnosis(r.data.diagnosis);
+  }
 
   const loadPlans = useCallback(async () => {
     const r = await apiFetch<{ plans: PlanSummary[] }>(`${base}/plans`);
@@ -192,6 +221,68 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
 
       {stage === 'prompt' ? (
         <>
+          <div className="card">
+            <div className="section-head split">
+              <div>
+                <p className="eyebrow">Debugger</p>
+                <h2>Diagnose a failure</h2>
+                <p>Deterministic analysis over real jobs, function error logs, and failed plans — no guessing.</p>
+              </div>
+              <button type="button" className="btn btn-sm" onClick={() => setDiagOpen(o => !o)} aria-expanded={diagOpen}>
+                {diagOpen ? 'Hide' : 'Diagnose'}
+              </button>
+            </div>
+            {diagOpen ? (
+              <>
+                <form onSubmit={e => void diagnose(e)} style={{ display: 'grid', gap: 8 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label htmlFor="ai-diag-ref">Scope to a job id, job kind, or function slug (optional)</label>
+                    <input id="ai-diag-ref" value={diagRef} onChange={e => setDiagRef(e.target.value)} placeholder="e.g. provision, reporter" autoComplete="off" />
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label htmlFor="ai-diag-note">What were you doing? (optional)</label>
+                    <input id="ai-diag-note" value={diagNote} onChange={e => setDiagNote(e.target.value)} placeholder="e.g. deploying the API function" maxLength={2000} />
+                  </div>
+                  <div>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={diagBusy}>
+                      {diagBusy ? 'Analyzing…' : 'Run diagnosis'}
+                    </button>
+                  </div>
+                </form>
+                {diagError ? <ErrorState title="Couldn't run diagnosis" message={diagError} /> : null}
+                {diagnosis ? (
+                  <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                    <div className="banner ok" role="status">
+                      <div className="grow">
+                        <strong>{diagnosis.probableCause}</strong>
+                        <p>
+                          Service: {diagnosis.affectedService} · confidence: {diagnosis.confidence}
+                        </p>
+                      </div>
+                    </div>
+                    <p style={{ margin: 0 }}><strong>Suggested fix.</strong> {diagnosis.suggestedFix}</p>
+                    {diagnosis.evidence.length > 0 ? (
+                      <ul className="feed">
+                        {diagnosis.evidence.map((e, i) => (
+                          <li key={i} className="feed-item">
+                            <Badge tone="muted">{e.source}</Badge>
+                            <span className="grow">
+                              <span className="title">
+                                <code>{e.ref}</code>
+                              </span>
+                              <span className="meta">
+                                <span>{e.excerpt}</span>
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
           <div className="card">
             <div className="section-head">
               <p className="eyebrow">Step 1 · Describe</p>
