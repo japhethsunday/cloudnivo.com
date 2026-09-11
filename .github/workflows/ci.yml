@@ -157,18 +157,21 @@ jobs:
           API_URL: http://127.0.0.1:3001
           DASHBOARD_URL: http://127.0.0.1:3000
       - name: Production smoke (built dist API)
+        env:
+          SMOKE_API_PORT: '3101'
         run: |
           set -euo pipefail
+          # Isolated port: the e2e stack above is still running on :3001 until Stop stack.
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
           DATABASE_URL=postgres://u:p@localhost:5432/db \
-          CORS_ORIGINS=http://localhost:3000 API_PORT=3001 \
+          CORS_ORIGINS=http://localhost:3000 API_PORT="$SMOKE_API_PORT" \
           nohup node apps/api/dist/index.js > /tmp/cn-smoke-api.log 2>&1 &
           echo $! > /tmp/cn-smoke-api.pid
           for i in $(seq 1 24); do
-            curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break || sleep 5
+            curl -fsS "http://127.0.0.1:${SMOKE_API_PORT}/api/v1/health/ready" && break || sleep 5
           done
-          node tests/smoke-prod.mjs
+          API_BASE="http://127.0.0.1:${SMOKE_API_PORT}" node tests/smoke-prod.mjs
       - name: Stop stack
         if: always()
         run: kill $(cat /tmp/cn-api.pid) $(cat /tmp/cn-dash.pid) $(cat /tmp/cn-smoke-api.pid) 2>/dev/null || true
