@@ -1,21 +1,26 @@
+import { ICON_MAP } from './icons';
+
 export function EmptyState({
   title,
   hint,
   action,
   secondary,
-  icon = '◇',
+  icon,
 }: {
   title: string;
   hint: string;
   action?: React.ReactNode;
   secondary?: React.ReactNode;
-  icon?: string;
+  icon?: keyof typeof ICON_MAP;
 }): React.JSX.Element {
+  const Icon = icon ? ICON_MAP[icon] : null;
   return (
     <div className="empty" role="status">
-      <div aria-hidden style={{ fontSize: 26, color: 'var(--text-faint)', marginBottom: 6 }}>
-        {icon}
-      </div>
+      {Icon ? (
+        <span className="empty-icon" aria-hidden>
+          <Icon size={22} />
+        </span>
+      ) : null}
       <h3 style={{ margin: '0 0 8px' }}>{title}</h3>
       <p className="muted" style={{ margin: '0 auto 14px', maxWidth: 52 * 10 }}>
         {hint}
@@ -87,16 +92,26 @@ export function LoadingSkeleton({ label, rows = 3 }: { label: string; rows?: num
   );
 }
 
-export function LoadingCards({ label }: { label: string }): React.JSX.Element {
+export function LoadingTable({
+  label,
+  rows = 5,
+}: {
+  label: string;
+  rows?: number;
+}): React.JSX.Element {
   return (
-    <div className="proj-grid" role="status" aria-live="polite" aria-label={label}>
-      {[0, 1, 2].map(i => (
-        <div key={i} className="card" aria-hidden>
-          <div className="skeleton-row" style={{ maxWidth: '60%', margin: '0 0 10px' }} />
-          <div className="skeleton-row" style={{ margin: '0 0 10px' }} />
-          <div className="skeleton-row" style={{ maxWidth: '40%', margin: 0 }} />
-        </div>
-      ))}
+    <div className="table-wrap" role="status" aria-live="polite" aria-label={label}>
+      <table className="table" aria-hidden>
+        <tbody>
+          {Array.from({ length: rows }, (_, i) => (
+            <tr key={i}>
+              <td colSpan={6}>
+                <div className="skeleton-row" style={{ margin: '6px 0', maxWidth: `${88 - i * 7}%` }} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

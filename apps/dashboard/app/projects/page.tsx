@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { getSelectedOrg, setSelectedOrg } from '../../lib/selection';
 import { RequireAuth } from '../../components/RequireAuth';
-import { EmptyState, ErrorState, LoadingCards } from '../../components/States';
-import { ProjectCard, type ProjectCardData } from '../../components/ProjectCard';
+import { EmptyState, ErrorState, LoadingTable } from '../../components/States';
+import { ProjectTable, type ProjectRow } from '../../components/ProjectTable';
+import { IconInfo, IconSearch } from '../../components/icons';
 
 interface Org {
   id: string;
@@ -23,7 +24,7 @@ export default function ProjectsPage(): React.JSX.Element {
 }
 
 function ProjectsBody(): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [filter, setFilter] = useState<string>('');
   const [query, setQuery] = useState('');
@@ -32,7 +33,7 @@ function ProjectsBody(): React.JSX.Element {
   const load = useCallback(async () => {
     setError(null);
     const [p, o] = await Promise.all([
-      apiFetch<{ projects: ProjectCardData[] }>('/api/v1/projects'),
+      apiFetch<{ projects: ProjectRow[] }>('/api/v1/projects'),
       apiFetch<{ organizations: Org[] }>('/api/v1/organizations'),
     ]);
     if (!p.ok) {
@@ -92,10 +93,10 @@ function ProjectsBody(): React.JSX.Element {
       {error ? <ErrorState message={error} retry={() => void load()} /> : null}
 
       {!projects ? (
-        <LoadingCards label="Loading projects" />
+        <LoadingTable label="Loading projects" />
       ) : projects.length === 0 ? (
         <EmptyState
-          icon="⬣"
+          icon="projects"
           title={orgs.length === 0 ? 'Create an organization first' : 'No projects yet'}
           hint={
             orgs.length === 0
@@ -120,7 +121,7 @@ function ProjectsBody(): React.JSX.Element {
           <div className="toolbar" role="search">
             <div className="search">
               <span className="icon" aria-hidden>
-                ⌕
+                <IconSearch size={15} />
               </span>
               <input
                 type="search"
@@ -154,7 +155,9 @@ function ProjectsBody(): React.JSX.Element {
 
           {hiddenByScope ? (
             <div className="banner info" role="status">
-              <span aria-hidden>ⓘ</span>
+              <span className="banner-icon" aria-hidden>
+                <IconInfo size={16} />
+              </span>
               <div className="grow">
                 <strong>No projects in this organization.</strong>
                 <p>
@@ -170,7 +173,7 @@ function ProjectsBody(): React.JSX.Element {
 
           {visible.length === 0 && !hiddenByScope ? (
             <EmptyState
-              icon="⌕"
+              icon="search"
               title="No matching projects"
               hint={`Nothing matches “${query.trim()}”. Try a different name or slug.`}
               action={
@@ -180,11 +183,9 @@ function ProjectsBody(): React.JSX.Element {
               }
             />
           ) : (
-            <div className="proj-grid">
-              {visible.map(p => (
-                <ProjectCard key={p.id} project={{ ...p, orgName: orgNameOf(p.organizationId) }} />
-              ))}
-            </div>
+            <ProjectTable
+              projects={visible.map(p => ({ ...p, orgName: orgNameOf(p.organizationId) }))}
+            />
           )}
         </>
       )}

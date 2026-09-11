@@ -8,7 +8,7 @@ import { formatMetric, prettifyKey, timeAgo } from '../../lib/format';
 import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
-import { ProjectCard, type ProjectCardData } from '../../components/ProjectCard';
+import { ProjectTable, type ProjectRow } from '../../components/ProjectTable';
 import { Badge, StatusDot, statusTone } from '../../components/ui';
 
 interface Org {
@@ -57,7 +57,7 @@ export default function DashboardPage(): React.JSX.Element {
 
 function DashboardBody(): React.JSX.Element {
   const { user } = useSession();
-  const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
@@ -68,7 +68,7 @@ function DashboardBody(): React.JSX.Element {
   const load = useCallback(async () => {
     setError(null);
     const [p, o, h] = await Promise.all([
-      apiFetch<{ projects: ProjectCardData[] }>('/api/v1/projects'),
+      apiFetch<{ projects: ProjectRow[] }>('/api/v1/projects'),
       apiFetch<{ organizations: Org[] }>('/api/v1/organizations'),
       apiFetch<Health>('/api/v1/health/ready'),
     ]);
@@ -171,7 +171,7 @@ function DashboardBody(): React.JSX.Element {
 
           {projects.length === 0 ? (
             <EmptyState
-              icon="⬣"
+              icon="projects"
               title={orgs.length === 0 ? 'Create your first organization' : 'Create your first project'}
               hint={
                 orgs.length === 0
@@ -265,13 +265,13 @@ function DashboardBody(): React.JSX.Element {
                 </div>
                 {projects.length > 6 ? <Link href="/projects">View all {projects.length} →</Link> : null}
               </div>
-              <div className="proj-grid" style={{ marginBottom: 16 }}>
-                {projects.slice(0, 6).map(p => (
-                  <ProjectCard
-                    key={p.id}
-                    project={{ ...p, orgName: orgs.find(o => o.id === p.organizationId)?.name }}
-                  />
-                ))}
+              <div style={{ marginBottom: 16 }}>
+                <ProjectTable
+                  projects={projects.slice(0, 6).map(p => ({
+                    ...p,
+                    orgName: orgs.find(o => o.id === p.organizationId)?.name,
+                  }))}
+                />
               </div>
 
               <div className="card">
@@ -315,7 +315,7 @@ function DashboardBody(): React.JSX.Element {
   );
 }
 
-async function loadActivity(projects: ProjectCardData[]): Promise<ActivityItem[]> {
+async function loadActivity(projects: ProjectRow[]): Promise<ActivityItem[]> {
   const scoped = projects.slice(0, 8);
   const settled = await Promise.all(
     scoped.map(async (p): Promise<ActivityItem[]> => {

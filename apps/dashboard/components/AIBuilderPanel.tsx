@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 import { Badge, statusTone } from './ui';
+import { IconAlert, IconCheckCircle, IconInfo } from './icons';
 
 interface PlanSummary {
   id: string;
@@ -182,7 +183,9 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
         <div className="banner ok" role="status">
-          <span aria-hidden>✓</span>
+          <span className="banner-icon" aria-hidden>
+            <IconCheckCircle size={16} />
+          </span>
           <div className="grow">{notice}</div>
         </div>
       ) : null}
@@ -229,7 +232,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
               <LoadingSkeleton label="Loading plans" />
             ) : plans.length === 0 ? (
               <EmptyState
-                icon="✦"
+                icon="ai"
                 title="No plans yet"
                 hint="Describe a backend above — the plan appears here for review before anything is built."
               />
@@ -343,13 +346,17 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
             )}
             {detail.validation.warnings.map((w, i) => (
               <div className="banner warn" key={i} role="note" style={{ marginTop: 8, marginBottom: 0 }}>
-                <span aria-hidden>ⓘ</span>
+                <span className="banner-icon" aria-hidden>
+                  <IconInfo size={16} />
+                </span>
                 <div className="grow">{w}</div>
               </div>
             ))}
             {detail.validation.destructive.length > 0 ? (
               <div className="banner bad" role="alert" style={{ marginTop: 8, marginBottom: 0 }}>
-                <span aria-hidden>⚠</span>
+                <span className="banner-icon" aria-hidden>
+                  <IconAlert size={16} />
+                </span>
                 <div className="grow">
                   <strong>Destructive operations: {detail.validation.destructive.join(', ')}</strong>
                   <p>
@@ -470,7 +477,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
                 setConfirmText('');
               }}
             >
-              ← Back to builder
+              Back to builder
             </button>
           </p>
         </>
@@ -484,7 +491,6 @@ function Step({ n, t, state }: { n: string; t: string; state: 'todo' | 'active' 
     <li className={state === 'todo' ? undefined : state} aria-current={state === 'active' ? 'step' : undefined}>
       <span className="n">Step {n}</span>
       <span className="t">
-        {state === 'done' ? '✓ ' : ''}
         {t}
       </span>
     </li>

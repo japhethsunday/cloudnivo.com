@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { IconX } from './icons';
 
 // ── Badge + status dot ────────────────────────────────────
 
@@ -107,7 +108,7 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
         );
       }}
     >
-      {copied ? 'Copied ✓' : label}
+      {copied ? 'Copied' : label}
     </button>
   );
 }
@@ -213,7 +214,7 @@ export function Modal({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <h2 style={{ margin: 0, flex: 1 }}>{title}</h2>
           <button type="button" className="icon-btn" aria-label="Close dialog" onClick={onClose}>
-            ×
+            <IconX size={16} />
           </button>
         </div>
         {children}

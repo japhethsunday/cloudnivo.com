@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { apiBase } from '../../lib/api';
 import { RequireAuth } from '../../components/RequireAuth';
+import { IconInfo } from '../../components/icons';
 import { CopyButton, SectionHead } from '../../components/ui';
 
 function Snippet({ title, code }: { title: string; code: string }): React.JSX.Element {
@@ -34,7 +35,9 @@ export default function DeveloperPage(): React.JSX.Element {
         </div>
 
         <div className="banner info" role="note">
-          <span aria-hidden>ⓘ</span>
+          <span className="banner-icon" aria-hidden>
+            <IconInfo size={16} />
+          </span>
           <div className="grow">
             <strong>Authenticate with a scoped token, never a password.</strong>
             <p>

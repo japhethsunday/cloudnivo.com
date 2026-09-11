@@ -72,25 +72,40 @@ function OrgsBody(): React.JSX.Element {
           }
         />
       ) : (
-        <div className="grid">
-          {orgs.map(o => (
-            <div className="card" key={o.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <strong style={{ flex: 1 }}>{o.name}</strong>
-                {o.role ? <Badge tone={o.role === 'owner' ? 'info' : 'muted'}>{o.role}</Badge> : null}
-              </div>
-              <p className="muted" style={{ margin: '4px 0 12px' }}>
-                {o.slug}
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <InviteButton
-                  org={o}
-                  onClick={() => setInviting(o)}
-                  disabled={o.role !== undefined && o.role !== 'owner' && o.role !== 'admin'}
-                />
-              </div>
-            </div>
-          ))}
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Organization</th>
+                <th scope="col">Role</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {orgs.map(o => (
+                <tr key={o.id}>
+                  <td>
+                    <span className="row-link">{o.name}</span>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {o.slug} · {o.id.slice(0, 8)}
+                    </div>
+                  </td>
+                  <td>
+                    {o.role ? <Badge tone={o.role === 'owner' ? 'info' : 'muted'}>{o.role}</Badge> : '—'}
+                  </td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <InviteButton
+                      org={o}
+                      onClick={() => setInviting(o)}
+                      disabled={o.role !== undefined && o.role !== 'owner' && o.role !== 'admin'}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

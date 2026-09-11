@@ -9,6 +9,24 @@ import { CommandPalette } from './CommandPalette';
 import { useSession } from './SessionProvider';
 import { ThemeToggle } from './ThemeToggle';
 import { Menu, ToastProvider } from './ui';
+import {
+  IconAccount,
+  IconActivity,
+  IconAIBuilder,
+  IconAgents,
+  IconBilling,
+  IconCheck,
+  IconChevronDown,
+  IconCLI,
+  IconCollapse,
+  IconExpand,
+  IconMenu,
+  IconOrganizations,
+  IconOverview,
+  IconProjects,
+  IconSearch,
+  IconSettings,
+} from './icons';
 
 interface ProjectLite {
   id: string;
@@ -21,22 +39,22 @@ interface ProjectLite {
 interface NavItem {
   href: string;
   label: string;
-  icon: string;
+  icon: React.ReactNode;
   match: (pathname: string) => boolean;
 }
 
 const WORKSPACE_NAV: NavItem[] = [
-  { href: '/dashboard', label: 'Overview', icon: '⌂', match: p => p === '/dashboard' },
-  { href: '/projects', label: 'Projects', icon: '⬣', match: p => p === '/projects' || p === '/projects/new' },
-  { href: '/activity', label: 'Activity', icon: '◷', match: p => p === '/activity' },
-  { href: '/organizations', label: 'Organizations', icon: '⛉', match: p => p === '/organizations' },
+  { href: '/dashboard', label: 'Overview', icon: <IconOverview size={16} />, match: p => p === '/dashboard' },
+  { href: '/projects', label: 'Projects', icon: <IconProjects size={16} />, match: p => p === '/projects' || p === '/projects/new' },
+  { href: '/activity', label: 'Activity', icon: <IconActivity size={16} />, match: p => p === '/activity' },
+  { href: '/organizations', label: 'Organizations', icon: <IconOrganizations size={16} />, match: p => p === '/organizations' },
 ];
 
 const MANAGE_NAV: NavItem[] = [
-  { href: '/agents', label: 'Agent Access', icon: '✦', match: p => p === '/agents' },
-  { href: '/billing', label: 'Billing', icon: '❏', match: p => p === '/billing' },
-  { href: '/account', label: 'Account', icon: '☺', match: p => p === '/account' },
-  { href: '/settings', label: 'Settings', icon: '⚙', match: p => p === '/settings' },
+  { href: '/agents', label: 'Agent Access', icon: <IconAgents size={16} />, match: p => p === '/agents' },
+  { href: '/billing', label: 'Billing', icon: <IconBilling size={16} />, match: p => p === '/billing' },
+  { href: '/account', label: 'Account', icon: <IconAccount size={16} />, match: p => p === '/account' },
+  { href: '/settings', label: 'Settings', icon: <IconSettings size={16} />, match: p => p === '/settings' },
 ];
 
 function isAuthRoute(pathname: string): boolean {
@@ -112,10 +130,6 @@ function ShellBody({
 
   useEffect(() => {
     if (!ready || orgs.length === 0) return;
-    // Storage is the source of truth for workspace scope (the wizard,
-    // filters, and switchers all persist there). This effect only repairs
-    // missing/invalid selections — it must never overwrite a valid persisted
-    // org, otherwise a reload can silently strand the user in the wrong scope.
     const persisted = getSelectedOrg();
     if (persisted && orgs.some(o => o.id === persisted)) {
       if (persisted !== orgId) setOrgId(persisted);
@@ -131,7 +145,6 @@ function ShellBody({
     }
   }, [ready, orgs, orgId]);
 
-  // Keep the persisted project selection in sync when the URL names a project.
   useEffect(() => {
     const fromPath = projectIdFromPath(pathname);
     if (fromPath && fromPath !== getSelectedProject()) {
@@ -189,19 +202,14 @@ function ShellBody({
           aria-expanded={navOpen}
           onClick={() => setNavOpen(o => !o)}
         >
-          ☰
+          <IconMenu size={18} />
         </button>
-        <span className="brand">
+        <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
           <span className="brand-mark">C</span>CloudNivo
-        </span>
+        </Link>
         <span className="spacer" />
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Search and commands"
-          onClick={openPalette}
-        >
-          ⌕
+        <button type="button" className="icon-btn" aria-label="Search and commands" onClick={openPalette}>
+          <IconSearch size={17} />
         </button>
         {user ? <span className="avatar" aria-label={user.email}>{user.email.slice(0, 1)}</span> : null}
       </div>
@@ -212,9 +220,9 @@ function ShellBody({
         </Link>
 
         <button type="button" className="search-trigger" onClick={openPalette} aria-label="Open command palette">
-          <span aria-hidden>⌕</span>
+          <IconSearch size={16} />
           <span style={{ flex: 1, textAlign: 'left' }}>Search…</span>
-          <kbd>⌘K</kbd>
+          <span className="kbd-inline">⌘K</span>
         </button>
 
         <div>
@@ -251,13 +259,13 @@ function ShellBody({
             <p className="nav-context">Development</p>
             <Link href={aiHref} aria-current={pathname.endsWith('/ai') ? 'page' : undefined}>
               <span className="nav-icon" aria-hidden>
-                ✦
+                <IconAIBuilder size={16} />
               </span>
               AI Builder
             </Link>
             <Link href="/developer" aria-current={pathname === '/developer' ? 'page' : undefined}>
               <span className="nav-icon" aria-hidden>
-                ❯
+                <IconCLI size={16} />
               </span>
               CLI &amp; SDK
             </Link>
@@ -283,7 +291,8 @@ function ShellBody({
             onClick={() => setCollapsed(c => !c)}
             aria-expanded={!collapsed}
           >
-            {collapsed ? '→ Expand' : '← Collapse'}
+            {collapsed ? <IconExpand size={15} /> : <IconCollapse size={15} />}
+            {collapsed ? 'Expand' : 'Collapse'}
           </button>
           <AccountMenu
             email={user?.email ?? null}
@@ -325,7 +334,7 @@ function OrgMenu({
             {org.name}
             <span className="sub">{org.slug}</span>
           </span>
-          <span aria-hidden>▾</span>
+          <IconChevronDown size={14} />
         </>
       }
     >
@@ -351,7 +360,11 @@ function OrgMenuItems({
             {o.name}
             <span className="sub">{o.slug}</span>
           </span>
-          {o.id === org.id ? <span className="sel" aria-hidden>✓</span> : null}
+          {o.id === org.id ? (
+            <span className="sel" aria-hidden>
+              <IconCheck size={13} />
+            </span>
+          ) : null}
         </button>
       ))}
       <Link href="/organizations">+ Manage organizations</Link>
@@ -384,7 +397,7 @@ function ProjectMenu({
             {project.name}
             <span className="sub">{project.slug}</span>
           </span>
-          <span aria-hidden>▾</span>
+          <IconChevronDown size={14} />
         </>
       }
     >
@@ -394,7 +407,11 @@ function ProjectMenu({
             {p.name}
             <span className="sub">{p.slug}</span>
           </span>
-          {p.id === project.id ? <span className="sel" aria-hidden>✓</span> : null}
+          {p.id === project.id ? (
+            <span className="sel" aria-hidden>
+              <IconCheck size={13} />
+            </span>
+          ) : null}
         </button>
       ))}
       <Link href="/projects/new">+ New project</Link>

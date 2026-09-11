@@ -191,7 +191,7 @@ function DeveloperTab(): React.JSX.Element {
       <h3>Quick start</h3>
       <pre style={{ overflow: 'auto', background: 'var(--bg-muted)', padding: 12, borderRadius: 8 }}>{snippet}</pre>
       <button type="button" className="btn btn-sm" onClick={copy}>
-        {copied ? 'Copied ✓' : 'Copy snippet'}
+        {copied ? 'Copied' : 'Copy snippet'}
       </button>
       <p className="muted" style={{ fontSize: 13 }}>
         Quotas, CORS origins, and rate limits are enforced server-side and are not configurable from

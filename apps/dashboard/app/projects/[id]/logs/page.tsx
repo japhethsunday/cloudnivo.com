@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
 import { Badge, statusTone } from '../../../../components/ui';
+import { IconSearch } from '../../../../components/icons';
 
 interface Job {
   id: string;
@@ -120,7 +121,7 @@ export default function ProjectLogsPage({
         <div className="toolbar" role="search">
           <div className="search">
             <span className="icon" aria-hidden>
-              ⌕
+              <IconSearch size={15} />
             </span>
             <input
               type="search"
@@ -208,7 +209,7 @@ export default function ProjectLogsPage({
               </div>
               <div className="search" style={{ alignSelf: 'end' }}>
                 <span className="icon" aria-hidden>
-                  ⌕
+                  <IconSearch size={15} />
                 </span>
                 <input
                   type="search"

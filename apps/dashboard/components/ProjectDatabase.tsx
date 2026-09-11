@@ -357,7 +357,7 @@ function QueryCard({
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="submit" className="btn btn-primary" disabled={busy === 'sql'}>
-            {busy === 'sql' ? 'Running…' : '▶ Run query'}
+            {busy === 'sql' ? 'Running…' : 'Run query'}
           </button>
           <button type="button" className="btn" onClick={onClear}>
             Clear results

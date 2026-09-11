@@ -7,6 +7,7 @@ import { timeAgo } from '../../lib/format';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, statusTone } from '../../components/ui';
+import { IconInfo } from '../../components/icons';
 
 interface Project {
   id: string;
@@ -125,7 +126,7 @@ function ActivityBody(): React.JSX.Element {
         <LoadingSkeleton label="Loading activity" rows={5} />
       ) : projects.length === 0 ? (
         <EmptyState
-          icon="◷"
+          icon="activity"
           title="No activity yet"
           hint="Create a project and every provisioning run, deploy, and lifecycle job lands in this feed."
           action={
@@ -159,7 +160,9 @@ function ActivityBody(): React.JSX.Element {
 
           {truncated ? (
             <div className="banner info" role="status">
-              <span aria-hidden>ⓘ</span>
+              <span className="banner-icon" aria-hidden>
+                <IconInfo size={16} />
+              </span>
               <div className="grow">
                 Showing jobs from the first {FANOUT_CAP} projects. Narrow the project filter to see the rest.
               </div>
@@ -168,7 +171,7 @@ function ActivityBody(): React.JSX.Element {
 
           {visible.length === 0 ? (
             <EmptyState
-              icon="◷"
+              icon="activity"
               title="Nothing matches"
               hint="No jobs match these filters yet."
               action={

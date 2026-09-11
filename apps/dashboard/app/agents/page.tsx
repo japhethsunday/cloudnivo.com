@@ -483,7 +483,7 @@ function CreateTokenModal({
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={copy}>
-            {copied ? 'Copied ✓' : 'Copy token'}
+            {copied ? 'Copied' : 'Copy token'}
           </button>
           <button
             type="button"

@@ -243,7 +243,7 @@ function BillingBody(): React.JSX.Element {
 
       {orgs.length === 0 ? (
         <EmptyState
-          icon="❏"
+          icon="billing"
           title="No organization yet"
           hint="Billing lives on organizations. Create one to see plans and usage."
           action={

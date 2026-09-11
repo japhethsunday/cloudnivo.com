@@ -4,6 +4,29 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
+import {
+  IconAccount,
+  IconActivity,
+  IconAIBuilder,
+  IconAgents,
+  IconAPI,
+  IconAuth,
+  IconBilling,
+  IconCLI,
+  IconDatabase,
+  IconFunctions,
+  IconLogs,
+  IconOrganizations,
+  IconOverview,
+  IconPlus,
+  IconProjects,
+  IconRealtime,
+  IconSearch,
+  IconSettings,
+  IconSQL,
+  IconStorage,
+  IconUsage,
+} from './icons';
 
 interface ProjectLite {
   id: string;
@@ -24,24 +47,24 @@ interface Command {
   group: string;
   label: string;
   hint?: string;
-  icon: string;
+  icon: React.ReactNode;
   keywords: string;
   run: () => void;
 }
 
-const PROJECT_SECTIONS = [
-  { suffix: '', label: 'Project overview', icon: '◈' },
-  { suffix: '/database', label: 'Database', icon: '▤' },
-  { suffix: '/sql', label: 'SQL Editor', icon: '❯' },
-  { suffix: '/api', label: 'API & keys', icon: '⎋' },
-  { suffix: '/auth', label: 'Authentication', icon: '◉' },
-  { suffix: '/storage', label: 'Storage', icon: '▦' },
-  { suffix: '/realtime', label: 'Realtime', icon: '〜' },
-  { suffix: '/functions', label: 'Functions', icon: 'λ' },
-  { suffix: '/logs', label: 'Logs', icon: '☰' },
-  { suffix: '/usage', label: 'Usage', icon: '◔' },
-  { suffix: '/ai', label: 'AI Builder', icon: '✦' },
-  { suffix: '/settings', label: 'Project settings', icon: '⚙' },
+const PROJECT_SECTIONS: { suffix: string; label: string; icon: React.ReactNode }[] = [
+  { suffix: '', label: 'Project overview', icon: <IconOverview size={16} /> },
+  { suffix: '/database', label: 'Database', icon: <IconDatabase size={16} /> },
+  { suffix: '/sql', label: 'SQL Editor', icon: <IconSQL size={16} /> },
+  { suffix: '/api', label: 'API & keys', icon: <IconAPI size={16} /> },
+  { suffix: '/auth', label: 'Authentication', icon: <IconAuth size={16} /> },
+  { suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} /> },
+  { suffix: '/realtime', label: 'Realtime', icon: <IconRealtime size={16} /> },
+  { suffix: '/functions', label: 'Functions', icon: <IconFunctions size={16} /> },
+  { suffix: '/logs', label: 'Logs', icon: <IconLogs size={16} /> },
+  { suffix: '/usage', label: 'Usage', icon: <IconUsage size={16} /> },
+  { suffix: '/ai', label: 'AI Builder', icon: <IconAIBuilder size={16} /> },
+  { suffix: '/settings', label: 'Project settings', icon: <IconSettings size={16} /> },
 ];
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }): React.JSX.Element | null {
@@ -89,7 +112,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const list: Command[] = [];
     const selected = projects.find(p => p.id === getSelectedProject()) ?? null;
 
-    // Current-project sections (only when a project is selected).
     if (selected) {
       for (const s of PROJECT_SECTIONS) {
         list.push({
@@ -104,14 +126,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       }
     }
 
-    // Project switching.
     for (const p of projects) {
       list.push({
         id: `open:${p.id}`,
         group: 'Projects',
         label: p.name,
         hint: `${p.slug} · ${p.region}`,
-        icon: '⬣',
+        icon: <IconProjects size={16} />,
         keywords: `${p.name} ${p.slug} open project switch`,
         run: () => {
           setSelectedProject(p.id);
@@ -122,14 +143,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       });
     }
 
-    // Organizations.
     for (const o of orgs) {
       list.push({
         id: `org:${o.id}`,
         group: 'Organizations',
         label: `Switch to ${o.name}`,
         hint: o.slug,
-        icon: '⛉',
+        icon: <IconOrganizations size={16} />,
         keywords: `${o.name} ${o.slug} organization switch workspace`,
         run: () => {
           setSelectedOrg(o.id);
@@ -141,14 +161,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       });
     }
 
-    // Creation + workspace destinations.
     list.push(
       {
         id: 'new-project',
         group: 'Actions',
         label: 'Create project',
         hint: 'provision infrastructure',
-        icon: '+',
+        icon: <IconPlus size={16} />,
         keywords: 'create new project provision',
         run: go('/projects/new'),
       },
@@ -157,7 +176,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: 'Actions',
         label: selected ? `Create API key in ${selected.name}` : 'Create API key',
         hint: selected?.slug ?? 'pick a project first',
-        icon: '⚿',
+        icon: <IconAPI size={16} />,
         keywords: 'create api key token',
         run: go(selected ? `/projects/${selected.id}/api` : '/projects'),
       },
@@ -166,17 +185,17 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: 'Actions',
         label: selected ? `Open AI Builder in ${selected.name}` : 'Open AI Builder',
         hint: 'describe → plan → approve → apply',
-        icon: '✦',
+        icon: <IconAIBuilder size={16} />,
         keywords: 'ai builder plan generate',
         run: go(selected ? `/projects/${selected.id}/ai` : '/projects'),
       },
-      { id: 'go-activity', group: 'Go to', label: 'Activity', icon: '◷', keywords: 'activity recent events feed', run: go('/activity') },
-      { id: 'go-agents', group: 'Go to', label: 'Agent Access', icon: '✦', keywords: 'agent access tokens claude permissions', run: go('/agents') },
-      { id: 'go-billing', group: 'Go to', label: 'Billing', icon: '❏', keywords: 'billing plan subscription invoices usage', run: go('/billing') },
-      { id: 'go-developer', group: 'Go to', label: 'CLI & SDK', icon: '❯', keywords: 'cli sdk developer tools docs', run: go('/developer') },
-      { id: 'go-orgs', group: 'Go to', label: 'Organizations', icon: '⛉', keywords: 'organizations teams membership', run: go('/organizations') },
-      { id: 'go-account', group: 'Go to', label: 'Account', icon: '☺', keywords: 'account profile security sessions', run: go('/account') },
-      { id: 'go-settings', group: 'Go to', label: 'Settings', icon: '⚙', keywords: 'settings preferences appearance theme', run: go('/settings') },
+      { id: 'go-activity', group: 'Go to', label: 'Activity', icon: <IconActivity size={16} />, keywords: 'activity recent events feed', run: go('/activity') },
+      { id: 'go-agents', group: 'Go to', label: 'Agent Access', icon: <IconAgents size={16} />, keywords: 'agent access tokens claude permissions', run: go('/agents') },
+      { id: 'go-billing', group: 'Go to', label: 'Billing', icon: <IconBilling size={16} />, keywords: 'billing plan subscription invoices usage', run: go('/billing') },
+      { id: 'go-developer', group: 'Go to', label: 'CLI & SDK', icon: <IconCLI size={16} />, keywords: 'cli sdk developer tools docs', run: go('/developer') },
+      { id: 'go-orgs', group: 'Go to', label: 'Organizations', icon: <IconOrganizations size={16} />, keywords: 'organizations teams membership', run: go('/organizations') },
+      { id: 'go-account', group: 'Go to', label: 'Account', icon: <IconAccount size={16} />, keywords: 'account profile security sessions', run: go('/account') },
+      { id: 'go-settings', group: 'Go to', label: 'Settings', icon: <IconSettings size={16} />, keywords: 'settings preferences appearance theme', run: go('/settings') },
     );
     return list;
   }, [projects, orgs, onClose, router]);
@@ -231,7 +250,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       <div className="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
         <div className="cmdk-input-row">
           <span className="icon" aria-hidden>
-            ⌕
+            <IconSearch size={18} />
           </span>
           <input
             ref={inputRef}
