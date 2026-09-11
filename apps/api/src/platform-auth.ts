@@ -47,6 +47,11 @@ export interface PlatformUserStore {
   }): Promise<StoredPlatformUser>;
   findByEmail(email: string): Promise<StoredPlatformUser | null>;
   findById(id: string): Promise<StoredPlatformUser | null>;
+  /** Update display name and/or password hash. Returns null when unknown. */
+  updateUser(
+    id: string,
+    patch: { displayName?: string | null; passwordHash?: string },
+  ): Promise<StoredPlatformUser | null>;
 }
 
 export class MemoryPlatformUsers implements PlatformUserStore {
@@ -86,6 +91,21 @@ export class MemoryPlatformUsers implements PlatformUserStore {
   async findById(id: string): Promise<StoredPlatformUser | null> {
     const u = this.users.get(id);
     return u ? { ...u } : null;
+  }
+
+  async updateUser(
+    id: string,
+    patch: { displayName?: string | null; passwordHash?: string },
+  ): Promise<StoredPlatformUser | null> {
+    const u = this.users.get(id);
+    if (!u) return null;
+    const next: StoredPlatformUser = {
+      ...u,
+      displayName: patch.displayName !== undefined ? patch.displayName : u.displayName,
+      passwordHash: patch.passwordHash ?? u.passwordHash,
+    };
+    this.users.set(id, next);
+    return { ...next };
   }
 }
 
@@ -147,6 +167,27 @@ export class DrizzlePlatformUsers implements PlatformUserStore {
   async findById(id: string): Promise<StoredPlatformUser | null> {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const rows = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+    const row = rows[0];
+    if (!row || !row.passwordHash) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      displayName: row.displayName,
+      createdAt: iso(row.createdAt),
+      passwordHash: row.passwordHash,
+    };
+  }
+
+  async updateUser(
+    id: string,
+    patch: { displayName?: string | null; passwordHash?: string },
+  ): Promise<StoredPlatformUser | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+    const set: { displayName?: string | null; passwordHash?: string } = {};
+    if (patch.displayName !== undefined) set.displayName = patch.displayName;
+    if (patch.passwordHash !== undefined) set.passwordHash = patch.passwordHash;
+    if (Object.keys(set).length === 0) return this.findById(id);
+    const rows = await this.db.update(users).set(set).where(eq(users.id, id)).returning();
     const row = rows[0];
     if (!row || !row.passwordHash) return null;
     return {
@@ -359,6 +400,15 @@ const InviteBody = z.object({
   role: z.enum(['owner', 'admin', 'member', 'viewer']).default('member'),
 });
 
+const UpdateMeBody = z.object({
+  displayName: z.string().trim().min(1).max(120).nullable(),
+});
+
+const PasswordBody = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(12).max(128),
+});
+
 const INVITE_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
 
 function newInviteToken(): { raw: string; hash: string } {
@@ -371,6 +421,7 @@ export function isPlatformAuthRoute(pathname: string, method: string): boolean {
   return (
     pathname === '/api/v1/auth/signup' ||
     pathname === '/api/v1/auth/login' ||
+    pathname === '/api/v1/auth/password' ||
     pathname === '/api/v1/me' ||
     pathname.startsWith('/api/v1/invites/') ||
     /^\/api\/v1\/organizations\/[^/]+\/invites\/?$/.test(pathname)
@@ -487,6 +538,45 @@ export async function handlePlatformAuthRoutes(
           requestId,
         ),
       );
+    }
+
+    if (url.pathname === '/api/v1/auth/password' && req.method === 'POST') {
+      await strictLimit();
+      const token = bearerFromHeader(req.headers.authorization);
+      if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
+      const session = await verifySession(token, {
+        jwtSecret: ctx.config.JWT_SECRET,
+        issuer: ctx.config.JWT_ISSUER,
+      });
+      const parsed = parseBody(PasswordBody, await readJson());
+      const user = await store.users.findById(session.sub);
+      if (!user) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
+      if (!(await verifyPassword(parsed.currentPassword, user.passwordHash))) {
+        await ctx.registry.recordAudit('platform.password.failed', { userId: user.id });
+        throw new ApiError('UNAUTHORIZED', 'Current password is incorrect', 401);
+      }
+      const updated = await store.users.updateUser(user.id, {
+        passwordHash: await hashPassword(parsed.newPassword),
+      });
+      if (!updated) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
+      await ctx.registry.recordAudit('platform.password.changed', { userId: user.id });
+      return finish(200, ok({ changed: true }, requestId));
+    }
+
+    if (url.pathname === '/api/v1/me' && req.method === 'PATCH') {
+      const token = bearerFromHeader(req.headers.authorization);
+      if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
+      const session = await verifySession(token, {
+        jwtSecret: ctx.config.JWT_SECRET,
+        issuer: ctx.config.JWT_ISSUER,
+      });
+      const parsed = parseBody(UpdateMeBody, await readJson());
+      const updated = await store.users.updateUser(session.sub, {
+        displayName: parsed.displayName,
+      });
+      if (!updated) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
+      await ctx.registry.recordAudit('platform.profile.updated', { userId: updated.id });
+      return finish(200, ok({ user: expose(updated) }, requestId));
     }
 
     const orgInviteMatch = /^\/api\/v1\/organizations\/([^/]+)\/invites\/?$/.exec(url.pathname);

@@ -160,3 +160,71 @@ describe('phase 8 platform auth + org invites', () => {
     expect([403, 404]).toContain(r.status);
   });
 });
+
+describe('phase 12 account profile + password', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let token = '';
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'profile@example.com',
+      password: 'original-password-1',
+      displayName: 'Original',
+    });
+    expect(signup.status).toBe(201);
+    token = data<{ token: string }>(signup.json).token;
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it('updates its own display name, rejects strangers', async () => {
+    const ok = await api(base, 'PATCH', '/api/v1/me', token, { displayName: 'Renamed' });
+    expect(ok.status).toBe(200);
+    expect(data<{ user: { displayName: string } }>(ok.json).user.displayName).toBe('Renamed');
+    const me = await api(base, 'GET', '/api/v1/me', token);
+    expect(data<{ user: { displayName: string } }>(me.json).user.displayName).toBe('Renamed');
+    expect(await api(base, 'PATCH', '/api/v1/me', null, { displayName: 'X' })).toHaveProperty(
+      'status',
+      401,
+    );
+    expect(await api(base, 'PATCH', '/api/v1/me', token, { displayName: '' })).toHaveProperty(
+      'status',
+      400,
+    );
+  });
+
+  it('changes password only with the current one, then logs in with the new one', async () => {
+    const wrong = await api(base, 'POST', '/api/v1/auth/password', token, {
+      currentPassword: 'not-the-password-1',
+      newPassword: 'brand-new-password-2',
+    });
+    expect(wrong.status).toBe(401);
+    const short = await api(base, 'POST', '/api/v1/auth/password', token, {
+      currentPassword: 'original-password-1',
+      newPassword: 'short',
+    });
+    expect(short.status).toBe(400);
+    const changed = await api(base, 'POST', '/api/v1/auth/password', token, {
+      currentPassword: 'original-password-1',
+      newPassword: 'brand-new-password-2',
+    });
+    expect(changed.status).toBe(200);
+    const oldLogin = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'profile@example.com',
+      password: 'original-password-1',
+    });
+    expect(oldLogin.status).toBe(401);
+    const fresh = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'profile@example.com',
+      password: 'brand-new-password-2',
+    });
+    expect(fresh.status).toBe(200);
+    token = data<{ token: string }>(fresh.json).token;
+  });
+});

@@ -611,14 +611,97 @@ textarea:disabled {
 
 /* ── Auth ──────────────────────────────────────────────── */
 
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .auth-wrap {
   display: flex;
   justify-content: center;
   padding: 48px 16px;
+  flex: 1;
 }
 .auth-card {
   width: 100%;
   max-width: 400px;
+  align-self: flex-start;
+}
+
+/* ── Account / settings sections ───────────────────────── */
+
+.account-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.account-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 16px;
+}
+.account-nav button {
+  appearance: none;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.account-nav button:hover {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+.account-nav button.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.account-body {
+  min-width: 0;
+}
+
+.avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: 19px;
+}
+
+.flash-ok {
+  background: var(--success-soft);
+  border: 1px solid transparent;
+  color: var(--success);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .account-nav button {
+    white-space: nowrap;
+  }
 }
 
 /* ── Switchers, menus ──────────────────────────────────── */

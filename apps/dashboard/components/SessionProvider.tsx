@@ -64,11 +64,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
       return;
     }
     const r = await apiFetch<MeData>('/api/v1/me');
-    if (!r.ok || !r.data) {
+    if (r.status === 401 || r.status === 403) {
+      // Genuinely invalid session — forget it so the user can sign in again.
       setToken('');
       setTokenState(null);
       setUser(null);
       setOrgs([]);
+      setReady(true);
+      return;
+    }
+    if (!r.ok || !r.data) {
+      // Transient failure (rate limit, network, server error): keep the
+      // stored session. Wiping it here used to log users out at random and
+      // strand them on the login page mid-workflow.
+      setTokenState(prev => prev ?? stored);
       setReady(true);
       return;
     }
