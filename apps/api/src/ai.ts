@@ -1,11 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import { changeFeedDdl } from '@cloudnivo/database';
 import {
   AIAuditLog,
   AIUsageTracker,
+  DrizzleAIJournal,
   PlanStore,
   aiOpenApiPaths,
   buildMigration,
@@ -57,6 +59,33 @@ export function aiFor(ctx: ApiContext): AIState {
   const existing = (ctx as unknown as { __ai?: AIState }).__ai;
   if (existing) return existing;
   const c = ctx.config;
+  const plans = new PlanStore();
+  const audit = new AIAuditLog();
+  const usage = new AIUsageTracker();
+  // Restart safety: boot rehydrate (loaded in initControlPlane) restores
+  // history/counters into the live stores exactly once.
+  const snapshot = (ctx as unknown as { __aiSnapshot?: Awaited<ReturnType<DrizzleAIJournal['loadAll']>> }).__aiSnapshot;
+  if (snapshot) {
+    try {
+      plans.restore(snapshot.plans);
+      audit.restore(snapshot.audits);
+      usage.restore(snapshot.usage);
+    } catch (err) {
+      ctx.logger.warn('ai.restore_failed', {
+        error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+      });
+    }
+  }
+  if (ctx.controlDb) {
+    // Durability: every mutation journals to Postgres (fire-and-forget per
+    // write; failures are logged, never fatal to the request).
+    const journal = new DrizzleAIJournal(ctx.controlDb.db, (err, what) =>
+      ctx.logger.warn(what, { error: err instanceof Error ? err.message.slice(0, 160) : 'unknown' }),
+    );
+    plans.attachSink(p => void journal.savePlan(p));
+    audit.attachSink(e => void journal.saveAudit(e));
+    usage.attachSink(u => void journal.saveUsage(u));
+  }
   const builder = builderFromConfig(
     {
       provider: c.AI_PROVIDER === 'openai-compatible' ? 'openai-compatible' : 'local',
@@ -65,7 +94,7 @@ export function aiFor(ctx: ApiContext): AIState {
       baseUrl: c.AI_BASE_URL,
       timeoutMs: c.AI_REQUEST_TIMEOUT_MS,
     },
-    { plans: new PlanStore(), audit: new AIAuditLog(), usage: new AIUsageTracker() },
+    { plans, audit: audit, usage },
   );
   const state = { builder };
   (ctx as unknown as { __ai?: AIState }).__ai = state;
@@ -104,10 +133,7 @@ async function requireMember(
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const owned = await mustOwnProject(ctx.registry, session.sub, projectId);

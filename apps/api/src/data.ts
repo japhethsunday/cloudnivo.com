@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import { decodeCustomerToken } from '@cloudnivo/auth';
 import {
   can,
@@ -380,10 +381,7 @@ export async function resolveCaller(
   }
   let session: { sub: string } | null = null;
   try {
-    session = await verifySession(token, {
-      jwtSecret: ctx.config.JWT_SECRET,
-      issuer: ctx.config.JWT_ISSUER,
-    });
+    session = await verifyPlatformSession(ctx, token);
   } catch {
     session = null;
   }

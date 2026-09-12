@@ -5,7 +5,7 @@ import { apiFetch } from '../../lib/api';
 import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
-import { Badge, Modal, useToast } from '../../components/ui';
+import { Badge, CopyButton, Modal, useToast } from '../../components/ui';
 
 interface Org {
   id: string;
@@ -124,7 +124,6 @@ function OrgsBody(): React.JSX.Element {
           org={inviting}
           onClose={() => setInviting(null)}
           onSent={() => {
-            setInviting(null);
             toast('Invite created — share the token with your teammate', 'ok');
           }}
         />
@@ -235,6 +234,7 @@ function InviteModal({ org, onClose, onSent }: { org: Org; onClose: () => void; 
           <p>
             <code>{token}</code>
           </p>
+          <CopyButton text={token} label="Copy token" />
           <p className="muted">They accept it from their account. The raw token is shown only once.</p>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-primary" onClick={onClose}>

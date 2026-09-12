@@ -167,6 +167,13 @@ describe('phase 8 platform auth + org invites', () => {
   });
 
   it('rejects invite acceptance from a different email address', async () => {
+    // tokenA was logged out by the previous test — sign back in for setup.
+    const relogin = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'dev@example.com',
+      password: 'correct-horse-99',
+    });
+    expect(relogin.status).toBe(200);
+    tokenA = data<{ token: string }>(relogin.json).token;
     const created = await api(base, 'POST', `/api/v1/organizations/${orgId}/invites`, tokenA, {
       email: 'intended@example.com',
       role: 'member',
@@ -180,6 +187,51 @@ describe('phase 8 platform auth + org invites', () => {
     const tokenE = data<{ token: string }>(signupE.json).token;
     const accept = await api(base, 'POST', `/api/v1/invites/${token}/accept`, tokenE, {});
     expect(accept.status).toBe(403);
+  });
+});
+
+describe('platform session revocation (server-side logout)', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it('login -> use -> logout -> old token rejected, new session works', async () => {
+    const email = 'revoked@example.com';
+    const password = 'correct-horse-99';
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, { email, password });
+    expect(signup.status).toBe(201);
+    const first = data<{ token: string }>(signup.json).token;
+    const login = await api(base, 'POST', '/api/v1/auth/login', null, { email, password });
+    expect(login.status).toBe(200);
+    const second = data<{ token: string }>(login.json).token;
+    expect(first).not.toBe(second);
+
+    // Both sessions work before logout.
+    expect((await api(base, 'GET', '/api/v1/me', first)).status).toBe(200);
+    expect((await api(base, 'GET', '/api/v1/me', second)).status).toBe(200);
+
+    // Logout invalidates exactly the presented session, server-side.
+    expect((await api(base, 'POST', '/api/v1/auth/logout', first, {})).status).toBe(200);
+    expect((await api(base, 'GET', '/api/v1/me', first)).status).toBe(401);
+
+    // The unrelated session of the same user is untouched.
+    expect((await api(base, 'GET', '/api/v1/me', second)).status).toBe(200);
+
+    // A brand-new login after logout works.
+    const again = await api(base, 'POST', '/api/v1/auth/login', null, { email, password });
+    expect(again.status).toBe(200);
+    expect(
+      (await api(base, 'GET', '/api/v1/me', data<{ token: string }>(again.json).token)).status,
+    ).toBe(200);
   });
 });
 

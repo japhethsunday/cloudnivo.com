@@ -69,6 +69,13 @@ SECRET_ACCESS_KEY` (MinIO, R2, or AWS; keep path style on for MinIO).
   Tune `STORAGE_MAX_FILE_MB`, `STORAGE_PROJECT_QUOTA_MB`, `STORAGE_RATE_MAX`,
   and set a persistent `STORAGE_SIGNING_SECRET` so signed URLs survive restarts.
 - `REDIS_PASSWORD` set; `DATABASE_URL` points at managed Postgres.
+- `REQUIRE_REDIS=true` once the Redis plugin is attached (refuses boot on
+  a missing/unreachable cache instead of splitting rate limits + session
+  revocation across instances).
+- Backups: enable the Railway Postgres plugin's automated backups AND set
+  `BACKUP_ENABLED=true` + `BACKUP_ENCRYPTION_KEY` on the worker service with
+  `BACKUP_DIR` on an attached Railway volume. See `docs/operations.md`
+  (tested restore procedure) and `docs/scaling.md` before raising replicas.
 - Run `npm run db:migrate` (and `npm run db:seed` for the RBAC catalog) against
   the control database on every deploy, then set `CONTROL_STORE=drizzle` so the
   API serves registry/keys/jobs/storage metadata from Postgres instead of

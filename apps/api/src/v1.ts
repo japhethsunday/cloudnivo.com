@@ -12,7 +12,8 @@ import {
   RequestMetrics,
   type RateLimitStore,
 } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader, type SessionClaims } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import { createCacheService, type CacheService } from '@cloudnivo/cache';
 import type { AppConfig } from '@cloudnivo/config';
 import { createLogger, type Logger } from '@cloudnivo/logging';
@@ -72,6 +73,13 @@ export interface ApiContext {
   logger: Logger;
   cache: CacheService;
   rateLimitStore: RateLimitStore;
+  /**
+   * Server-side session denylist (logout revocation). Shares the cache
+   * backend, so revocations propagate across instances wherever the cache is
+   * shared (Redis in production). Same instance as `cache` — one backend,
+   * two concerns, prefixed keys.
+   */
+  sessionRevocations: CacheService;
   registry: Registry;
   provider: DatabaseProvisioner;
   gateway: ProjectDbGateway;
@@ -92,6 +100,22 @@ export interface ApiContext {
 export function createContext(config: AppConfig): ApiContext {
   const logger = createLogger({ service: 'api' });
   const cache = createCacheService(config.REDIS_URL);
+  // Rate limiting must stay available when the backing store hiccups: a
+  // cache outage fails OPEN (logged + observable) rather than 500ing every
+  // request. Redis INCR itself is atomic, so concurrent/multi-instance
+  // requests cannot bypass the counter while the store is healthy.
+  const rateLimitStore: RateLimitStore = {
+    incr: async (key: string, ttlSeconds: number): Promise<number> => {
+      try {
+        return await cache.incr(key, ttlSeconds);
+      } catch (err) {
+        logger.warn('ratelimit.degraded', {
+          error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+        });
+        return 1;
+      }
+    },
+  };
   const registry = new MemoryRegistry();
   const isFake = config.PROVISION_DRIVER === 'fake';
   const isManaged = config.PROVISION_DRIVER === 'managed';
@@ -136,7 +160,8 @@ export function createContext(config: AppConfig): ApiContext {
     config,
     logger,
     cache,
-    rateLimitStore: cache,
+    rateLimitStore,
+    sessionRevocations: cache,
     registry,
     provider,
     gateway,
@@ -179,6 +204,25 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
   (ctx as unknown as { __storageMeta?: unknown }).__storageMeta = new DrizzleStorageMetadataStore(
     svc.db,
   );
+  // AI durability: snapshot audit history, plans, and usage counters now
+  // (before traffic), so aiFor() can restore the live stores exactly once.
+  // A rehydrate failure warns but never halts boot — the journal reports
+  // per-write errors and the API stays up.
+  try {
+    const { DrizzleAIJournal } = await import('@cloudnivo/ai');
+    const snapshot = await new DrizzleAIJournal(svc.db).loadAll();
+    (ctx as unknown as { __aiSnapshot?: unknown }).__aiSnapshot = snapshot;
+    ctx.logger.info('ai.rehydrated', {
+      plans: snapshot.plans.length,
+      audits: snapshot.audits.length,
+      usage: snapshot.usage.length,
+    });
+  } catch (err) {
+    ctx.logger.warn('ai.rehydrate_failed', {
+      error: err instanceof Error ? err.message.slice(0, 160) : 'unknown',
+      note: 'AI history starts empty; run db:migrate for ai_* tables',
+    });
+  }
   ctx.logger.info('control plane durable', { store: 'drizzle' });
 }
 
@@ -219,18 +263,18 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-async function requireSession(
-  req: IncomingMessage,
-  ctx: ApiContext,
-): Promise<{ sub: string; email: string; org?: string }> {
+/**
+ * Platform session gate (single definition — routes import it from
+ * `./sessions.js`, which is type-only against this module).
+ */
+export { verifyPlatformSession };
+
+async function requireSession(req: IncomingMessage, ctx: ApiContext): Promise<SessionClaims> {
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) {
     throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
   }
-  return verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  return verifyPlatformSession(ctx, token);
 }
 
 export async function handleRequest(

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, ok, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import type { Logger } from '@cloudnivo/logging';
 import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
@@ -81,10 +82,7 @@ export async function handleMetricsRoutes(
     } else {
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       userId = session.sub;
       const memberships = await ctx.registry.membershipsFor(session.sub);
       if (!memberships.some(m => m.organizationId === organizationId)) {

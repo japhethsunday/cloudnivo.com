@@ -400,3 +400,31 @@ async function collectFromScratch(opts: VerifyOptions): Promise<TableStat[]> {
     await sql.end({ timeout: 2 }).catch(() => undefined);
   }
 }
+
+export interface RestoreOptions {
+  /** Plaintext custom-format dump (decrypt first — see backup-scheduler). */
+  dumpPath: string;
+  /** Target database URL. Operator-confirmed; may be the source database. */
+  targetUrl: string;
+  pgRestoreBin?: string;
+}
+
+/**
+ * Operator-driven restore: pg_restore --clean into the target database.
+ * Never called automatically — only via the backup CLI during an incident
+ * (see docs/operations.md restore procedure). Returns the target identity
+ * for logging; credentials never echo (pgEnv + redactCommand posture).
+ */
+export async function restoreDump(
+  opts: RestoreOptions,
+): Promise<{ target: string; host: string; bytes: number }> {
+  const target = splitUrl(opts.targetUrl);
+  const bytes = (await stat(opts.dumpPath)).size;
+  if (bytes <= 0) throw new BackupError('Restore dump is empty or missing');
+  await runBin(
+    opts.pgRestoreBin ?? 'pg_restore',
+    ['--no-password', '--clean', '--if-exists', '-d', target.database, opts.dumpPath],
+    { env: pgEnv(opts.targetUrl), timeoutMs: 1_800_000 },
+  );
+  return { target: target.database, host: target.host, bytes };
+}

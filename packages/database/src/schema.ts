@@ -901,3 +901,76 @@ export const automationDeliveries = pgTable(
     index('automation_deliveries_next_idx').on(t.nextAttemptAt),
   ],
 );
+
+// ── AI Builder durability (restart-safe audit trail, plans, usage) ──
+// Live reads stay in the memory stores (sync hot path); every mutation is
+// journaled here and rehydrated at boot, so restarts/redeploys lose nothing.
+// Prompts persist REDACTED (secret assignments masked at record time);
+// provider credentials are never stored — they live in env only.
+export const aiAuditEntries = pgTable(
+  'ai_audit_entries',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'cascade',
+    }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    userId: uuid('user_id'),
+    action: varchar('action', { length: 40 }).notNull(),
+    resource: varchar('resource', { length: 200 }).notNull(),
+    result: varchar('result', { length: 10 }).notNull(),
+    detail: varchar('detail', { length: 500 }).notNull().default(''),
+    prompt: text('prompt'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('ai_audit_entries_project_idx').on(t.projectId),
+    index('ai_audit_entries_created_idx').on(t.createdAt),
+  ],
+);
+
+export const aiPlans = pgTable(
+  'ai_plans',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'cascade',
+    }),
+    projectId: varchar('project_id', { length: 64 }).notNull(),
+    userId: uuid('user_id'),
+    prompt: varchar('prompt', { length: 2000 }).notNull().default(''),
+    provider: varchar('provider', { length: 80 }).notNull().default(''),
+    model: varchar('model', { length: 200 }).notNull().default(''),
+    plan: jsonb('plan').notNull(),
+    validation: jsonb('validation').notNull(),
+    changes: jsonb('changes').notNull(),
+    estimate: jsonb('estimate').notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    confirmations: jsonb('confirmations').notNull(),
+    appliedSteps: jsonb('applied_steps').notNull(),
+    error: varchar('error', { length: 500 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('ai_plans_project_idx').on(t.projectId),
+    index('ai_plans_status_idx').on(t.status),
+  ],
+);
+
+export const aiUsageCounters = pgTable('ai_usage_counters', {
+  projectId: varchar('project_id', { length: 64 }).primaryKey(),
+  organizationId: uuid('organization_id').references(() => organizations.id, {
+    onDelete: 'cascade',
+  }),
+  requests: integer('requests').notNull().default(0),
+  plansGenerated: integer('plans_generated').notNull().default(0),
+  plansApplied: integer('plans_applied').notNull().default(0),
+  plansFailed: integer('plans_failed').notNull().default(0),
+  promptTokens: bigint('prompt_tokens', { mode: 'number' }).notNull().default(0),
+  completionTokens: bigint('completion_tokens', { mode: 'number' }).notNull().default(0),
+  tokensReported: boolean('tokens_reported').notNull().default(false),
+  totalLatencyMs: bigint('total_latency_ms', { mode: 'number' }).notNull().default(0),
+  lastAt: timestamp('last_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

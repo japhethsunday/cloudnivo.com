@@ -8,5 +8,6 @@ export * from './tools.js';
 export * from './scanner.js';
 export * from './audit.js';
 export * from './planner.js';
+export * from './store-drizzle.js';
 export * from './openapi.js';
 export * from './diagnose.js';

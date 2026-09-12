@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '@cloudnivo/config';
 import { createContext } from './v1.js';
-import { drainOnce, startWorker } from './worker.js';
+import { drainBackupsOnce, drainOnce, startWorker } from './worker.js';
 import type { ApiContext } from './v1.js';
 
 const FUTURE = Date.now() + 10 * 60_000;
@@ -162,4 +162,25 @@ describe('background worker orphan drain', () => {
       await handle.close();
     }
   }, 30_000);
+
+  it('skips scheduled backups unless enabled; fails safe without a prod key', async () => {
+    const ctx = testCtx();
+    expect((await drainBackupsOnce(ctx)).ran).toBe(false);
+
+    const prev = { ...process.env };
+    try {
+      process.env.BACKUP_ENABLED = 'true';
+      process.env.NODE_ENV = 'production';
+      process.env.BACKUP_ENCRYPTION_KEY = '';
+      const prodCtx = testCtx();
+      // Must read production + enabled: without an encryption key the cycle
+      // refuses (fail-closed) instead of writing plaintext dumps.
+      (prodCtx.config as { isProduction: boolean }).isProduction = true;
+      const result = await drainBackupsOnce(prodCtx, Date.now() + 10 * 60_000);
+      expect(result.ran).toBe(false);
+      expect(result.error ?? '').toContain('BACKUP_ENCRYPTION_KEY');
+    } finally {
+      process.env = prev;
+    }
+  });
 });

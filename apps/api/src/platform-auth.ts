@@ -6,6 +6,7 @@ import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudni
 import {
   bearerFromHeader,
   hashPassword,
+  revokeSession,
   signSession,
   verifyPassword,
   verifySession,
@@ -14,6 +15,7 @@ import { organizationInvites, users, type Database } from '@cloudnivo/database';
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { verifyPlatformSession } from './sessions.js';
 
 /**
  * Platform control-plane auth: developer signup/login, session identity
@@ -520,17 +522,24 @@ export async function handlePlatformAuthRoutes(
     if (url.pathname === '/api/v1/auth/logout' && req.method === 'POST') {
       const token = bearerFromHeader(req.headers.authorization);
       if (token) {
+        // Server-side invalidation: the session ID (and token hash for
+        // legacy tokens) lands on the shared denylist, so the token is
+        // rejected on every instance from here until its natural expiry.
+        // Best-effort parse — logout still clears the cookie for expired or
+        // malformed tokens.
         const session = await verifySession(token, {
           jwtSecret: ctx.config.JWT_SECRET,
           issuer: ctx.config.JWT_ISSUER,
         }).catch(() => null);
+        await revokeSession(
+          token,
+          { jwtSecret: ctx.config.JWT_SECRET, issuer: ctx.config.JWT_ISSUER },
+          ctx.sessionRevocations,
+        ).catch(() => ({ revoked: false, jti: null }));
         if (session) {
           await ctx.registry.recordAudit('platform.logout', { userId: session.sub });
         }
       }
-      // Sessions are stateless JWTs: logout clears the httpOnly cookie and the
-      // client discards its copy. Tokens expire via JWT_EXPIRES_IN and cannot
-      // be used beyond expiry; password change rotates access implicitly.
       const cleared =
         'cn_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0' +
         (ctx.config.APP_URL.startsWith('https://') ? '; Secure' : '');
@@ -540,10 +549,7 @@ export async function handlePlatformAuthRoutes(
     if (url.pathname === '/api/v1/me' && req.method === 'GET') {
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       const user = await store.users.findById(session.sub);
       if (!user) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
       const memberships = await ctx.registry.membershipsFor(user.id);
@@ -565,10 +571,7 @@ export async function handlePlatformAuthRoutes(
       await strictLimit();
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       const parsed = parseBody(PasswordBody, await readJson());
       const user = await store.users.findById(session.sub);
       if (!user) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
@@ -587,10 +590,7 @@ export async function handlePlatformAuthRoutes(
     if (url.pathname === '/api/v1/me' && req.method === 'PATCH') {
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       const parsed = parseBody(UpdateMeBody, await readJson());
       const updated = await store.users.updateUser(session.sub, {
         displayName: parsed.displayName,
@@ -604,10 +604,7 @@ export async function handlePlatformAuthRoutes(
     if (orgInviteMatch?.[1] && req.method === 'POST') {
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       const orgId = orgInviteMatch[1];
       const memberships = await ctx.registry.membershipsFor(session.sub);
       const mine = memberships.find(m => m.organizationId === orgId);
@@ -651,10 +648,7 @@ export async function handlePlatformAuthRoutes(
     if (acceptMatch?.[1] && req.method === 'POST') {
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-      const session = await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      });
+      const session = await verifyPlatformSession(ctx, token);
       const invite = await store.invites.findByTokenHash(
         createHash('sha256').update(acceptMatch[1]).digest('hex'),
       );

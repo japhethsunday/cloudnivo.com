@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
 import {
   CustomerAuthService,
   MemoryCustomerAuthStore,
@@ -28,6 +28,7 @@ import type { ApiContext } from './v1.js';
 import type { ProjectRecord } from './registry.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import { verifyPlatformSession } from './sessions.js';
 
 /**
  * Customer authentication routes: /api/v1/projects/:id/auth/*.
@@ -307,10 +308,7 @@ async function platformAdmin(
 ): Promise<{ userId: string }> {
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   await mustOwnProject(ctx.registry, session.sub, project.id);
   const role =
     (await ctx.registry.membershipsFor(session.sub)).find(
@@ -542,10 +540,7 @@ export async function handleCustomerAuthRoutes(
         // Members may read; admins may write.
         const token = bearerFromHeader(req.headers.authorization);
         if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-        const session = await verifySession(token, {
-          jwtSecret: ctx.config.JWT_SECRET,
-          issuer: ctx.config.JWT_ISSUER,
-        });
+        const session = await verifyPlatformSession(ctx, token);
         await mustOwnProject(ctx.registry, session.sub, project.id);
       });
       const cfg = await ctx.registry.getAuthConfig(project.id);

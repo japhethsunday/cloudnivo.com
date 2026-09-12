@@ -61,8 +61,39 @@ export class PlanError extends Error {
   }
 }
 
+/**
+ * Durability sink: when a Drizzle journal is attached, every mutation is
+ * journaled (fire-and-forget; journal errors are reported via onError and
+ * never break the request). At boot the journal rehydrates the store via
+ * {@link PlanStore.restore}. Without a sink the store stays process-local
+ * (dev/test default).
+ */
+export type PlanSink = (plan: StoredPlan) => void;
+
 export class PlanStore {
   private readonly plans = new Map<string, StoredPlan>();
+  private sink: PlanSink | null = null;
+
+  attachSink(sink: PlanSink | null): void {
+    this.sink = sink;
+  }
+
+  /** Replace contents (boot rehydrate from the durable journal). */
+  restore(plans: StoredPlan[]): void {
+    this.plans.clear();
+    for (const p of plans) this.plans.set(p.id, p);
+  }
+
+  private emit(plan: StoredPlan): void {
+    const sink = this.sink;
+    if (sink) {
+      try {
+        sink({ ...plan });
+      } catch {
+        // A broken sink must never break planning; journal reports its own errors.
+      }
+    }
+  }
 
   create(input: {
     projectId: string;
@@ -97,6 +128,7 @@ export class PlanStore {
       updatedAt: now,
     };
     this.plans.set(stored.id, stored);
+    this.emit(stored);
     return stored;
   }
 
@@ -141,6 +173,7 @@ export class PlanStore {
     p.status = 'approved';
     p.confirmations = [...confirmations];
     p.updatedAt = new Date().toISOString();
+    this.emit(p);
     return p;
   }
 
@@ -150,6 +183,7 @@ export class PlanStore {
       throw new PlanError('CONFLICT', `Plan is ${p.status}, not pending`, 409);
     p.status = 'rejected';
     p.updatedAt = new Date().toISOString();
+    this.emit(p);
     return p;
   }
 
@@ -159,6 +193,7 @@ export class PlanStore {
       throw new PlanError('CONFLICT', 'Only approved plans can be applied', 409);
     p.status = 'applying';
     p.updatedAt = new Date().toISOString();
+    this.emit(p);
     return p;
   }
 
@@ -166,6 +201,7 @@ export class PlanStore {
     const p = this.get(projectId, planId);
     p.appliedSteps.push({ step, ok, detail: detail.slice(0, 500) });
     p.updatedAt = new Date().toISOString();
+    this.emit(p);
   }
 
   markFinished(
@@ -179,6 +215,7 @@ export class PlanStore {
     p.status = rolledBack ? 'rolled_back' : ok ? 'applied' : 'failed';
     p.error = error?.slice(0, 500) ?? null;
     p.updatedAt = new Date().toISOString();
+    this.emit(p);
     return p;
   }
 }

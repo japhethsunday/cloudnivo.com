@@ -144,7 +144,7 @@ export class AIBackendBuilder {
     context: Record<string, unknown>;
   }): Promise<StoredPlan> {
     const { plan, usage } = await this.opts.provider.generate(input.prompt, input.context);
-    this.opts.usage.trackRequest(input.projectId, usage, true);
+    this.opts.usage.trackRequest(input.projectId, usage, true, input.organizationId);
     const stored = this.opts.plans.create({
       projectId: input.projectId,
       organizationId: input.organizationId,
@@ -261,7 +261,7 @@ export class AIBackendBuilder {
         step('auth', true, 'no auth changes');
       }
       plans.markFinished(input.projectId, input.planId, true, null, false);
-      this.opts.usage.trackApply(input.projectId, true);
+      this.opts.usage.trackApply(input.projectId, true, input.organizationId);
       this.opts.audit.record({
         projectId: input.projectId,
         organizationId: input.organizationId,
@@ -298,7 +298,7 @@ export class AIBackendBuilder {
         migration.status = 'failed';
       }
       plans.markFinished(input.projectId, input.planId, false, message, rolledBack);
-      this.opts.usage.trackApply(input.projectId, false);
+      this.opts.usage.trackApply(input.projectId, false, input.organizationId);
       this.opts.audit.record({
         projectId: input.projectId,
         organizationId: input.organizationId,

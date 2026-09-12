@@ -5,6 +5,7 @@ import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { runControlMigrations, seedDatabase } from '@cloudnivo/database';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, handleRequest, initControlPlane, type ApiContext } from './v1.js';
+import { assertProductionSafety, assertSharedCache } from './prod-guards.js';
 import { resolveListenPort } from './platform-port.js';
 import { realtimeFor } from './realtime.js';
 
@@ -27,6 +28,9 @@ export async function start(
     logger.info('seed on boot complete', { roles: seeded.roles, permissions: seeded.permissions });
   }
   const ctx = createContext(config);
+  // Production never serves on dev/test-double configuration (throws).
+  assertProductionSafety(config, logger);
+  await assertSharedCache(config, ctx.cache, logger);
   await initControlPlane(ctx);
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx).catch(err => {

@@ -7,3 +7,4 @@ export * from './lifecycle.js';
 export * from './project-db.js';
 export * from './realtime-cdc.js';
 export * from './backup.js';
+export * from './backup-scheduler.js';

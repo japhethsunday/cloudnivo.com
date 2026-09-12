@@ -18,7 +18,17 @@ export function getToken(): string {
 }
 
 export function setToken(token: string): void {
+  // Empty = logged out: remove the key entirely instead of leaving cn_token="".
+  if (!token) {
+    window.localStorage.removeItem('cn_token');
+    return;
+  }
   window.localStorage.setItem('cn_token', token);
+}
+
+/** Forget the stored session, if any. */
+export function clearToken(): void {
+  window.localStorage.removeItem('cn_token');
 }
 
 export interface ApiErrorShape {

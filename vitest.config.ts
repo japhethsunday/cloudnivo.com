@@ -16,6 +16,11 @@ export default defineConfig({
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],
     testTimeout: 15_000,
+    // API E2E suites boot a full server in beforeAll; under parallel load
+    // on small machines that can exceed the 10s default. Hooks still fail
+    // loudly on real hangs — this only accommodates slow boot, it weakens
+    // no assertion.
+    hookTimeout: 30_000,
     reporters: ['default'],
   },
   resolve: {

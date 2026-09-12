@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import { decodeCustomerToken } from '@cloudnivo/auth';
 import { verifyKey } from '@cloudnivo/api-engine';
 import {
@@ -125,10 +126,7 @@ async function requireMember(
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
@@ -249,10 +247,7 @@ async function resolveInvokeAuth(
   }
   let session: { sub: string; email: string } | null = null;
   try {
-    session = await verifySession(token, {
-      jwtSecret: ctx.config.JWT_SECRET,
-      issuer: ctx.config.JWT_ISSUER,
-    });
+    session = await verifyPlatformSession(ctx, token);
   } catch {
     session = null;
   }

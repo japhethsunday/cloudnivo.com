@@ -1,4 +1,8 @@
-import { backupDatabase, verifyBackup } from './backup.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { backupDatabase, readManifest, restoreDump, verifyBackup } from './backup.js';
+import { decryptDumpfile } from './backup-scheduler.js';
 
 /**
  * Backup CLI (also wired as npm scripts):
@@ -6,9 +10,14 @@ import { backupDatabase, verifyBackup } from './backup.js';
  *     [--url $DATABASE_URL] [--out ./backups]
  *   npm run db:verify-backup --workspace=packages/database
  *     --dump <file.dump> --manifest <file.manifest.json> --scratch <url>
+ *   restore (operator-driven, see docs/operations.md):
+ *     tsx src/backup-cli.ts restore --dump <file.dump[.enc]> \
+ *       --manifest <file.manifest.json> --target <url> [--key-env BACKUP_ENCRYPTION_KEY]
  *
  * Connection strings come from env/argv only — never printed. The verify
- * command refuses scratch targets that match the source database.
+ * command refuses scratch targets that match the source database. The
+ * restore command requires --confirm-target <dbname> as a second,
+ * deliberate confirmation before touching the target.
  */
 
 function flag(name: string): string | undefined {
@@ -50,7 +59,44 @@ async function main(): Promise<void> {
     if (!report.ok) process.exitCode = 1;
     return;
   }
-  throw new Error('Usage: db:backup backup|verify … (see file header)');
+  if (command === 'restore') {
+    const dumpPath = flag('--dump');
+    const manifestPath = flag('--manifest');
+    const targetUrl = flag('--target') ?? process.env.RESTORE_TARGET_URL ?? '';
+    const confirm = flag('--confirm-target');
+    const keyEnv = flag('--key-env') ?? 'BACKUP_ENCRYPTION_KEY';
+    if (!dumpPath || !manifestPath || !targetUrl || !confirm) {
+      throw new Error(
+        'restore needs --dump, --manifest, --target and --confirm-target <dbname>',
+      );
+    }
+    const manifest = await readManifest(manifestPath);
+    if (confirm !== manifest.database) {
+      throw new Error(
+        `--confirm-target must exactly match the manifest database ("${manifest.database}")`,
+      );
+    }
+    let plainDump = dumpPath;
+    let scratch: string | null = null;
+    if (dumpPath.endsWith('.enc')) {
+      const key = process.env[keyEnv] ?? '';
+      if (!key) throw new Error(`Encrypted dump needs ${keyEnv} in the environment`);
+      scratch = await mkdtemp(join(tmpdir(), 'cn-restore-'));
+      plainDump = join(scratch, 'restore.dump');
+      await decryptDumpfile(dumpPath, key, plainDump);
+    }
+    try {
+      const done = await restoreDump({ dumpPath: plainDump, targetUrl });
+      process.stdout.write(
+        `restore ok: ${manifest.tables.length} tables from manifest ${manifest.id}\n` +
+          `target: ${done.target} (${done.host}), ${done.bytes} bytes restored\n`,
+      );
+    } finally {
+      if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+    }
+    return;
+  }
+  throw new Error('Usage: db:backup backup|verify|restore … (see file header)');
 }
 
 main().catch(err => {

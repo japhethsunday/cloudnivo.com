@@ -4,6 +4,7 @@ import { createLogger, type Logger } from '@cloudnivo/logging';
 import type { DatabaseStatus } from '@cloudnivo/database';
 import type { JobStatus } from '@cloudnivo/provisioning';
 import { createContext, initControlPlane, type ApiContext } from './v1.js';
+import { assertProductionSafety, assertSharedCache } from './prod-guards.js';
 import { resolveListenPort } from './platform-port.js';
 import { storageFor } from './storage.js';
 
@@ -169,6 +170,63 @@ export async function drainAgentsOnce(
   }
 }
 
+export interface BackupDrainResult {
+  ran: boolean;
+  artifactPath?: string;
+  encrypted?: boolean;
+  verified?: string;
+  pruned?: number;
+  error?: string;
+}
+
+let lastBackupAt = 0;
+
+/**
+ * Scheduled control-plane backups. Runs at most every BACKUP_INTERVAL_MS
+ * from this single worker loop (never from the API fleet). Skipped unless
+ * BACKUP_ENABLED=true. Failures are logged redacted and retried next
+ * interval — a failed backup is observable, never silent.
+ */
+export async function drainBackupsOnce(ctx: ApiContext, now = Date.now()): Promise<BackupDrainResult> {
+  if (!ctx.config.BACKUP_ENABLED) return { ran: false };
+  if (now - lastBackupAt < ctx.config.BACKUP_INTERVAL_MS) return { ran: false };
+  lastBackupAt = now;
+  try {
+    const { runBackupCycle } = await import('@cloudnivo/database');
+    const report = await runBackupCycle({
+      connectionString: ctx.config.DATABASE_URL,
+      outDir: ctx.config.BACKUP_DIR,
+      appVersion: '0.1.0',
+      encryptionKey: ctx.config.BACKUP_ENCRYPTION_KEY || undefined,
+      isProduction: ctx.config.isProduction,
+      retentionCount: ctx.config.BACKUP_RETENTION_COUNT,
+      verifyUrl: process.env.BACKUP_VERIFY_URL || undefined,
+    });
+    ctx.logger.info('backups.completed', {
+      artifact: report.artifactPath.split(/[\\/]/).slice(-1)[0],
+      tables: report.tables,
+      rows: report.totalRows,
+      bytes: report.artifactBytes,
+      encrypted: report.encrypted,
+      verified: report.verified,
+      pruned: report.pruned.length,
+    });
+    await ctx.registry.recordAudit('backups.completed', {}).catch(() => undefined);
+    return {
+      ran: true,
+      artifactPath: report.artifactPath,
+      encrypted: report.encrypted,
+      verified: report.verified,
+      pruned: report.pruned.length,
+    };
+  } catch (err) {
+    const { redactBackupError } = await import('@cloudnivo/database');
+    const message = redactBackupError(err);
+    ctx.logger.warn('backups.failed', { error: message });
+    return { ran: false, error: message };
+  }
+}
+
 export interface WorkerHandle {
   close: () => Promise<void>;
   port: number;
@@ -179,6 +237,8 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
   const config = loadConfig();
   const logger: Logger = createLogger({ service: 'worker' });
   const ctx = createContext(config);
+  assertProductionSafety(config, logger);
+  await assertSharedCache(config, ctx.cache, logger);
   await initControlPlane(ctx);
   if (config.CONTROL_STORE !== 'drizzle') {
     logger.warn('worker.memory_store', {
@@ -227,6 +287,15 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
           schedulesFailed: automation.schedules.failed,
         });
       }
+      const backups = await drainBackupsOnce(ctx);
+      if (backups.ran) {
+        logger.info('worker.backups_drain', {
+          artifact: backups.artifactPath?.split(/[\\/]/).slice(-1)[0],
+          encrypted: backups.encrypted,
+          verified: backups.verified,
+          pruned: backups.pruned,
+        });
+      }
     } catch (err) {
       logger.warn('worker.drain_failed', {
         error: err instanceof Error ? err.message.slice(0, 200) : 'unknown',
@@ -271,6 +340,14 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
     port: actual,
     pollMs: config.WORKER_POLL_MS,
     staleMs: config.WORKER_STALE_MS,
+  });
+  logger.info('worker.backups_config', {
+    enabled: config.BACKUP_ENABLED,
+    dir: config.BACKUP_DIR,
+    intervalMs: config.BACKUP_INTERVAL_MS,
+    retention: config.BACKUP_RETENTION_COUNT,
+    encrypted: config.BACKUP_ENCRYPTION_KEY.length > 0,
+    note: 'BACKUP_DIR must be a persistent volume in production (ephemeral disk loses backups on redeploy)',
   });
 
   const shutdown = async (): Promise<void> => {

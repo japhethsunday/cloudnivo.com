@@ -30,6 +30,14 @@ const EnvSchema = z.object({
     ),
 
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  // When true, boot fails unless the shared cache (Redis) answers ping.
+  // Set in production once a Redis plugin/service is attached so a missing
+  // REDIS_URL can never silently downgrade rate limiting + session
+  // revocation to single-instance memory.
+  REQUIRE_REDIS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform(v => v === 'true'),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ISSUER: z.string().default('cloudnivo'),
@@ -179,6 +187,20 @@ const EnvSchema = z.object({
   // Per-token request budget per rate-limit window (abuse protection).
   AGENT_RATE_MAX: z.coerce.number().int().min(1).max(10_000).default(300),
   AGENT_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(180),
+
+  // ── Automated control-plane backups ──
+  // BACKUP_ENABLED runs scheduled pg_dump backups from the worker loop
+  // (control database; never customer row contents in manifests). Dumps are
+  // AES-256-GCM encrypted with BACKUP_ENCRYPTION_KEY (32+ chars) when set —
+  // production must set it. Retention keeps the newest N verified backups.
+  BACKUP_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform(v => v === 'true'),
+  BACKUP_DIR: z.string().default('./.data/backups'),
+  BACKUP_INTERVAL_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(3_600_000),
+  BACKUP_RETENTION_COUNT: z.coerce.number().int().min(1).max(100).default(7),
+  BACKUP_ENCRYPTION_KEY: z.string().default(''),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

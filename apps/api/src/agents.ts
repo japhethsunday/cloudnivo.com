@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import {
   AGENT_SCOPES,
   AgentService,
@@ -396,10 +397,7 @@ async function requireOrgManager(
 ): Promise<{ userId: string; organizationId: string; role: string }> {
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   const url = new URL(req.url ?? '/', 'http://localhost');
   const m = /^\/api\/v1\/organizations\/([^/]+)\//.exec(url.pathname);
   const organizationId = m?.[1] ?? '';

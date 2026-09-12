@@ -3,7 +3,8 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { z } from 'zod';
 import { ApiError, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import type { DbAuditEvent } from '@cloudnivo/database';
 import {
   AutomationError,
@@ -79,10 +80,7 @@ async function requireMember(ctx: ApiContext, req: IncomingMessage, projectId: s
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const owned = await mustOwnProject(ctx.registry, session.sub, projectId);

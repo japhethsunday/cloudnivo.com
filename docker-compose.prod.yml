@@ -1,0 +1,59 @@
+# CloudNivo production overlay — NEVER put dev defaults here.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile api up -d --build
+#
+# Every secret MUST be provided in the environment (or a production .env
+# file): missing values fail fast with a clear message instead of silently
+# starting on development credentials. In particular this overlay:
+# - requires POSTGRES_PASSWORD (no dev-default fallback),
+# - requires REDIS_PASSWORD and wires it into REDIS_URL for all services,
+# - removes the Docker socket mount (containerized provisioning is a
+#   local-dev tradeoff; production uses PROVISION_DRIVER=managed),
+# - mounts a persistent volume for scheduled backups (BACKUP_DIR).
+#
+# The API/worker/realtime images additionally refuse production boot with
+# PROVISION_DRIVER=fake or a dev-database password (see prod-guards.ts).
+
+name: cloudnivo-prod
+services:
+  postgres:
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set for production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for production (never the dev default)}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set for production}
+
+  redis:
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set for production}
+
+  api:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set for production (e.g. redis://:<password>@redis:6379)}
+      REQUIRE_REDIS: 'true'
+    # Unmount the Docker socket from the base file (local-dev provisioning
+    # tradeoff — production uses PROVISION_DRIVER=managed). `!reset` needs
+    # Docker Compose >= 2.24 (current CI runners and Docker Desktop qualify).
+    volumes: !reset []
+
+  worker:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set for production}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_DIR: /var/lib/cloudnivo/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY must be set for production backups}
+    volumes:
+      - backupdata:/var/lib/cloudnivo/backups
+
+  realtime:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set for production}
+    volumes: []
+
+volumes:
+  backupdata:
+    name: cloudnivo_prod_backups

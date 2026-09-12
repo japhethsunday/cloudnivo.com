@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, checkRateLimit, ok, toPublicError } from '@cloudnivo/api-core';
-import { bearerFromHeader, decodeCustomerToken, verifySession } from '@cloudnivo/auth';
+import { bearerFromHeader, decodeCustomerToken } from '@cloudnivo/auth';
+import { verifyPlatformSession } from './sessions.js';
 import { queryProjectDb, toConnectionString } from '@cloudnivo/database';
 import { PostgresNotifyListener, changeFeedDdl } from '@cloudnivo/database';
 import { verifyKey } from '@cloudnivo/api-engine';
@@ -307,12 +308,7 @@ async function upgradeAuth(
   }
   let sub: string | null = null;
   try {
-    sub = (
-      await verifySession(token, {
-        jwtSecret: ctx.config.JWT_SECRET,
-        issuer: ctx.config.JWT_ISSUER,
-      })
-    ).sub;
+    sub = (await verifyPlatformSession(ctx, token)).sub;
   } catch {
     sub = null;
   }
@@ -358,10 +354,7 @@ async function requireMember(
   }
   const token = bearerFromHeader(req.headers.authorization);
   if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
-  const session = await verifySession(token, {
-    jwtSecret: ctx.config.JWT_SECRET,
-    issuer: ctx.config.JWT_ISSUER,
-  });
+  const session = await verifyPlatformSession(ctx, token);
   const project = await ctx.registry.getProject(projectId);
   if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
   const owned = await mustOwnProject(ctx.registry, session.sub, projectId);
