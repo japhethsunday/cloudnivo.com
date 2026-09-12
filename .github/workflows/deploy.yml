@@ -31,6 +31,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Railway CLI
         run: npm i -g @railway/cli
+      - name: Deploy API, worker, realtime
+        run: |
+          set -euo pipefail
+          for svc in cloudnivo-api-staging cloudnivo-worker-staging cloudnivo-realtime-staging; do
+            railway up --service "$svc" --environment staging --detach
+          done
+      # Migrate AFTER the rebuild: release entrypoints (dist/migrate-cli.js)
+      # only exist in images built from this commit. Migration 0007 is
+      # additive (new tables), so the brief mixed-version window is safe.
       - name: Migrate control database
         run: |
           set -euo pipefail
@@ -41,12 +50,6 @@ jobs:
           # pruned from service images).
           railway run --service cloudnivo-api-staging -- node packages/database/dist/migrate-cli.js
           railway run --service cloudnivo-api-staging -- node packages/database/dist/seed.js
-      - name: Deploy API, worker, realtime
-        run: |
-          set -euo pipefail
-          for svc in cloudnivo-api-staging cloudnivo-worker-staging cloudnivo-realtime-staging; do
-            railway up --service "$svc" --environment staging --detach
-          done
       - name: Readiness gate
         run: |
           set -euo pipefail
@@ -73,6 +76,15 @@ jobs:
         run: |
           npm i -g @railway/cli
           npm i -g vercel@latest
+      - name: Deploy Railway services
+        run: |
+          set -euo pipefail
+          for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
+            railway up --service "$svc" --environment production --detach
+          done
+      # Migrate AFTER the rebuild: release entrypoints (dist/migrate-cli.js)
+      # only exist in images built from this commit. Migration 0007 is
+      # additive (new tables), so the brief mixed-version window is safe.
       - name: Migrate control database
         run: |
           set -euo pipefail
@@ -83,12 +95,6 @@ jobs:
           # pruned from service images).
           railway run --service cloudnivo-api -- node packages/database/dist/migrate-cli.js
           railway run --service cloudnivo-api -- node packages/database/dist/seed.js
-      - name: Deploy Railway services
-        run: |
-          set -euo pipefail
-          for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
-            railway up --service "$svc" --environment production --detach
-          done
       - name: Deploy dashboard to Vercel
         run: |
           set -euo pipefail
