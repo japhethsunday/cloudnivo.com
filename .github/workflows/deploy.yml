@@ -29,27 +29,32 @@ jobs:
       RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
       - name: Install Railway CLI
         run: npm i -g @railway/cli
+      - name: Install dependencies
+        # `railway run` executes locally with the service env injected, so the
+        # runner needs node_modules (drizzle-kit/tsx live here, not in images).
+        run: npm ci --no-audit --no-fund
       - name: Deploy API, worker, realtime
         run: |
           set -euo pipefail
           for svc in cloudnivo-api-staging cloudnivo-worker-staging cloudnivo-realtime-staging; do
             railway up --service "$svc" --environment staging --detach
           done
-      # Migrate AFTER the rebuild: release entrypoints (dist/migrate-cli.js)
-      # only exist in images built from this commit. Migration 0007 is
-      # additive (new tables), so the brief mixed-version window is safe.
+      # Migrate AFTER the rebuild (see production job): the release files
+      # only exist in images built from this commit.
       - name: Migrate control database
         run: |
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN_STAGING secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the staging project token implies project+environment.
-          # Release entrypoints run from dist (devDeps like drizzle-kit/tsx are
-          # pruned from service images).
-          railway run --service cloudnivo-api-staging -- node packages/database/dist/migrate-cli.js
-          railway run --service cloudnivo-api-staging -- node packages/database/dist/seed.js
+          railway run --service cloudnivo-api-staging -- npm run db:migrate --workspace=packages/database
+          railway run --service cloudnivo-api-staging -- npm run db:seed --workspace=packages/database
       - name: Readiness gate
         run: |
           set -euo pipefail
@@ -72,18 +77,25 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
       - name: Install CLIs
         run: |
           npm i -g @railway/cli
           npm i -g vercel@latest
+      - name: Install dependencies
+        # `railway run` executes locally with the service env injected, so the
+        # runner needs node_modules (drizzle-kit/tsx live here, not in images).
+        run: npm ci --no-audit --no-fund
       - name: Deploy Railway services
         run: |
           set -euo pipefail
           for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
             railway up --service "$svc" --environment production --detach
           done
-      # Migrate AFTER the rebuild: release entrypoints (dist/migrate-cli.js)
-      # only exist in images built from this commit. Migration 0007 is
+      # Migrate AFTER the rebuild (see staging job): migration 0007 is
       # additive (new tables), so the brief mixed-version window is safe.
       - name: Migrate control database
         run: |
@@ -91,10 +103,8 @@ jobs:
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the production project token implies project+environment.
-          # Release entrypoints run from dist (devDeps like drizzle-kit/tsx are
-          # pruned from service images).
-          railway run --service cloudnivo-api -- node packages/database/dist/migrate-cli.js
-          railway run --service cloudnivo-api -- node packages/database/dist/seed.js
+          railway run --service cloudnivo-api -- npm run db:migrate --workspace=packages/database
+          railway run --service cloudnivo-api -- npm run db:seed --workspace=packages/database
       - name: Deploy dashboard to Vercel
         run: |
           set -euo pipefail
