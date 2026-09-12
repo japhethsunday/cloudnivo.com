@@ -14,7 +14,9 @@
     "lint": "eslint src --max-warnings=0",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:release": "node ./dist/migrate-cli.js",
     "db:seed": "tsx src/seed.ts",
+    "db:seed:release": "node ./dist/seed.js",
     "db:backup": "tsx src/backup-cli.ts backup",
     "db:verify-backup": "tsx src/backup-cli.ts verify"
   },

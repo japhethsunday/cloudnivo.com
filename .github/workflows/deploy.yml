@@ -37,8 +37,10 @@ jobs:
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN_STAGING secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the staging project token implies project+environment.
-          railway run --service cloudnivo-api-staging -- npm run db:migrate
-          railway run --service cloudnivo-api-staging -- npm run db:seed
+          # Release entrypoints run from dist (devDeps like drizzle-kit/tsx are
+          # pruned from service images).
+          railway run --service cloudnivo-api-staging -- node packages/database/dist/migrate-cli.js
+          railway run --service cloudnivo-api-staging -- node packages/database/dist/seed.js
       - name: Deploy API, worker, realtime
         run: |
           set -euo pipefail
@@ -77,8 +79,10 @@ jobs:
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the production project token implies project+environment.
-          railway run --service cloudnivo-api -- npm run db:migrate
-          railway run --service cloudnivo-api -- npm run db:seed
+          # Release entrypoints run from dist (devDeps like drizzle-kit/tsx are
+          # pruned from service images).
+          railway run --service cloudnivo-api -- node packages/database/dist/migrate-cli.js
+          railway run --service cloudnivo-api -- node packages/database/dist/seed.js
       - name: Deploy Railway services
         run: |
           set -euo pipefail
