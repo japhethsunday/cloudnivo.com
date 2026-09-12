@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     environment: staging
     env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
       RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
@@ -34,9 +34,9 @@ jobs:
       - name: Migrate control database
         run: |
           set -euo pipefail
-          : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
+          : "${RAILWAY_TOKEN:?RAILWAY_TOKEN_STAGING secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
-          railway link --project "$RAILWAY_PROJECT_ID" --environment staging
+          # No `railway link`: the staging project token implies project+environment.
           railway run --service cloudnivo-api-staging -- npm run db:migrate
           railway run --service cloudnivo-api-staging -- npm run db:seed
       - name: Deploy API, worker, realtime
@@ -76,7 +76,7 @@ jobs:
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
-          railway link --project "$RAILWAY_PROJECT_ID" --environment production
+          # No `railway link`: the production project token implies project+environment.
           railway run --service cloudnivo-api -- npm run db:migrate
           railway run --service cloudnivo-api -- npm run db:seed
       - name: Deploy Railway services
