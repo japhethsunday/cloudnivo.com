@@ -421,6 +421,7 @@ export function isPlatformAuthRoute(pathname: string, method: string): boolean {
   return (
     pathname === '/api/v1/auth/signup' ||
     pathname === '/api/v1/auth/login' ||
+    pathname === '/api/v1/auth/logout' ||
     pathname === '/api/v1/auth/password' ||
     pathname === '/api/v1/me' ||
     pathname.startsWith('/api/v1/invites/') ||
@@ -514,6 +515,26 @@ export async function handlePlatformAuthRoutes(
       const { token, cookie } = await issueSession(ctx, user);
       await ctx.registry.recordAudit('platform.login', { userId: user.id });
       return finish(200, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
+    }
+
+    if (url.pathname === '/api/v1/auth/logout' && req.method === 'POST') {
+      const token = bearerFromHeader(req.headers.authorization);
+      if (token) {
+        const session = await verifySession(token, {
+          jwtSecret: ctx.config.JWT_SECRET,
+          issuer: ctx.config.JWT_ISSUER,
+        }).catch(() => null);
+        if (session) {
+          await ctx.registry.recordAudit('platform.logout', { userId: session.sub });
+        }
+      }
+      // Sessions are stateless JWTs: logout clears the httpOnly cookie and the
+      // client discards its copy. Tokens expire via JWT_EXPIRES_IN and cannot
+      // be used beyond expiry; password change rotates access implicitly.
+      const cleared =
+        'cn_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0' +
+        (ctx.config.APP_URL.startsWith('https://') ? '; Secure' : '');
+      return finish(200, ok({ loggedOut: true }, requestId), { 'Set-Cookie': cleared });
     }
 
     if (url.pathname === '/api/v1/me' && req.method === 'GET') {
@@ -641,6 +662,12 @@ export async function handlePlatformAuthRoutes(
       if (invite.acceptedAt) throw new ApiError('CONFLICT', 'Invite already accepted', 409);
       if (Date.parse(invite.expiresAt) <= Date.now())
         throw new ApiError('NOT_FOUND', 'Invite not found', 404);
+      // Invites are addressed: only the account matching the invited email may
+      // accept, so a leaked token cannot be used by an unrelated account.
+      const accepter = await store.users.findById(session.sub);
+      if (!accepter || accepter.email.toLowerCase() !== invite.email.toLowerCase()) {
+        throw new ApiError('FORBIDDEN', 'This invite was sent to a different email address', 403);
+      }
       await ctx.registry.addMembership(invite.organizationId, session.sub, invite.role);
       await store.invites.markAccepted(invite.id);
       await ctx.registry.recordAudit('org.invite.accepted', {

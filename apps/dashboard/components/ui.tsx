@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import Link from 'next/link';
 import { IconX } from './icons';
 
 // ── Badge + status dot ────────────────────────────────────
@@ -82,7 +83,7 @@ export function Breadcrumbs({ trail }: { trail: { label: string; href?: string }
               ›
             </span>
           ) : null}
-          {t.href && i < trail.length - 1 ? <a href={t.href}>{t.label}</a> : <span aria-current="page">{t.label}</span>}
+          {t.href && i < trail.length - 1 ? <Link href={t.href}>{t.label}</Link> : <span aria-current="page">{t.label}</span>}
         </span>
       ))}
     </nav>

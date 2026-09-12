@@ -176,6 +176,8 @@ async function driveProvision(
         throw new ProvisionerError(`Database unhealthy after create (${status.health})`, true);
       }
       await jobs.update(job.id, { status: 'completed', lastError: null });
+      // ProvisionedDatabase carries identity only (no password field by type);
+      // credentials are never written to durable job logs.
       await jobs.appendLog(job.id, JSON.stringify(database));
       audit.record('database.provisioning.completed', {
         projectId: input.projectId,

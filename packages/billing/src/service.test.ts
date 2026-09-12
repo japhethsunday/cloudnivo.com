@@ -144,6 +144,18 @@ describe('invoices and credits', () => {
     const inv = await svc.generateInvoice('org-1', '2026-03');
     expect(await svc.invoiceBalanceCents('org-1', inv.id)).toBe(0);
   });
+
+  it('prices overage from the plan catalog (business rates differ from pro)', async () => {
+    const svc = service(new Date('2026-03-10T12:00:00Z'));
+    await svc.changePlan('org-1', 'business', {});
+    // Business: 100M AI tokens included at 50c/1M overage (pro would be 60c).
+    await svc.increment('org-1', '', 'ai', 'ai_tokens', 101_000_000);
+    const invoice = await svc.generateInvoice('org-1', '2026-03');
+    const over = invoice.lines.find(l => l.label.includes('overage'));
+    expect(over?.quantity).toBe(1);
+    expect(over?.unitCents).toBe(50);
+    expect(invoice.amountCents).toBe(9900 + 50);
+  });
 });
 
 describe('provider events', () => {

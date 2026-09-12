@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
@@ -50,10 +51,15 @@ export function storageFor(ctx: ApiContext): ObjectStorageService {
           },
         })
       : createStorageProvider({ driver: 'local', localDir: ctx.config.STORAGE_LOCAL_DIR });
+  // Derive (never truncate-and-suffix): a short JWT_SECRET must not produce a
+  // predictable signing secret. HMAC keeps existing full-length secrets stable
+  // while short ones get full-entropy derivation instead of a guessable value.
   const secret =
     ctx.config.STORAGE_SIGNING_SECRET.length >= 32
       ? ctx.config.STORAGE_SIGNING_SECRET
-      : `${ctx.config.JWT_SECRET.slice(0, 32)}-storage`;
+      : createHmac('sha256', ctx.config.JWT_SECRET)
+          .update('cloudnivo-storage-signing-v1')
+          .digest('hex');
   const meta: StorageMetadataStore =
     (ctx as unknown as { __storageMeta?: StorageMetadataStore }).__storageMeta ??
     new MemoryStorageMetadataStore();

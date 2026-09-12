@@ -156,6 +156,32 @@ describe('webhooks', () => {
     ).rejects.toThrow(AutomationError);
   });
 
+  it('blocks private, metadata, and reserved webhook targets (SSRF)', async () => {
+    const svc = service();
+    const blocked = [
+      'http://10.0.0.5/hook',
+      'http://172.16.4.9/hook',
+      'http://192.168.1.1/hook',
+      'http://169.254.169.254/latest/meta-data/',
+      'http://0.0.0.0/hook',
+      'http://[::1]/hook',
+      'http://[fe80::1]/hook',
+      'http://127.0.0.1:9/hook',
+    ];
+    for (const [i, url] of blocked.entries()) {
+      await expect(
+        svc.createWebhook('org', 'proj', { name: `blocked-${i}`, url, eventTypes: ['job.failed'] }),
+      ).rejects.toThrow(AutomationError);
+    }
+    // Public URLs still accepted.
+    const ok = await svc.createWebhook('org', 'proj', {
+      name: 'public',
+      url: 'https://example.com/hook',
+      eventTypes: ['job.failed'],
+    });
+    expect(ok.webhook.id).toBeTruthy();
+  });
+
   it('rotates secrets, killing the old one', async () => {
     const svc = service();
     const first = await svc.createWebhook('org', 'proj', {

@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import { ApiError, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import { bearerFromHeader, verifySession } from '@cloudnivo/auth';
@@ -114,6 +116,31 @@ function requireManager(role: string): void {
 
 // ── HTTP delivery ─────────────────────────────────────────
 
+/**
+ * Resolve-time SSRF guard: DNS-rebinding (or a direct private hostname) must
+ * not steer a webhook delivery at internal infrastructure. Complements the
+ * literal-IP validation in the automation package. Fail-closed on DNS errors.
+ */
+function isPrivateResolvedIp(addr: string): boolean {
+  if (isIP(addr) !== 4 && isIP(addr) !== 6) return true;
+  if (addr.includes(':')) {
+    const h = addr.toLowerCase();
+    if (h === '::1' || h === '::') return true;
+    if (h.startsWith('fe80') || h.startsWith('fc') || h.startsWith('fd')) return true;
+    if (h.startsWith('::ffff:')) {
+      const v4 = h.slice(7);
+      return v4 === '127.0.0.1' || isPrivateResolvedIp(v4);
+    }
+    return /^(2001:db8|ff00)/i.test(h);
+  }
+  const b = addr.split('.').map(Number);
+  const [a, c] = b;
+  return (
+    a === 127 || a === 0 || a === 10 || (a === 172 && c >= 16 && c <= 31) || (a === 192 && c === 168) ||
+    (a === 169 && c === 254) || a >= 224
+  );
+}
+
 async function deliverHttp(
   url: string,
   payloadBytes: string,
@@ -123,6 +150,13 @@ async function deliverHttp(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 10_000);
   try {
+    // Resolve-then-deliver: block private/metadata targets even if DNS changed
+    // after validation (rebinding). Redirects are never followed (manual).
+    const host = new URL(url).hostname;
+    const resolved = await lookup(host).catch(() => null);
+    if (!resolved || isPrivateResolvedIp(resolved.address)) {
+      return { ok: false, status: null, error: 'webhook target resolves to a blocked address', latencyMs: Date.now() - started };
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers,

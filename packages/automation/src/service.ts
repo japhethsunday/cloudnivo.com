@@ -25,6 +25,35 @@ function assertName(name: string, what: string): void {
   }
 }
 
+function isBlockedLiteralIp(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '');
+  // IPv4 literal?
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (v4) {
+    const b = v4.slice(1, 5).map(Number);
+    if (b.some(n => n > 255)) return true;
+    const [a, c] = b;
+    if (a === 127 || a === 0) return true; // loopback / this-network
+    if (a === 10) return true;
+    if (a === 172 && c >= 16 && c <= 31) return true;
+    if (a === 192 && c === 168) return true;
+    if (a === 169 && c === 254) return true; // cloud metadata
+    if (a >= 224) return true; // multicast + reserved
+    if (a === 100 && c >= 64 && c <= 127) return true; // CGNAT
+    if (a === 192 && (c === 0 || c === 2 || c === 88 || c === 18)) return true; // docs/benchmark/relay
+    return false;
+  }
+  // IPv6 literal?
+  if (h.includes(':')) {
+    if (h === '::1' || h === '::') return true;
+    if (h.startsWith('fe80') || h.startsWith('fc') || h.startsWith('fd')) return true;
+    if (h.startsWith('::ffff:')) return isBlockedLiteralIp(h.slice(7));
+    if (/^(2001:db8|2002:|ff00)/i.test(h)) return true;
+    return false;
+  }
+  return false;
+}
+
 function assertUrl(url: string): URL {
   let parsed: URL;
   try {
@@ -35,10 +64,18 @@ function assertUrl(url: string): URL {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new AutomationError('VALIDATION_ERROR', 'Webhook URL must be absolute http(s)', 400);
   }
-  if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
+  const host = parsed.hostname.toLowerCase();
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === '0.0.0.0' ||
+    isBlockedLiteralIp(host)
+  ) {
     throw new AutomationError(
       'VALIDATION_ERROR',
-      'Webhook URL must be publicly reachable (loopback blocked to prevent SSRF)',
+      'Webhook URL must be publicly reachable (private/loopback/link-local/metadata addresses blocked to prevent SSRF)',
       400,
     );
   }

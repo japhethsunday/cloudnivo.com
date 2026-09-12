@@ -146,6 +146,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   );
 
   const logout = useCallback(() => {
+    // Tell the server (clears the httpOnly session cookie, records audit);
+    // local state is cleared regardless so logout never hangs on network.
+    void apiFetch<unknown>('/api/v1/auth/logout', { method: 'POST' }).catch(() => null);
     setToken('');
     setTokenState(null);
     setUser(null);

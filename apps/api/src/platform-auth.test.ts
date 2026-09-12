@@ -159,6 +159,28 @@ describe('phase 8 platform auth + org invites', () => {
     });
     expect([403, 404]).toContain(r.status);
   });
+
+  it('logs out by clearing the session cookie', async () => {
+    const out = await api(base, 'POST', '/api/v1/auth/logout', tokenA, {});
+    expect(out.status).toBe(200);
+    expect(out.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+
+  it('rejects invite acceptance from a different email address', async () => {
+    const created = await api(base, 'POST', `/api/v1/organizations/${orgId}/invites`, tokenA, {
+      email: 'intended@example.com',
+      role: 'member',
+    });
+    expect(created.status).toBe(201);
+    const { token } = data<{ token: string }>(created.json);
+    const signupE = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'impostor@example.com',
+      password: 'correct-horse-66',
+    });
+    const tokenE = data<{ token: string }>(signupE.json).token;
+    const accept = await api(base, 'POST', `/api/v1/invites/${token}/accept`, tokenE, {});
+    expect(accept.status).toBe(403);
+  });
 });
 
 describe('phase 12 account profile + password', () => {

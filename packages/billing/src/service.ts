@@ -476,7 +476,7 @@ export class BillingService {
       service: UsageService,
       metric: UsageMetric,
       key: 'api_requests' | 'bandwidth_mb' | 'ai_tokens' | 'function_invocations',
-      toBillable: (rawOver: number) => { units: number; unitCents: number; unit: string },
+      toBillableUnits: (rawOver: number) => { units: number; unit: string },
     ): void => {
       const rate = plan.overage[key];
       const limitKey = limitKeyFor(service, metric);
@@ -487,8 +487,11 @@ export class BillingService {
       if (rawLimitUnits < 0) return;
       const usedRaw = sum(service, metric);
       if (usedRaw <= rawLimitUnits) return;
-      const { units, unitCents, unit } = toBillable(usedRaw - rawLimitUnits);
+      // Catalog is authoritative for pricing: never hardcode per-unit cents here
+      // (business/enterprise tiers negotiate different rates than pro).
+      const { units, unit } = toBillableUnits(usedRaw - rawLimitUnits);
       if (units <= 0) return;
+      const unitCents = rate.unitCents;
       const amountCents = Math.ceil(units) * unitCents;
       lines.push({
         label: `${key} overage (${units} ${unit} over plan)`,
@@ -499,22 +502,18 @@ export class BillingService {
     };
     over('api', 'api_requests', 'api_requests', raw => ({
       units: raw / 10_000,
-      unitCents: 1,
       unit: '10k requests',
     }));
     over('api', 'api_bandwidth_bytes', 'bandwidth_mb', raw => ({
       units: raw / (1024 * 1024 * 1024),
-      unitCents: 8,
       unit: 'GB',
     }));
     over('ai', 'ai_tokens', 'ai_tokens', raw => ({
       units: raw / 1_000_000,
-      unitCents: 60,
       unit: '1M tokens',
     }));
     over('functions', 'function_invocations', 'function_invocations', raw => ({
       units: raw / 1_000_000,
-      unitCents: 20,
       unit: '1M invocations',
     }));
     const amountCents = lines.reduce((a, l) => a + l.amountCents, 0);
