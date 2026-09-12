@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig, loadDotEnv } from '@cloudnivo/config';
-import { runControlMigrations } from '@cloudnivo/database';
+import { runControlMigrations, seedDatabase } from '@cloudnivo/database';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, handleRequest, initControlPlane, type ApiContext } from './v1.js';
 import { resolveListenPort } from './platform-port.js';
@@ -21,7 +21,10 @@ export async function start(
     }
     logger.info('migrate on boot', { folder });
     await runControlMigrations(config.DATABASE_URL, folder);
-    logger.info('migrate on boot complete');
+    // Seed is idempotent (onConflictDoNothing) — fresh databases get the
+    // RBAC catalog automatically, existing ones are untouched.
+    const seeded = await seedDatabase(config.DATABASE_URL);
+    logger.info('seed on boot complete', { roles: seeded.roles, permissions: seeded.permissions });
   }
   const ctx = createContext(config);
   await initControlPlane(ctx);

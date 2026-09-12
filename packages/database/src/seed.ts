@@ -19,9 +19,11 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: 'Read-only access',
 };
 
-async function main(): Promise<void> {
-  const url = process.env.DATABASE_URL ?? '';
-  if (!url) throw new Error('DATABASE_URL is required for seeding');
+/**
+ * Idempotent RBAC seed usable in-process (boot-time release path).
+ * Same statements as the CLI; throws credential-free errors.
+ */
+export async function seedDatabase(url: string): Promise<{ roles: number; permissions: number }> {
   const svc = createDatabaseService(url);
   try {
     const health = await svc.healthCheck();
@@ -59,15 +61,24 @@ async function main(): Promise<void> {
           .onConflictDoNothing();
       }
     }
-    process.stdout.write(
-      `seeded ${ROLE_HIERARCHY.length} roles, ${PERMISSIONS.length} permissions\n`,
-    );
+    return { roles: ROLE_HIERARCHY.length, permissions: PERMISSIONS.length };
   } finally {
     await svc.close();
   }
 }
 
-main().catch(err => {
-  console.error(`seed failed: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const url = process.env.DATABASE_URL ?? '';
+  if (!url) throw new Error('DATABASE_URL is required for seeding');
+  const seeded = await seedDatabase(url);
+  process.stdout.write(`seeded ${seeded.roles} roles, ${seeded.permissions} permissions\n`);
+}
+
+// Entrypoint only when run directly (`tsx src/seed.ts` / `node dist/seed.js`).
+const isMain = process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js');
+if (isMain) {
+  main().catch(err => {
+    console.error(`seed failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}

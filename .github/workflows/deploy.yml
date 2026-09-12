@@ -35,26 +35,21 @@ jobs:
           cache: npm
       - name: Install Railway CLI
         run: npm i -g @railway/cli
-      - name: Install dependencies
-        # `railway run` executes locally with the service env injected, so the
-        # runner needs node_modules (drizzle-kit/tsx live here, not in images).
-        run: npm ci --no-audit --no-fund
       - name: Deploy API, worker, realtime
         run: |
           set -euo pipefail
           for svc in cloudnivo-api-staging cloudnivo-worker-staging cloudnivo-realtime-staging; do
             railway up --service "$svc" --environment staging --detach
           done
-      # Migrate AFTER the rebuild (see production job): the release files
-      # only exist in images built from this commit.
-      - name: Migrate control database
+      # Boot-time migrate+seed: `railway run` executes on the runner (no route
+      # to *.railway.internal from outside), so services migrate and seed
+      # themselves on boot via MIGRATE_ON_BOOT (idempotent DDL + seed).
+      - name: Enable boot migration
         run: |
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN_STAGING secret is not set}"
-          : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the staging project token implies project+environment.
-          railway run --service cloudnivo-api-staging -- npm run db:migrate --workspace=packages/database
-          railway run --service cloudnivo-api-staging -- npm run db:seed --workspace=packages/database
+          railway variable set MIGRATE_ON_BOOT=true --service cloudnivo-api-staging --environment staging
       - name: Readiness gate
         run: |
           set -euo pipefail
@@ -85,26 +80,20 @@ jobs:
         run: |
           npm i -g @railway/cli
           npm i -g vercel@latest
-      - name: Install dependencies
-        # `railway run` executes locally with the service env injected, so the
-        # runner needs node_modules (drizzle-kit/tsx live here, not in images).
-        run: npm ci --no-audit --no-fund
       - name: Deploy Railway services
         run: |
           set -euo pipefail
           for svc in cloudnivo-api cloudnivo-worker cloudnivo-realtime; do
             railway up --service "$svc" --environment production --detach
           done
-      # Migrate AFTER the rebuild (see staging job): migration 0007 is
-      # additive (new tables), so the brief mixed-version window is safe.
-      - name: Migrate control database
+      # Boot-time migrate+seed (see staging job): services migrate and seed
+      # themselves on boot via MIGRATE_ON_BOOT (idempotent DDL + seed).
+      - name: Enable boot migration
         run: |
           set -euo pipefail
           : "${RAILWAY_TOKEN:?RAILWAY_TOKEN secret is not set}"
-          : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID secret is not set}"
           # No `railway link`: the production project token implies project+environment.
-          railway run --service cloudnivo-api -- npm run db:migrate --workspace=packages/database
-          railway run --service cloudnivo-api -- npm run db:seed --workspace=packages/database
+          railway variable set MIGRATE_ON_BOOT=true --service cloudnivo-api --environment production
       - name: Deploy dashboard to Vercel
         run: |
           set -euo pipefail
