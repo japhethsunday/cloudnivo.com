@@ -683,6 +683,46 @@ textarea::placeholder {
   border-color: transparent;
   color: var(--info);
 }
+/* Environment context: production must never look like development. */
+.badge.env-production {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.badge.env-preview {
+  background: var(--warning-soft);
+  border-color: transparent;
+  color: var(--warning);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.env-row .grow {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.env-row select {
+  width: auto;
+  flex: 0 1 220px;
+}
+@media (max-width: 640px) {
+  .env-row select {
+    flex: 1 1 100%;
+  }
+}
 .dot {
   width: 8px;
   height: 8px;

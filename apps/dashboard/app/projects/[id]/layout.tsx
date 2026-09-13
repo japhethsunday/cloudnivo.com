@@ -6,6 +6,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { setSelectedProject } from '../../../lib/selection';
 import { RequireAuth } from '../../../components/RequireAuth';
+import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, Breadcrumbs, CopyButton, StatusDot, statusTone } from '../../../components/ui';
 
@@ -101,7 +102,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
               {health === 'unknown' ? 'health unknown' : health}
             </span>
             <span aria-hidden>·</span>
-            <span title="Environment / region">Env · {project.region}</span>
+            <EnvSwitcher projectId={project.id} region={project.region} />
             <span aria-hidden>·</span>
             <code title={project.id}>{project.id.slice(0, 8)}…</code>
             <CopyButton text={project.id} label="Copy ID" />

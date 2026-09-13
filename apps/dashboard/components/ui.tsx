@@ -175,7 +175,12 @@ export function Menu({
           role="menu"
           style={align === 'right' ? { right: 0 } : undefined}
           onClickCapture={e => {
-            if ((e.target as HTMLElement).closest('button,a')) setOpen(false);
+            // Defer past the click dispatch: closing synchronously here unmounts
+            // the menu before item onClick handlers in the same dispatch run
+            // (switcher picks were silently dropped).
+            if ((e.target as HTMLElement).closest('button,a')) {
+              window.setTimeout(() => setOpen(false), 0);
+            }
           }}
         >
           {children}
