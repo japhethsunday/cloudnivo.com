@@ -75,9 +75,14 @@ jobs:
           set -euo pipefail
           # Runs the exact cloudnivo-api:ci image built above on the compose
           # network with explicit env (no compose interpolation involved).
+          # NODE_ENV=test: the image bakes NODE_ENV=production, but this probe
+          # is deliberately a test-double stack (fake provisioner, memory
+          # store, compose dev password) — production guards must refuse
+          # exactly this shape, so the probe opts out of production semantics.
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))")
           docker run -d --name cn-api --network cloudnivo -p 3001:3001 \
             -e "JWT_SECRET=$JWT_SECRET" \
+            -e NODE_ENV=test \
             -e PROVISION_DRIVER=fake -e CONTROL_STORE=memory -e CACHE_DRIVER=memory \
             -e DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@postgres:5432/cloudnivo \
             -e REDIS_URL=redis://redis:6379 -e API_PORT=3001 -e PROVISION_HOST_MODE=container \
