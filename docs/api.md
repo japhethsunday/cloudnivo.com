@@ -120,6 +120,12 @@ routes (documented collision, same class as `database`/`jobs`/`auth`).
 | `GET`    | `/storage/s/:token`                                  | token-only (no headers) | redeem download                                                              |
 | `PUT`    | `/storage/s/:token`                                  | token-only (no headers) | redeem upload                                                                |
 | `GET`    | `/storage/usage`                                     | member+                 | files/bytes/uploads/downloads vs quota                                       |
+| `POST`   | `/storage/uploads`                                   | writer                  | open resumable session `{bucket, path, contentType?, totalBytes?}` → 201     |
+| `GET`    | `/storage/uploads/:uploadId`                         | writer                  | session status + received part indexes                                       |
+| `PUT`    | `/storage/uploads/:uploadId/parts/:index`            | writer                  | upload one part (raw bytes, any order, retries safe)                         |
+| `POST`   | `/storage/uploads/:uploadId/complete`                | writer                  | assemble parts in order (gaps → 400) → 201 object                            |
+| `DELETE` | `/storage/uploads/:uploadId`                         | writer                  | abort session                                                                |
+| `GET`    | `/storage/analytics`                                 | member+                 | per-bucket + total file/byte counts                                          |
 
 Paths with slashes must be percent-encoded per segment. Uploads stream with a
 `STORAGE_MAX_FILE_MB` cap; per-bucket caps and project quotas (`STORAGE_*`
@@ -172,6 +178,81 @@ deployment until `ready`. Full reference in `docs/functions.md`.
 
 Reserved word: a table literally named `functions` stays unreachable via data
 routes (same class as `database`/`jobs`/`auth`/`storage`/`realtime`).
+
+## Database branches + power tools (Phase 15)
+
+Branches are full databases (provider-cloned) with durable records
+(`project_branches`); environments can pin a branch (`branchId`) and be
+marked previews. Vault rows hold AES-256-GCM envelopes only — the API never
+stores plaintext secrets (`VAULT_KEY`, 32+ chars, required in production).
+
+| Method           | Path                                                          | Auth   | Description                                                 |
+| ---------------- | ------------------------------------------------------------- | ------ | ----------------------------------------------------------- |
+| `GET`/`POST`     | `/api/v1/projects/:id/database/branches`                      | Bearer | list / clone `{name, source?}` → 201                        |
+| `GET`/`DELETE`   | `/api/v1/projects/:id/database/branches/:branchId`            | Bearer | get / delete branch + its database                          |
+| `POST`           | `/api/v1/projects/:id/database/branches/:branchId/reset`      | Bearer | re-clone from source                                        |
+| `GET`            | `/api/v1/projects/:id/database/branches/:branchId/connection` | Bearer | connection info (password masked, audited)                  |
+| `GET`/`POST`     | `/api/v1/projects/:id/database/environments`                  | Bearer | list / create `{name, slug, branchId?, preview?}`           |
+| `PATCH`/`DELETE` | `/api/v1/projects/:id/database/environments/:envId`           | Bearer | update / delete                                             |
+| `GET`            | `/api/v1/projects/:id/database/advisors`                      | Bearer | index/schema health advisors                                |
+| `GET`            | `/api/v1/projects/:id/database/replication`                   | Bearer | replication status                                          |
+| `GET`            | `/api/v1/projects/:id/database/routines`                      | Bearer | stored routines                                             |
+| `GET`            | `/api/v1/projects/:id/database/types`                         | Bearer | TypeScript interfaces generated from schema                 |
+| `GET`/`POST`     | `/api/v1/projects/:id/database/extensions`                    | Bearer | list / enable allow-listed extension                        |
+| `POST`           | `/api/v1/projects/:id/database/diff`                          | Bearer | `{base, compare, includeDrops?}` schema diff vs main/branch |
+| `POST`           | `/api/v1/projects/:id/database/restore`                       | Bearer | guarded SQL restore (privileged statements rejected)        |
+| `POST`           | `/api/v1/projects/:id/database/rls-simulate`                  | Bearer | simulate owner-scoped reads                                 |
+| `POST`           | `/api/v1/projects/:id/database/migration-assess`              | Bearer | dry-run assessment of pending migrations                    |
+| `POST`           | `/api/v1/projects/:id/database/import`                        | Bearer | bulk import (insert-only, per-row errors)                   |
+| `POST`           | `/api/v1/projects/:id/database/pause` (resp. `/resume`)       | Bearer | pause / resume the project database                         |
+| `GET`            | `/api/v1/projects/:id/database/vault`                         | Bearer | list secret names (never values)                            |
+| `PUT`/`DELETE`   | `/api/v1/projects/:id/database/vault/:name`                   | Bearer | store / delete secret (envelope-encrypted)                  |
+| `POST`           | `/api/v1/projects/:id/database/vault/:name/reveal`            | Bearer | reveal once (audited)                                       |
+
+## Billing (Phase 12 + spend budgets)
+
+Org-scoped plans, subscriptions, invoices, payments, and usage metering
+(`manual` provider default — no charges). Mutations are owner/admin-gated;
+reads are member-visible. Full flow in `docs/roadmap.md` Phase 12.
+
+| Method       | Path                                                       | Auth           | Description                                                  |
+| ------------ | ---------------------------------------------------------- | -------------- | ------------------------------------------------------------ |
+| `GET`        | `/api/v1/organizations/:org/billing/plan` (resp. `/plans`) | member         | current plan / catalog                                       |
+| `GET`/`POST` | `/api/v1/organizations/:org/billing/subscription`          | member / admin | read / change subscription                                   |
+| `GET`        | `/api/v1/organizations/:org/billing/usage`                 | member         | meters vs quotas (50/75/90/100 warnings)                     |
+| `GET`/`POST` | `/api/v1/organizations/:org/billing/invoices`              | member / admin | list / generate                                              |
+| `GET`        | `/api/v1/organizations/:org/billing/payments`              | member         | payment history (provider refs only)                         |
+| `POST`       | `/api/v1/organizations/:org/billing/portal`                | owner/admin    | provider portal session                                      |
+| `POST`       | `/api/v1/billing/webhooks/:provider`                       | HMAC-signed    | idempotent provider webhook                                  |
+| `GET`/`POST` | `/api/v1/organizations/:org/billing/budgets`               | member / admin | evaluate / create `{name, limitCents, action: alert\|block}` |
+| `DELETE`     | `/api/v1/organizations/:org/billing/budgets/:budgetId`     | owner/admin    | delete budget                                                |
+
+`block` budgets gate spend-checked writes (`requireSpendAllowed`); `alert`
+budgets only report. No payment credentials are ever accepted, stored,
+logged, or returned.
+
+## Platform ops: status, domains, drains (Phase 15)
+
+| Method       | Path                                                  | Auth        | Description                                                                       |
+| ------------ | ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `GET`        | `/api/v1/status`                                      | none        | public status + open incidents + recent resolved                                  |
+| `POST`       | `/api/v1/status/incidents`                            | org owner   | create `{title, severity, message}` → 201 (rate-limited)                          |
+| `PATCH`      | `/api/v1/status/incidents/:incidentId`                | org owner   | `{status: open\|monitoring\|resolved, message?}`                                  |
+| `GET`/`POST` | `/api/v1/organizations/:org/domains`                  | owner/admin | list / register `{domain, purpose, projectId?}`                                   |
+| `DELETE`     | `/api/v1/organizations/:org/domains/:domainId`        | owner/admin | remove                                                                            |
+| `POST`       | `/api/v1/organizations/:org/domains/:domainId/verify` | owner/admin | DNS TXT check → `{verified, detail?}`                                             |
+| `GET`/`POST` | `/api/v1/organizations/:org/drains`                   | owner/admin | list / create `{url: public https, events, projectId?}` → 201 + one-time `secret` |
+| `DELETE`     | `/api/v1/organizations/:org/drains/:drainId`          | owner/admin | remove                                                                            |
+| `POST`       | `/api/v1/organizations/:org/drains/:drainId/test`     | owner/admin | signed test delivery → `{delivered, error?}`                                      |
+| `POST`       | `/api/v1/organizations/:org/drains/:drainId/toggle`   | owner/admin | `{enabled}` enable/disable                                                        |
+
+Domain verification publishes a `cloudnivo-verify=<token>` TXT record (token
+travels only inside the record, never as an API field). Drain targets must be
+public HTTPS (SSRF-guarded: localhost/private/link-local rejected); deliveries
+are HMAC-signed (`X-CloudNivo-Signature`) with a 10s timeout. The worker ships
+new audit entries per drain (cursor-tracked, 100/cycle) and enforces per-org
+log retention (`organization_policies.logRetentionDays`, 7–365, default 90d).
+Details in `docs/operations.md`.
 
 ## Auth
 

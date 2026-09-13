@@ -116,6 +116,32 @@ hostile and the client is lying — now including infrastructure operations.
   strict auth rate limits; drizzle adapters map unique violations to the same
   409s (no cross-tenant oracles — unknown and foreign read 404); audit writes
   never break requests and never carry secrets.
+- **Platform MFA + SSO (Phase 15):** TOTP secrets and backup-code hashes are
+  server-side only (never in `me`, listings, logs, or audit metadata);
+  enrollment data is shown once; logins for MFA users return a short-lived
+  challenge, not a session. Org policies (`requireMfa`, email-domain
+  allowlists, password floor) are owner/admin-only writes, enforced at
+  signup/invite/email-change/SSO-login. OIDC client secrets are AES-256-GCM
+  encrypted (derived key) and never returned; SSO uses PKCE + single-use
+  state with constant-time comparison.
+- **Customer passwordless + bot gates (Phase 15):** email/phone OTP codes are
+  hashed, bounded-attempt, expiring, and rate-limited per IP/user; magic links
+  are single-use; captcha verification (when keyed) runs server-side before
+  any account mutation; the secret key never leaves env. Configurable password
+  floors (`AUTH_PASSWORD_MIN_*`, org-raisable) replace the legacy 8/0 default
+  only when set.
+- **Project vault (Phase 15):** AES-256-GCM envelopes; `VAULT_KEY` (32+ chars)
+  required before any write (fail-closed 503, no weak ciphertext); names
+  listable, values reveal-once and audited; key material never in rows, logs,
+  or audit metadata.
+- **Agent IP allowlists (Phase 15):** `agent_tokens.ip_allowlist` pins tokens
+  to CIDR/IP ranges validated at mint time and enforced on every call
+  (spoof-proof: `X-Forwarded-For` is trusted only behind explicit proxy
+  config); mismatches deny with reason-logged activity, never an oracle.
+- **Platform ops (Phase 15):** incidents are operator-gated (any org owner),
+  publicly readable without internals; domain verification is DNS truth
+  (token only inside the TXT record); drain URLs are SSRF-screened (public
+  HTTPS only) with hash-only secrets and HMAC-signed deliveries.
 - **Audit logs:** `audit_logs` is append-only, org-scoped, with JSONB metadata
   that MUST NOT contain PII/secrets (enforced by review + redacting logger).
 - **Transport:** `Strict-Transport-Security`, `X-Frame-Options: DENY`,
@@ -133,7 +159,7 @@ hostile and the client is lying — now including infrastructure operations.
 ## What Phase 2 does NOT yet do
 
 Row-Level Security (RLS) policies, KMS envelope encryption for stored DB
-passwords, key rotation, OAuth, or per-project network
+passwords, key rotation, customer OAuth, or per-project network
 isolation — tracked in `roadmap.md`. Audit coverage for provisioning events
 (`project.created` … `database.query.executed`) is implemented; review the
 audit store before relying on it for compliance.
@@ -150,7 +176,6 @@ audit store before relying on it for compliance.
 - **Secret scan: CLEAN.** No keys, passwords, private keys, or connection strings in source, tests (one intentional scanner-fixture fake), docs, or history.
 
 Critical: 0 open. High: 0 open (1 fixed, 1 accepted-risk dev-only).
-
 
 ## Security Center (dashboard)
 

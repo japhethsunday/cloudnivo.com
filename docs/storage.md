@@ -52,6 +52,17 @@ delete removes bytes AND metadata. Project deletion cascades all storage.
 - `upload-sign` mints capability tokens for direct PUTs; S3 multipart APIs
   exist for resumable large uploads.
 
+## Resumable multipart uploads (Phase 15)
+
+`POST /storage/uploads {bucket, path, contentType?, totalBytes?}` opens a
+durable session (`storage_upload_sessions`, expiring). Parts upload with
+`PUT /storage/uploads/:id/parts/:index` in any order (retries are idempotent);
+`GET` reports received indexes; `POST …/complete` assembles parts in order
+(gaps → 400, never partial objects); `DELETE` aborts. Completion runs the
+same validation, quota, and audit path as direct PUTs, so multipart objects
+are indistinguishable from single-shot uploads. Per-bucket analytics
+(`GET /storage/analytics`) reports file/byte counts per bucket plus totals.
+
 ## Signed URLs
 
 HMAC-SHA256 capability tokens binding project + bucket + path + op +

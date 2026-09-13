@@ -18,13 +18,13 @@ healthchecks with `unless-stopped` restart.
 `NODE_ENV=production` refuses to serve on dangerous configuration
 (`apps/api/src/prod-guards.ts`, applied to API and worker):
 
-| Condition                                            | Behavior                                   |
-| ---------------------------------------------------- | ------------------------------------------ |
-| `PROVISION_DRIVER=fake`                              | Refuse boot (test double)                  |
-| `DATABASE_URL` contains the compose dev password     | Refuse boot                                |
-| `CONTROL_STORE=memory`                               | Boot with loud `prod.memory_store` warning |
-| Default/local `REDIS_URL`                            | Boot with loud `prod.local_cache` warning  |
-| `REQUIRE_REDIS=true` and cache unreachable           | Refuse boot                                |
+| Condition                                        | Behavior                                   |
+| ------------------------------------------------ | ------------------------------------------ |
+| `PROVISION_DRIVER=fake`                          | Refuse boot (test double)                  |
+| `DATABASE_URL` contains the compose dev password | Refuse boot                                |
+| `CONTROL_STORE=memory`                           | Boot with loud `prod.memory_store` warning |
+| Default/local `REDIS_URL`                        | Boot with loud `prod.local_cache` warning  |
+| `REQUIRE_REDIS=true` and cache unreachable       | Refuse boot                                |
 
 Set `REQUIRE_REDIS=true` once a Redis service is attached so a missing
 `REDIS_URL` can never silently downgrade rate limiting and session
@@ -49,6 +49,33 @@ revocation to single-instance memory.
 Provisioning and function deploys are idempotent by key (`findByKey` wins,
 unique constraint backs the race); retries apply only to recoverable failures
 within budget; terminal states (`completed`/`failed`) are never re-driven.
+
+The worker loop additionally drains log retention and log shipping every
+cycle (`drainRetentionOnce`/`drainLogsOnce` in `apps/api/src/worker.ts`):
+retention prunes audit rows older than each org's
+`organization_policies.logRetentionDays` (clamped 7–365, default 90);
+shipping delivers new audit entries to every enabled drain (cursor-tracked,
+100 per drain per cycle, HMAC-signed) and records `lastStatus`/`lastError`
+for the dashboard. Failures are logged, never thrown — a sick drain cannot
+stall provisioning.
+
+## Status page, custom domains, log drains (Phase 15)
+
+- **Status** (`GET /api/v1/status`, public): aggregate (`ok`/`degraded`/
+  `major`) plus open incidents and recent resolved. Incidents are
+  operator-managed — any org owner can create (`POST /status/incidents`,
+  rate-limited) and transition (`PATCH …/open|monitoring|resolved`).
+- **Custom domains** (`/api/v1/organizations/:org/domains`, owner/admin):
+  register `{domain, purpose, projectId?}`, publish the
+  `cloudnivo-verify=<token>` TXT record, then `POST …/verify`. Verification
+  state is DNS truth, not a flag — unverifiable domains report
+  `{verified: false, detail}`. Tokens travel only inside the DNS record.
+- **Log drains** (`/api/v1/organizations/:org/drains`, owner/admin): targets
+  must be public HTTPS — localhost/private/link-local URLs are rejected
+  (same SSRF posture as webhooks). The create response carries a one-time
+  `drsec_…` secret (sha256-hashed at rest); deliveries sign the body
+  (`X-CloudNivo-Signature`, 10s timeout) with a `…/test` endpoint for
+  fire-and-check and a `…/toggle` for enable/disable.
 
 ## Backups and recovery
 

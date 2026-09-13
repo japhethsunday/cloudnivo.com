@@ -216,6 +216,36 @@ versioned API envelope, dashboard shell, docs, green
   pages); green `lint → typecheck → test → build`.
 - See `docs/automation.md`.
 
+## Phase 15 — Platform hardening (DONE)
+
+- **Platform MFA/SSO/policies**: TOTP enroll/confirm/disable + backup codes,
+  challenge step-up at login, per-org policy (email domains, `requireMfa`,
+  password floor, log retention), OIDC connections (PKCE, encrypted client
+  secrets), verified email change, session inventory + revoke-all.
+- **Customer auth expansion**: anonymous→convert, email OTP, magic link,
+  customer TOTP, phone attach/verify + phone login, captcha gates
+  (turnstile/hcaptcha), configurable password policy, resend/smtp email and
+  HTTP SMS drivers (memory outboxes stay the dev default).
+- **Database power tools**: new `@cloudnivo/db-tools` package
+  (diff/advisors/restore/import/migration-assess/rls-simulate/types) served
+  under `/database/*`; full-database **branches** (provider clone, durable
+  records, reset/masked-connection/delete) with branch-pinned preview
+  environments; **project vault** (AES-256-GCM envelopes, `VAULT_KEY`,
+  reveal-once audited). Migrations `0009`–`0014`.
+- **Billing spend budgets**: `{name, limitCents, action: alert|block}` CRUD
+  with evaluation reads; `block` budgets gate spend-checked writes.
+- **Resumable storage uploads**: multipart sessions (out-of-order parts,
+  gap-safe complete, abort) on the same validation/quota/audit path as PUTs,
+  plus per-bucket `analytics`.
+- **Platform ops**: public status/incidents, DNS-verified custom domains,
+  SSRF-guarded signed log drains; worker ships drain batches and enforces
+  per-org retention. Agent token **IP allowlists** enforced on every call.
+- 30+ new tests (platform-ops E2E, branches/tools, budgets, resumable,
+  TOTP/SSO/policy, OTP/magic-link/phone, primitives, email providers);
+  green `lint → typecheck → test → build` (452 passed). See `docs/api.md`,
+  `docs/authentication.md`, `docs/database.md`, `docs/storage.md`,
+  `docs/operations.md`, `docs/security.md`.
+
 ## Non-goals for Phase 1
 
 No real persistence in routes, no OAuth/RLS/rotation, no WS server, no cloud

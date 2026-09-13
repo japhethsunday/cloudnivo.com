@@ -49,6 +49,24 @@ for the Playwright smoke.
 | `roles` / `permissions` / `role_permissions` | static RBAC catalog                            | global          |
 | `audit_logs`                                 | append-only, org-scoped, redacted metadata     | org-scoped      |
 
+## Newer control tables (Phase 15)
+
+| Table                     | Purpose                                                                | Tenancy     |
+| ------------------------- | ---------------------------------------------------------------------- | ----------- |
+| `project_branches`        | branch records (`name`, clone source, status), unique `(project,name)` | org-scoped  |
+| `project_secrets`         | AES-256-GCM vault envelopes, unique `(project,name)`                   | via project |
+| `billing_budgets`         | spend budgets (`limitCents`, `alert`/`block`)                          | org-scoped  |
+| `storage_upload_sessions` | resumable upload sessions (parts, bytes, expiry)                       | via project |
+| `status_incidents`        | public status page incidents                                           | global      |
+| `custom_domains`          | org domains + DNS verification tokens                                  | org-scoped  |
+| `log_drains`              | signed audit-export targets (hash-only secrets)                        | org-scoped  |
+| `organization_policies`   | email domains, MFA requirement, password floor, retention              | org (1:1)   |
+| `sso_connections`         | OIDC IdP metadata, AES-encrypted client secrets                        | org-scoped  |
+
+`users` gained `totp_secret`/`totp_enabled`/`backup_code_hashes` (MFA),
+`agent_tokens` gained `ip_allowlist`, and `project_environments` gained
+`branch_id`/`is_preview`/`status`.
+
 ## Phase 2 metadata tables (control plane)
 
 | Table                      | Purpose                                                | Tenancy                       |
@@ -70,6 +88,35 @@ for `database_credentials.db_password`.
 `ready/running/stopped`. Live health (`healthy/unhealthy/starting/unavailable`)
 comes from real `select 1` probes (`project-db.ts`), overlaid on the stored
 lifecycle status by the API on every read.
+
+## Branches + environments (Phase 15)
+
+`POST /database/branches {name, source?}` clones a full database through the
+provider (`cloneDatabase` on docker/managed/fake) and records it in
+`project_branches` (`creating → ready`, unique per project). Branches reset
+(re-clone), expose masked connection info, and delete with their database.
+`project_environments` rows can pin `branchId` and be flagged previews, so a
+preview environment always resolves to branch connection info. Records are
+durable — restarts never orphan branch databases.
+
+## Power tools: `@cloudnivo/db-tools` (Phase 15)
+
+Pure helpers over live connection info (no I/O of their own): schema `diff`
+(main vs branch, drops opt-in), guarded `restore` (privileged statements
+rejected), `import` (insert-only, per-row errors), `migration-assess`
+dry-runs, `rls-simulate` owner-scoped read checks, `advisors` (index/schema
+health), plus `introspect`/`migrate`/`types` generators. Served under
+`/api/v1/projects/:id/database/*` (see `docs/api.md`); every route re-scopes
+the project and asserts membership like the rest of the database plane.
+
+## Project vault (Phase 15)
+
+`PUT /database/vault/:name {value}` stores AES-256-GCM envelopes in
+`project_secrets` (unique per project); values are listed by name only and
+revealed once per call through an audited endpoint. Encryption requires
+`VAULT_KEY` (32+ chars) — without it the vault API answers `503` instead of
+storing weak ciphertext. Keys live in env only, never in rows, logs, or
+audit metadata.
 
 ## Customer access layer (`project-db.ts`)
 
