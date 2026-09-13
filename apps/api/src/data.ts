@@ -40,6 +40,7 @@ import type { ProjectRecord } from './registry.js';
 import { mustOwnProject } from './registry.js';
 import { verifyCustomerCaller } from './customer-auth.js';
 import { agentFromRequest, auditAgent, requireAgentScope, verifyAgentAccess } from './agents.js';
+import { meterUsage } from './billing.js';
 import { sendJson } from './projects.js';
 
 /**
@@ -527,6 +528,7 @@ export async function handleDataRoutes(
   const [projectId, seg, rowId, ...extra] = rest;
   if (!projectId || !seg) return false;
   const start = Date.now();
+  let meterOrg: string | null = null;
   const finish = (status: number, body: unknown, fields: Record<string, unknown> = {}): true => {
     logger.info('data.request', {
       project: projectId,
@@ -536,6 +538,10 @@ export async function handleDataRoutes(
       latencyMs: Date.now() - start,
       ...fields,
     });
+    // Meter successful data-plane calls (org known post-auth; fire-and-forget).
+    if (status < 400 && meterOrg) {
+      meterUsage(ctx, meterOrg, projectId, 'api', 'api_requests', 1);
+    }
     sendJson(res, status, body, baseHeaders);
     return true;
   };
@@ -547,6 +553,7 @@ export async function handleDataRoutes(
 
   try {
     const caller = await resolveCaller(ctx, req, projectId);
+    meterOrg = caller.project.organizationId;
     if (ctx.data instanceof FakeDataBackend) FakeDataBackend.currentProject = projectId;
     const limited = await rateLimitData(ctx, caller);
     if (limited) {

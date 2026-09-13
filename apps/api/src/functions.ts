@@ -20,6 +20,7 @@ import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import { meterUsage, requireSpendAllowed } from './billing.js';
 import {
   agentFromRequest,
   agentServiceFor,
@@ -506,6 +507,10 @@ export async function handleFunctionRoutes(
         projectId,
         payload: { slug: head, status: outcome.result.status },
       }).catch(() => undefined);
+      void (async () => {
+        const owner = await ctx.registry.getProject(projectId).catch(() => null);
+        if (owner) meterUsage(ctx, owner.organizationId, projectId, 'functions', 'function_invocations', 1);
+      })();
       if (auth.agent) {
         const invokedProject = await ctx.registry.getProject(projectId).catch(() => null);
         const svc = agentServiceFor(ctx);
@@ -662,6 +667,7 @@ export async function handleFunctionRoutes(
       } else {
         requireManager(member.role);
       }
+      await requireSpendAllowed(ctx, member.organizationId);
       const parsed = DeployBody.parse(rawDeploy ?? {});
       const { job, fn } = await state.service.deployFunction({
         projectId,

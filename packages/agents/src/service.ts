@@ -1,6 +1,7 @@
 import { APPROVAL_TTL_MS, fingerprintOperation, type ApprovalRequest, type ApprovalStatus, type ApprovalStore } from './approvals.js';
 import { type ActivityResult, type ActivityStore } from './activity.js';
 import { isKnownScope } from './scopes.js';
+import { ipAllowed } from './ip.js';
 import {
   AgentTokenError,
   buildTokenRecord,
@@ -101,7 +102,7 @@ export class AgentService {
    * queries: revocation and expiry are evaluated inline so every request is
    * gated on fresh state.
    */
-  async verifyToken(raw: string): Promise<AgentToken> {
+  async verifyToken(raw: string, opts: { ip?: string | null } = {}): Promise<AgentToken> {
     if (!looksLikeAgentToken(raw)) {
       throw new AgentTokenError('INVALID_TOKEN', 'Invalid agent token', 401);
     }
@@ -111,8 +112,46 @@ export class AgentService {
     if (found.expiresAt && Date.parse(found.expiresAt) <= this.now().getTime()) {
       throw new AgentTokenError('TOKEN_EXPIRED', 'Agent token expired', 401);
     }
+    if (!ipAllowed(found.ipAllowlist ?? [], opts.ip ?? null)) {
+      throw new AgentTokenError('IP_FORBIDDEN', 'Agent token is not allowed from this IP', 403);
+    }
     await this.tokens.touch(found.id).catch(() => undefined);
     return { ...found, requestCount: found.requestCount + 1, lastUsedAt: this.now().toISOString() };
+  }
+
+  /**
+   * Rotate a token's secret in place: the old raw value dies with the
+   * revoked predecessor row, the new raw is shown once. Scopes, projects,
+   * expiry, and allowlists carry over unchanged.
+   */
+  async rotateToken(id: string, userId: string): Promise<{ token: ExposedAgentToken; raw: string }> {
+    const existing = await this.tokens.get(id);
+    if (!existing || existing.userId !== userId) {
+      throw new AgentTokenError('NOT_FOUND', 'Agent token not found', 404);
+    }
+    if (existing.revokedAt) throw new AgentTokenError('NOT_FOUND', 'Agent token not found', 404);
+    const value = createAgentTokenValue();
+    await this.tokens.revoke(id);
+    const saved = await this.tokens.save({
+      ...existing,
+      prefix: value.prefix,
+      hash: value.hash,
+      revokedAt: null,
+    });
+    await this.activity
+      .record({
+        tokenId: id,
+        userId,
+        organizationId: existing.organizationId,
+        projectId: null,
+        action: 'token.rotated',
+        resource: existing.name,
+        result: 'success',
+        reason: '',
+        ip: null,
+      })
+      .catch(() => undefined);
+    return { token: exposeToken(saved), raw: value.raw };
   }
 
   // ── Scope + resource checks (pure) ────────────────────────

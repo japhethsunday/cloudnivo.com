@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { promisify } from 'node:util';
 import { checkProjectDbHealth, getProjectDbMetrics } from '@cloudnivo/database';
-
-const execFileAsync = promisify(execFile);
 import type {
+  CloneRequest,
   DatabaseProvisioner,
   ProvisionedDatabase,
   ProvisionRequest,
@@ -13,6 +12,8 @@ import type {
   ProviderStatus,
 } from './provisioner.js';
 import { ProviderUnavailableError, ProvisionerError } from './provisioner.js';
+
+const execFileAsync = promisify(execFile);
 import {
   assertContainerName,
   assertDbPassword,
@@ -318,5 +319,98 @@ export class DockerDatabaseProvider implements DatabaseProvisioner {
     await this.requireDocker();
     const m = await getProjectDbMetrics(conn, 10_000);
     return { version: m.version, sizeBytes: m.sizeBytes, connectionCount: m.connectionCount };
+  }
+
+  /**
+   * Branch clone: fresh container from createDatabase, then plain-SQL
+   * pg_dump piped straight into psql (streaming, no dump buffering on the
+   * host). Passwords travel via process env only. On any copy failure the
+   * fresh container is removed so no half-branch survives.
+   */
+  async cloneDatabase(req: CloneRequest): Promise<ProvisionedDatabase> {
+    await this.requireDocker();
+    const source = assertContainerName(req.sourceDatabaseId);
+    assertSlug(req.branch);
+    const target = await this.createDatabase(req.target);
+    const srcDesc = await this.describe(source).catch(() => null);
+    if (!srcDesc) {
+      await this.deleteDatabase(target.databaseId).catch(() => undefined);
+      throw new ProvisionerError('Source database container not found', false);
+    }
+    // Source credentials: same role naming as the target project. The dump
+    // runs as the source DB owner (superuser postgres inside the container
+    // owns everything; use the container's POSTGRES_USER via inspect).
+    const srcUser = srcDesc.dbUser;
+    const srcDb = srcDesc.dbName;
+    try {
+      await this.pipeDumpRestore(
+        source,
+        srcUser,
+        srcDb,
+        req.sourcePassword,
+        target.databaseId,
+        target.dbUser,
+        target.dbName,
+        req.target.password,
+      );
+    } catch (err) {
+      await this.deleteDatabase(target.databaseId).catch(() => undefined);
+      throw err instanceof ProvisionerError ? err : new ProvisionerError('Branch copy failed', true);
+    }
+    return target;
+  }
+
+  private pipeDumpRestore(
+    source: string,
+    srcUser: string,
+    srcDb: string,
+    srcPassword: string | undefined,
+    target: string,
+    targetUser: string,
+    targetDb: string,
+    targetPassword: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Plain SQL (not -Fc): pg_restore custom format needs a seekable file,
+      // while plain SQL streams cleanly container → container. Auth prefers
+      // Unix-socket trust inside the containers; explicit passwords ride env.
+      const dump = spawn(
+        'docker',
+        ['exec', source, 'pg_dump', '-U', srcUser, '-d', srcDb, '--no-owner', '--no-privileges'],
+        { env: { ...process.env, PGPASSWORD: srcPassword ?? '' } },
+      );
+      const restore = spawn(
+        'docker',
+        ['exec', '-i', target, 'psql', '-U', targetUser, '-d', targetDb, '-v', 'ON_ERROR_STOP=1', '-q', '-f', '-'],
+        { env: { ...process.env, PGPASSWORD: targetPassword } },
+      );
+      let failed = false;
+      let stderrTail = '';
+      const fail = (message: string): void => {
+        if (failed) return;
+        failed = true;
+        dump.kill();
+        restore.kill();
+        const tail = stderrTail.replace(/PGPASSWORD=[^\s]*/g, 'PGPASSWORD=•••').slice(-300);
+        reject(new ProvisionerError(tail ? `${message}: ${tail}` : message, true));
+      };
+      dump.on('error', () => fail('Branch dump failed to start'));
+      restore.on('error', () => fail('Branch restore failed to start'));
+      dump.stderr?.on('data', (chunk: unknown) => {
+        stderrTail = `${stderrTail}${String(chunk)}`.slice(-2000);
+      });
+      restore.stderr?.on('data', (chunk: unknown) => {
+        stderrTail = `${stderrTail}${String(chunk)}`.slice(-2000);
+      });
+      dump.on('close', code => {
+        if (code !== 0) fail('Branch dump exited nonzero');
+      });
+      restore.on('close', code => {
+        if (failed) return;
+        if (code === 0) resolve();
+        else fail('Branch restore exited nonzero');
+      });
+      dump.stdout?.pipe(restore.stdin);
+    });
   }
 }

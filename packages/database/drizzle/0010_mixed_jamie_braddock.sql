@@ -1,0 +1,1 @@
+ALTER TABLE "agent_tokens" ADD COLUMN "ip_allowlist" text[] DEFAULT '{}' NOT NULL;

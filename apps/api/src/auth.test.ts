@@ -375,3 +375,153 @@ describe('phase 4 customer auth E2E (§21)', () => {
     expect(good.status).toBe(200);
   });
 });
+
+describe('customer auth extensions E2E', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let tokenA = '';
+  let projectA = '';
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    tokenA = await platformToken(USER_A);
+    projectA = await makeProject(base, tokenA, 'extorg', 'extshop');
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('anonymous sign-in converts to a real identity', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    const anon = await req(base, 'POST', `${A}/anonymous`, { body: {} });
+    expect(anon.status).toBe(200);
+    const anonUser = data<{ user: { id: string; isAnonymous: boolean; role: string } }>(anon.json).user;
+    expect(anonUser.isAnonymous).toBe(true);
+    expect(anonUser.role).toBe('anonymous');
+    expect(JSON.stringify(anon.json)).not.toContain('passwordHash');
+    const anonToken = data<{ tokens: { accessToken: string } }>(anon.json).tokens.accessToken;
+    const me = await req(base, 'GET', `${A}/user`, { customer: anonToken });
+    expect(me.status).toBe(200);
+    const converted = await req(base, 'POST', `${A}/convert`, {
+      customer: anonToken,
+      body: { email: 'human-ext@example.com', password: 'long-enough-1' },
+    });
+    expect(converted.status).toBe(200);
+    expect(data<{ user: { isAnonymous: boolean } }>(converted.json).user.isAnonymous).toBe(false);
+    const login = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'human-ext@example.com', password: 'long-enough-1' },
+    });
+    expect(login.status).toBe(200);
+  });
+
+  it('email OTP logs in single-use', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    const s = await req(base, 'POST', `${A}/signup`, {
+      body: { email: 'otp-ext@example.com', password: 'long-enough-1' },
+    });
+    expect(s.status).toBe(201);
+    const rq = await req(base, 'POST', `${A}/otp-request`, {
+      body: { email: 'otp-ext@example.com', purpose: 'login' },
+    });
+    expect(rq.status).toBe(200);
+    expect(data<{ code: string }>(rq.json).code).toMatch(/^\d{6}$/);
+    const code = data<{ code: string }>(rq.json).code;
+    const v = await req(base, 'POST', `${A}/otp-verify`, {
+      body: { email: 'otp-ext@example.com', code },
+    });
+    expect(v.status).toBe(200);
+    expect(data<{ tokens: { tokenType: string } }>(v.json).tokens.tokenType).toBe('bearer');
+    // Single use.
+    expect((await req(base, 'POST', `${A}/otp-verify`, {
+      body: { email: 'otp-ext@example.com', code },
+    })).status).toBe(410);
+    // Unknown emails still get a neutral response.
+    expect((await req(base, 'POST', `${A}/otp-request`, {
+      body: { email: 'ghost-ext@example.com' },
+    })).status).toBe(200);
+  });
+
+  it('magic links sign in and verify email', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    await req(base, 'POST', `${A}/signup`, {
+      body: { email: 'magic-ext@example.com', password: 'long-enough-1' },
+    });
+    const rq = await req(base, 'POST', `${A}/magic-request`, {
+      body: { email: 'magic-ext@example.com' },
+    });
+    expect(rq.status).toBe(200);
+    const magicToken = data<{ magicToken: string }>(rq.json).magicToken;
+    expect(magicToken.length).toBeGreaterThan(10);
+    const c = await req(base, 'POST', `${A}/magic-consume`, { body: { token: magicToken } });
+    expect(c.status).toBe(200);
+    expect(data<{ user: { emailVerified: boolean } }>(c.json).user.emailVerified).toBe(true);
+    expect((await req(base, 'POST', `${A}/magic-consume`, { body: { token: magicToken } })).status).toBe(400);
+  });
+
+  it('totp mfa gates password login until verified', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    await req(base, 'POST', `${A}/signup`, {
+      body: { email: 'mfa-ext@example.com', password: 'long-enough-1' },
+    });
+    const login0 = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'mfa-ext@example.com', password: 'long-enough-1' },
+    });
+    const session0 = data<{ tokens: { accessToken: string } }>(login0.json).tokens.accessToken;
+    const enroll = await req(base, 'POST', `${A}/mfa-enroll`, { customer: session0 });
+    expect(enroll.status).toBe(200);
+    const secret = data<{ secret: string }>(enroll.json).secret;
+    // Compute the live code like an authenticator app would.
+    const { totpNow } = await import('@cloudnivo/auth');
+    const confirm = await req(base, 'POST', `${A}/mfa-confirm`, {
+      customer: session0,
+      body: { code: totpNow(secret) },
+    });
+    expect(confirm.status).toBe(200);
+    expect(data<{ backupCodes: string[] }>(confirm.json).backupCodes).toHaveLength(10);
+    // Password login now challenges...
+    const challenged = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'mfa-ext@example.com', password: 'long-enough-1' },
+    });
+    expect(challenged.status).toBe(200);
+    expect(data<{ mfaRequired: boolean }>(challenged.json).mfaRequired).toBe(true);
+    const ticket = data<{ mfaTicket: string }>(challenged.json).mfaTicket;
+    // ...wrong code fails, live code opens the session.
+    expect((await req(base, 'POST', `${A}/mfa-verify`, {
+      body: { mfaTicket: ticket, code: '000000' },
+    })).status).toBe(401);
+    const challenged2 = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'mfa-ext@example.com', password: 'long-enough-1' },
+    });
+    const ticket2 = data<{ mfaTicket: string }>(challenged2.json).mfaTicket;
+    const verified = await req(base, 'POST', `${A}/mfa-verify`, {
+      body: { mfaTicket: ticket2, code: totpNow(secret) },
+    });
+    expect(verified.status).toBe(200);
+  });
+
+  it('phone otp verifies numbers; secrets never leak', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    await req(base, 'POST', `${A}/signup`, {
+      body: { email: 'phone-ext@example.com', password: 'long-enough-1' },
+    });
+    const login = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'phone-ext@example.com', password: 'long-enough-1' },
+    });
+    const session = data<{ tokens: { accessToken: string } }>(login.json).tokens.accessToken;
+    expect((await req(base, 'POST', `${A}/phone`, {
+      customer: session,
+      body: { phone: 'bad' },
+    })).status).toBe(400);
+    const set = await req(base, 'POST', `${A}/phone`, {
+      customer: session,
+      body: { phone: '+15550001111' },
+    });
+    expect(set.status).toBe(200);
+    const rq = await req(base, 'POST', `${A}/phone-otp-request`, { customer: session });
+    expect(rq.status).toBe(200);
+    // Dev driver honestly reports non-delivery; no secrets in responses.
+    expect(JSON.stringify(rq.json)).not.toContain('+15550001111');
+  });
+});

@@ -424,4 +424,51 @@ describe('phase 5 storage (local provider, real bytes)', () => {
     expect(dl.headers.get('content-type')).toBe('application/zip');
     expect(dl.headers.get('content-disposition')).toContain('attachment');
   });
+
+  it('resumes multipart uploads and reports analytics', async () => {
+    const S = `/api/v1/projects/${projectA}/storage`;
+    const mkBucket = await req(base, 'POST', `${S}/buckets`, {
+      token: tokenA,
+      body: { name: 'resumable' },
+    });
+    expect(mkBucket.status).toBe(201);
+    const created = await req(base, 'POST', `${S}/uploads`, {
+      token: tokenA,
+      body: { bucket: 'resumable', path: 'multi/big.bin', contentType: 'application/octet-stream', totalBytes: 6 },
+    });
+    expect(created.status).toBe(201);
+    const uploadId = data<{ upload: { id: string } }>(created.json).upload.id;
+    const part = async (id: string, index: number, bytes: Uint8Array): Promise<number> => {
+      type FetchBody = NonNullable<NonNullable<Parameters<typeof fetch>[1]>['body']>;
+      const res = await fetch(`${base}${S}/uploads/${id}/parts/${index}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'application/octet-stream' },
+        body: bytes as unknown as FetchBody,
+      });
+      return res.status;
+    };
+    expect(await part(uploadId, 1, new Uint8Array([4, 5, 6]))).toBe(200);
+    expect(await part(uploadId, 0, new Uint8Array([1, 2, 3]))).toBe(200);
+    expect(await part(uploadId, 9, new Uint8Array([9]))).toBe(200);
+    const status = await req(base, 'GET', `${S}/uploads/${uploadId}`, { token: tokenA });
+    expect(data<{ upload: { parts: number[] } }>(status.json).upload.parts).toEqual([0, 1, 9]);
+    // Gap at 2..8 blocks completion.
+    expect((await req(base, 'POST', `${S}/uploads/${uploadId}/complete`, { token: tokenA })).status).toBe(400);
+    // Abort and redo compactly.
+    expect((await req(base, 'DELETE', `${S}/uploads/${uploadId}`, { token: tokenA })).status).toBe(200);
+    const created2 = await req(base, 'POST', `${S}/uploads`, {
+      token: tokenA,
+      body: { bucket: 'resumable', path: 'multi/small.bin', contentType: 'application/octet-stream' },
+    });
+    const upload2 = data<{ upload: { id: string } }>(created2.json).upload.id;
+    expect(await part(upload2, 0, new Uint8Array([7, 8]))).toBe(200);
+    const done = await req(base, 'POST', `${S}/uploads/${upload2}/complete`, { token: tokenA });
+    expect(done.status).toBe(201);
+    expect(data<{ object: { size: number } }>(done.json).object.size).toBe(2);
+    const analytics = await req(base, 'GET', `${S}/analytics`, { token: tokenA });
+    expect(analytics.status).toBe(200);
+    const buckets = data<{ buckets: { name: string; files: number }[]; totals: { files: number } }>(analytics.json);
+    expect(buckets.buckets.some(b => b.name === 'resumable' && b.files >= 1)).toBe(true);
+    expect(buckets.totals.files).toBeGreaterThan(0);
+  });
 });

@@ -1,5 +1,6 @@
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import {
+  billingBudgets,
   billingCredits,
   billingEvents,
   billingInvoices,
@@ -11,6 +12,7 @@ import {
   type Database,
 } from '@cloudnivo/database';
 import type {
+  Budget,
   Invoice,
   InvoiceLine,
   Payment,
@@ -421,8 +423,7 @@ export class DrizzleBillingStore implements BillingStore {
     };
   }
 
-  async recordWebhookEvent(input: WebhookEventInput): Promise<StoredWebhookEvent> {
-    const existing = await this.findWebhookEvent(input.provider, input.eventId);
+  async recordWebhookEvent(input: WebhookEventInput): Promise<StoredWebhookEvent> {    const existing = await this.findWebhookEvent(input.provider, input.eventId);
     if (existing) return existing;
     try {
       const rows = await this.db
@@ -452,5 +453,57 @@ export class DrizzleBillingStore implements BillingStore {
       }
       throw err;
     }
+  }
+
+  async createBudget(input: {
+    organizationId: string;
+    name: string;
+    limitCents: number;
+    action: Budget['action'];
+  }): Promise<Budget> {
+    if (!Number.isInteger(input.limitCents) || input.limitCents <= 0) {
+      throw new Error('Budget limit must be a positive integer (cents)');
+    }
+    const rows = await this.db
+      .insert(billingBudgets)
+      .values({
+        organizationId: input.organizationId,
+        name: input.name.slice(0, 100),
+        limitCents: input.limitCents,
+        action: input.action,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Budget insert failed');
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      name: row.name,
+      limitCents: row.limitCents,
+      action: (row.action ?? 'alert') as Budget['action'],
+      createdAt: iso(row.createdAt) ?? new Date().toISOString(),
+    };
+  }
+
+  async listBudgets(organizationId: string): Promise<Budget[]> {
+    const rows = await this.db
+      .select()
+      .from(billingBudgets)
+      .where(eq(billingBudgets.organizationId, organizationId))
+      .orderBy(desc(billingBudgets.createdAt));
+    return rows.map(row => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      name: row.name,
+      limitCents: row.limitCents,
+      action: (row.action ?? 'alert') as Budget['action'],
+      createdAt: iso(row.createdAt) ?? new Date().toISOString(),
+    }));
+  }
+
+  async deleteBudget(organizationId: string, id: string): Promise<boolean> {
+    const rows = await this.db.delete(billingBudgets).where(eq(billingBudgets.id, id)).returning();
+    const row = rows[0];
+    return !!row && row.organizationId === organizationId;
   }
 }

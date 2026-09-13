@@ -14,15 +14,20 @@ export interface CustomerAuthStore {
     email: string;
     passwordHash: string | null;
     userMetadata: Record<string, unknown>;
+    isAnonymous?: boolean;
+    phone?: string | null;
   }): Promise<CustomerUser>;
   findUserByEmail(projectId: string, email: string): Promise<CustomerUser | null>;
   findUserById(projectId: string, userId: string): Promise<CustomerUser | null>;
+  findUserByPhone(projectId: string, phone: string): Promise<CustomerUser | null>;
   updateUser(
     projectId: string,
     userId: string,
     patch: Partial<
       Pick<
         CustomerUser,
+        | 'email'
+        | 'phone'
         | 'emailVerified'
         | 'phoneVerified'
         | 'status'
@@ -30,6 +35,10 @@ export interface CustomerAuthStore {
         | 'appMetadata'
         | 'passwordHash'
         | 'lastSignInAt'
+        | 'isAnonymous'
+        | 'totpSecret'
+        | 'totpEnabled'
+        | 'backupCodeHashes'
       >
     >,
   ): Promise<CustomerUser | null>;
@@ -49,7 +58,7 @@ export interface CustomerAuthStore {
   findToken(
     projectId: string,
     hash: string,
-    kind: 'verify' | 'reset',
+    kind: 'verify' | 'reset' | 'magic' | 'mfa',
   ): Promise<OneTimeToken | null>;
   consumeToken(projectId: string, hash: string): Promise<boolean>;
   deleteUserTokens(projectId: string, userId: string): Promise<void>;
@@ -73,6 +82,8 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
     email: string;
     passwordHash: string | null;
     userMetadata: Record<string, unknown>;
+    isAnonymous?: boolean;
+    phone?: string | null;
   }): Promise<CustomerUser> {
     const email = input.email.toLowerCase();
     for (const u of this.users.values()) {
@@ -86,11 +97,15 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
       id: randomUUID(),
       projectId: input.projectId,
       email,
-      phone: null,
+      phone: input.phone ?? null,
       passwordHash: input.passwordHash,
       emailVerified: false,
       phoneVerified: false,
       status: 'active',
+      isAnonymous: input.isAnonymous ?? false,
+      totpSecret: null,
+      totpEnabled: false,
+      backupCodeHashes: [],
       userMetadata: input.userMetadata,
       appMetadata: { role: 'authenticated' },
       createdAt: now(),
@@ -114,7 +129,16 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
   async findUserById(projectId: string, userId: string): Promise<CustomerUser | null> {
     const u = this.users.get(this.userKey(projectId, userId));
     if (!u || u.status === 'deleted') return null;
-    return { ...u };
+    return { ...u, backupCodeHashes: [...u.backupCodeHashes] };
+  }
+
+  async findUserByPhone(projectId: string, phone: string): Promise<CustomerUser | null> {
+    for (const u of this.users.values()) {
+      if (u.projectId === projectId && u.phone === phone && u.status !== 'deleted') {
+        return { ...u, backupCodeHashes: [...u.backupCodeHashes] };
+      }
+    }
+    return null;
   }
 
   async updateUser(
@@ -229,7 +253,7 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
   async findToken(
     projectId: string,
     hash: string,
-    kind: 'verify' | 'reset',
+    kind: 'verify' | 'reset' | 'magic' | 'mfa',
   ): Promise<OneTimeToken | null> {
     const t = this.tokens.get(`${projectId}:${hash}`);
     if (!t || t.kind !== kind || t.consumedAt) return null;

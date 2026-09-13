@@ -26,7 +26,7 @@ describe('ai durability hooks', () => {
         realtime: { channels: [] },
         functions: [],
       },
-      existing: { tables: [], endpoints: [], buckets: [], channels: [], functions: [] },
+      existing: { tables: [], buckets: [], functions: [], channels: [], roles: [] },
     });
     expect(seen).toEqual([`${created.id}:pending`]);
     store.reject('p1', created.id);

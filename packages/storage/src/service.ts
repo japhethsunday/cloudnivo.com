@@ -2,7 +2,7 @@ import { authorize } from './policies.js';
 import { signToken, verifyToken } from './signed-urls.js';
 import { resolveMime } from './mime.js';
 import { assertBucketName, assertObjectPath, fileNameOf, storageKeyFor } from './validation.js';
-import type { StorageMetadataStore } from './metadata.js';
+import type { StorageMetadataStore, UploadSession } from './metadata.js';
 import type { StorageProvider } from './providers.js';
 import {
   StorageError,
@@ -389,6 +389,192 @@ export class ObjectStorageService {
     const record = await this.meta.getObject(caller.projectId, bucket.name, path);
     if (!record) throw new StorageError('NOT_FOUND', 'Object not found', 404);
     return exposeObject(record);
+  }
+
+  /**
+   * Per-bucket analytics from live metadata (bytes/files per bucket).
+   * Counts derive from stored records, so numbers match billing gauges.
+   */
+  async analytics(caller: StorageCaller): Promise<{
+    buckets: { name: string; visibility: string; files: number; bytes: number }[];
+    totals: { files: number; bytes: number; quotaBytes: number };
+  }> {
+    const buckets = await this.meta.listBuckets(caller.projectId);
+    const rows = await Promise.all(
+      buckets.map(async b => {
+        const listed = await this.meta.listObjects(caller.projectId, b.name, '', 5000, 0);
+        const bytes = listed.objects.reduce((n, o) => n + o.size, 0);
+        return {
+          name: b.name,
+          visibility: b.visibility,
+          files: listed.total,
+          bytes,
+          truncated: listed.total > listed.objects.length,
+        };
+      }),
+    );
+    const totals = rows.reduce(
+      (acc, r) => ({ files: acc.files + r.files, bytes: acc.bytes + r.bytes }),
+      { files: 0, bytes: 0 },
+    );
+    return {
+      buckets: rows.map(({ truncated: _t, ...rest }) => {
+        void _t;
+        return rest;
+      }),
+      totals: { ...totals, quotaBytes: this.opts.quotaBytes },
+    };
+  }
+
+  // ── Resumable (multipart) uploads ────────────────────────────
+  //
+  // Large files upload as numbered parts (any order, idempotent retry per
+  // index) and assemble server-side on complete. Parts live under a
+  // namespaced temp prefix; only complete() can promote bytes to a real
+  // object, and it re-runs every upload validation (MIME, quota, upsert).
+
+  private uploadPartKey(projectId: string, bucket: string, uploadId: string, index: number): string {
+    // Internal part keys bypass user-path validation on purpose (uuid-scoped
+    // temp namespace, always cleaned on complete/abort). Segments stay
+    // filesystem/S3-safe: alphanumerics, dashes, dots only.
+    const safeBucket = bucket.replace(/[^A-Za-z0-9-]/g, '-');
+    const safeId = uploadId.replace(/[^A-Za-z0-9-]/g, '');
+    return `p_${projectId}/b_${safeBucket}/upload-${safeId}/${index}.part`;
+  }
+
+  async createUploadSession(
+    caller: StorageCaller,
+    input: { bucket: string; path: string; contentType?: string | null; totalBytes?: number | null; upsert?: boolean },
+  ): Promise<UploadSession> {
+    const bucket = await this.bucketFor(caller.projectId, caller.organizationId, input.bucket);
+    const path = assertObjectPath(input.path);
+    this.check(bucket, caller, 'object:upload', path);
+    if (input.totalBytes !== undefined && input.totalBytes !== null) {
+      if (!Number.isInteger(input.totalBytes) || input.totalBytes <= 0) {
+        throw new StorageError('VALIDATION_ERROR', 'totalBytes must be a positive integer', 400);
+      }
+      const maxBytes = Math.min(
+        bucket.fileSizeLimit ?? this.opts.defaultMaxFileBytes,
+        this.opts.defaultMaxFileBytes,
+      );
+      if (input.totalBytes > maxBytes) {
+        throw new StorageError('FILE_TOO_LARGE', `File exceeds ${maxBytes} bytes`, 413);
+      }
+    }
+    const existing = await this.meta.getObject(caller.projectId, bucket.name, path);
+    if (existing && !input.upsert) {
+      throw new StorageError('CONFLICT', 'Object exists (use upsert to overwrite)', 409);
+    }
+    return this.meta.createUploadSession({
+      organizationId: caller.organizationId,
+      projectId: caller.projectId,
+      bucket: bucket.name,
+      path,
+      contentType: input.contentType ?? null,
+      totalBytes: input.totalBytes ?? null,
+      upsert: input.upsert ?? false,
+    });
+  }
+
+  async getUploadSession(caller: StorageCaller, uploadId: string): Promise<UploadSession> {
+    const session = await this.meta.getUploadSession(caller.projectId, uploadId);
+    if (!session || session.organizationId !== caller.organizationId) {
+      throw new StorageError('NOT_FOUND', 'Upload session not found', 404);
+    }
+    if (session.status !== 'active' || Date.parse(session.expiresAt) <= Date.now()) {
+      throw new StorageError('UPLOAD_EXPIRED', 'Upload session expired — start a new one', 410);
+    }
+    return session;
+  }
+
+  async uploadPart(
+    caller: StorageCaller,
+    uploadId: string,
+    index: number,
+    source: AsyncIterable<Uint8Array>,
+  ): Promise<{ index: number; receivedBytes: number; parts: number[] }> {
+    if (!Number.isInteger(index) || index < 0 || index > 999) {
+      throw new StorageError('VALIDATION_ERROR', 'Part index must be 0-999', 400);
+    }
+    const session = await this.getUploadSession(caller, uploadId);
+    const bucket = await this.bucketFor(caller.projectId, caller.organizationId, session.bucket);
+    this.check(bucket, caller, 'object:upload', session.path);
+    const partKey = this.uploadPartKey(caller.projectId, bucket.name, uploadId, index);
+    const maxBytes = Math.min(
+      bucket.fileSizeLimit ?? this.opts.defaultMaxFileBytes,
+      this.opts.defaultMaxFileBytes,
+    );
+    const { size } = await this.provider.putStream(partKey, source, { maxBytes });
+    const updated = await this.meta.recordUploadPart(caller.projectId, uploadId, index, size);
+    if (!updated) throw new StorageError('UPLOAD_EXPIRED', 'Upload session expired', 410);
+    this.audit('file.part.uploaded', { projectId: caller.projectId, bucket: bucket.name, path: session.path, size });
+    return { index, receivedBytes: updated.receivedBytes, parts: updated.parts };
+  }
+
+  async completeUploadSession(caller: StorageCaller, uploadId: string): Promise<ExposedObject> {
+    const session = await this.getUploadSession(caller, uploadId);
+    const bucket = await this.bucketFor(caller.projectId, caller.organizationId, session.bucket);
+    this.check(bucket, caller, 'object:upload', session.path);
+    if (session.parts.length === 0) {
+      throw new StorageError('VALIDATION_ERROR', 'No parts uploaded yet', 400);
+    }
+    const max = Math.max(...session.parts);
+    for (let i = 0; i <= max; i += 1) {
+      if (!session.parts.includes(i)) {
+        throw new StorageError('VALIDATION_ERROR', `Missing part ${i} — upload it before completing`, 400);
+      }
+    }
+    // Assemble in order, then run the standard upload path validations.
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i <= max; i += 1) {
+      const bytes = await this.provider
+        .getBytes(this.uploadPartKey(caller.projectId, bucket.name, uploadId, i))
+        .catch(() => {
+          throw new StorageError('VALIDATION_ERROR', `Missing part ${i} — upload it before completing`, 400);
+        });
+      chunks.push(bytes);
+    }
+    const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+    const finish = async (value: ExposedObject): Promise<ExposedObject> => {
+      for (let i = 0; i <= max; i += 1) {
+        await this.provider.delete(this.uploadPartKey(caller.projectId, bucket.name, uploadId, i)).catch(() => undefined);
+      }
+      await this.meta.finishUploadSession(caller.projectId, uploadId, 'completed');
+      return value;
+    };
+    try {
+      const assembled = await this.upload({
+        caller,
+        bucket: bucket.name,
+        path: session.path,
+        contentType: session.contentType,
+        source: (async function* () {
+          for (const c of chunks) yield c;
+        })(),
+        sample: chunks[0]?.slice(0, 32) ?? new Uint8Array(0),
+        upsert: session.upsert,
+      });
+      void total;
+      return await finish(assembled);
+    } catch (err) {
+      for (let i = 0; i <= max; i += 1) {
+        await this.provider.delete(this.uploadPartKey(caller.projectId, bucket.name, uploadId, i)).catch(() => undefined);
+      }
+      await this.meta.finishUploadSession(caller.projectId, uploadId, 'aborted');
+      throw err;
+    }
+  }
+
+  async abortUploadSession(caller: StorageCaller, uploadId: string): Promise<void> {
+    const session = await this.meta.getUploadSession(caller.projectId, uploadId);
+    if (!session || session.organizationId !== caller.organizationId) {
+      throw new StorageError('NOT_FOUND', 'Upload session not found', 404);
+    }
+    for (const index of session.parts) {
+      await this.provider.delete(this.uploadPartKey(caller.projectId, session.bucket, uploadId, index)).catch(() => undefined);
+    }
+    await this.meta.finishUploadSession(caller.projectId, uploadId, 'aborted');
+    this.audit('file.upload.aborted', { projectId: caller.projectId, bucket: session.bucket, path: session.path });
   }
 
   async list(

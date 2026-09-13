@@ -64,6 +64,48 @@
       "when": 1789227330563,
       "tag": "0008_clever_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789247722902,
+      "tag": "0009_boring_azazel",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789250431058,
+      "tag": "0010_mixed_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789252881851,
+      "tag": "0011_mature_devos",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789256426380,
+      "tag": "0012_dear_iron_fist",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789258313832,
+      "tag": "0013_rare_alex_wilder",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789260902714,
+      "tag": "0014_ordinary_purifiers",
+      "breakpoints": true
     }
   ]
 }

@@ -98,6 +98,8 @@ export const STORAGE_EVENTS = [
   'file.updated',
   'file.moved',
   'file.copied',
+  'file.part.uploaded',
+  'file.upload.aborted',
 ] as const;
 export type StorageEvent = (typeof STORAGE_EVENTS)[number];
 

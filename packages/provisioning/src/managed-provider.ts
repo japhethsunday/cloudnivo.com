@@ -5,6 +5,7 @@ import {
   type ProjectConnectionInfo,
 } from '@cloudnivo/database';
 import type {
+  CloneRequest,
   DatabaseProvisioner,
   ProvisionedDatabase,
   ProvisionRequest,
@@ -202,6 +203,58 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
       dbName,
       dbUser,
       version: req.version,
+    };
+  }
+
+  /**
+   * Branch clone via TEMPLATE copy on the shared server. Terminates other
+   * backends on the source first (TEMPLATE requires zero sessions), copies
+   * with the project role as owner so grants travel with the data, and
+   * re-applies the control-DB lockdown.
+   */
+  async cloneDatabase(req: CloneRequest): Promise<ProvisionedDatabase> {
+    await this.requireAvailable();
+    const source = parseHandle(req.sourceDatabaseId);
+    assertSlug(req.branch);
+    assertDbPassword(req.target.password);
+    const branchDb = assertPostgresIdent(`${source.dbName}__${req.branch.replace(/-/g, '_')}`, 'Branch database');
+    const dbUser = source.dbUser;
+    const databaseId = `managed:${branchDb}:${dbUser}`;
+    const existing = await this.describeIfExists(branchDb, dbUser, req.target.password);
+    if (existing) return existing;
+    // TEMPLATE needs no other sessions on the source (never our own pid).
+    await this.adminQuery(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid()`,
+      [source.dbName],
+    );
+    try {
+      await this.adminQuery(`CREATE DATABASE "${branchDb}" TEMPLATE "${source.dbName}" OWNER "${dbUser}"`);
+    } catch (err) {
+      throw this.classify(err);
+    }
+    await this.adminQuery(`REVOKE ALL ON DATABASE "${this.controlDb}" FROM "${dbUser}"`).catch(() => undefined);
+    const conn = this.projectConn(branchDb, dbUser, req.target.password);
+    const deadline = Date.now() + this.healthTimeoutMs;
+    for (;;) {
+      const { health } = await checkProjectDbHealth(conn, 3000).catch(() => ({
+        health: 'unavailable' as const,
+      }));
+      if (health === 'healthy') break;
+      if (Date.now() > deadline) {
+        await this.deleteDatabase(databaseId).catch(() => undefined);
+        throw new ProvisionerError('Branch database did not become healthy in time', true);
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    const admin = new URL(this.connectionString);
+    return {
+      databaseId,
+      host: admin.hostname || 'localhost',
+      port: admin.port ? Number(admin.port) : 5432,
+      dbName: branchDb,
+      dbUser,
+      version: req.target.version,
     };
   }
 

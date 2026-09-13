@@ -179,6 +179,104 @@ export interface BackupDrainResult {
   error?: string;
 }
 
+export interface RetentionDrainResult {
+  organizations: number;
+  pruned: number;
+}
+
+const DEFAULT_LOG_RETENTION_DAYS = 90;
+
+/**
+ * Log retention enforcement: per-org policy (organization_policies.
+ * logRetentionDays, default 90d) prunes audit rows older than the cutoff.
+ * Runs in the worker loop; failures are logged, never thrown.
+ */
+export async function drainRetentionOnce(ctx: ApiContext, now = Date.now()): Promise<RetentionDrainResult> {
+  let organizations = 0;
+  let pruned = 0;
+  try {
+    const { platformAuthFor } = await import('./platform-auth.js');
+    const orgIds = await ctx.registry.listOrganizationIds().catch(() => [] as string[]);
+    for (const orgId of orgIds) {
+      const store = platformAuthFor(ctx);
+      const policy = await store.policies.getPolicy(orgId).catch(() => null);
+      const days = Math.min(
+        Math.max(policy?.logRetentionDays ?? DEFAULT_LOG_RETENTION_DAYS, 7),
+        365,
+      );
+      const cutoff = new Date(now - days * 86_400_000).toISOString();
+      pruned += await ctx.registry.pruneAuditLogs(cutoff, orgId).catch(() => 0);
+      organizations += 1;
+    }
+  } catch (err) {
+    ctx.logger.warn('worker.retention_failed', {
+      error: err instanceof Error ? err.message.slice(0, 160) : 'unknown',
+    });
+  }
+  return { organizations, pruned };
+}
+
+export interface LogDrainResult {
+  drains: number;
+  shipped: number;
+  failed: number;
+}
+
+/**
+ * Log-drain shipping: enabled drains receive new audit entries (cursor =
+ * last shipped timestamp, 100 entries max per drain per cycle) with HMAC
+ * signatures. Failures update lastStatus/lastError for the dashboard.
+ */
+export async function drainLogsOnce(ctx: ApiContext): Promise<LogDrainResult> {
+  let drains = 0;
+  let shipped = 0;
+  let failed = 0;
+  try {
+    const { platformOpsFor, deliverDrain } = await import('./platform-ops.js');
+    const ops = platformOpsFor(ctx);
+    const all = await ops.drains.listAll().catch(() => []);
+    const entries = await ctx.registry.listAudit().catch(() => []);
+    const ordered = [...entries].sort((a, b) => (a.at < b.at ? -1 : 1));
+    for (const drain of all) {
+      drains += 1;
+      try {
+        const full = await ops.drains.getWithSecret(drain.id);
+        if (!full) continue;
+        const batch = ordered
+          .filter(
+            e =>
+              (drain.organizationId === e.organizationId || e.organizationId === null) &&
+              (!drain.projectId || drain.projectId === e.projectId) &&
+              (!full.cursor || e.at > full.cursor),
+          )
+          .slice(0, 100);
+        if (batch.length === 0) {
+          await ops.drains.setStatus(drain.id, 'ok', null, null);
+          continue;
+        }
+        const result = await deliverDrain(ctx, full, batch);
+        if (result.ok) {
+          shipped += batch.length;
+          await ops.drains.setStatus(drain.id, 'ok', null, batch[batch.length - 1]?.at ?? null);
+        } else {
+          failed += 1;
+          await ops.drains.setStatus(drain.id, 'error', result.error, null);
+        }
+      } catch (err) {
+        failed += 1;
+        await ops.drains
+          .setStatus(drain.id, 'error', err instanceof Error ? err.message.slice(0, 160) : 'failed', null)
+          .catch(() => undefined);
+      }
+    }
+  } catch (err) {
+    ctx.logger.warn('worker.drains_failed', {
+      error: err instanceof Error ? err.message.slice(0, 160) : 'unknown',
+    });
+  }
+  return { drains, shipped, failed };
+}
+
 let lastBackupAt = 0;
 
 /**
@@ -294,6 +392,21 @@ export async function startWorker(port?: number): Promise<WorkerHandle> {
           encrypted: backups.encrypted,
           verified: backups.verified,
           pruned: backups.pruned,
+        });
+      }
+      const retention = await drainRetentionOnce(ctx);
+      if (retention.pruned > 0) {
+        logger.info('worker.retention_drain', {
+          organizations: retention.organizations,
+          pruned: retention.pruned,
+        });
+      }
+      const drains = await drainLogsOnce(ctx);
+      if (drains.drains > 0) {
+        logger.info('worker.drains', {
+          drains: drains.drains,
+          shipped: drains.shipped,
+          failed: drains.failed,
         });
       }
     } catch (err) {

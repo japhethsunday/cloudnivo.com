@@ -13,14 +13,18 @@ import { AuthError } from '../errors.js';
  *   signals theft → the whole session is revoked (reuse detection).
  */
 
-export const CustomerAccessClaimsSchema = z.object({
-  sub: z.string().uuid(),
-  email: z.string().email(),
-  projectId: z.string().uuid(),
-  sessionId: z.string(),
-  role: z.string(),
-  tokenType: z.literal('customer_access'),
-});
+export const CustomerAccessClaimsSchema = z
+  .object({
+    sub: z.string().uuid(),
+    email: z.string().email(),
+    projectId: z.string().uuid(),
+    sessionId: z.string(),
+    role: z.string(),
+    tokenType: z.literal('customer_access'),
+  })
+  // Custom claims ride flat beside the canonical set (Supabase-style).
+  // Scalars only — anything else fails closed here.
+  .catchall(z.union([z.string(), z.number(), z.boolean()]));
 export type CustomerAccessClaims = z.infer<typeof CustomerAccessClaimsSchema>;
 
 export interface CustomerTokenOptions {
@@ -30,9 +34,44 @@ export interface CustomerTokenOptions {
   accessTtlSeconds: number;
 }
 
+const CLAIM_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,40}$/;
+const RESERVED_CLAIMS = new Set([
+  'sub',
+  'email',
+  'projectId',
+  'sessionId',
+  'role',
+  'tokenType',
+  'iss',
+  'aud',
+  'exp',
+  'iat',
+]);
+
+/**
+ * Sanitize developer custom claims for JWT injection: flat scalar values,
+ * allowlisted key shape, reserved names rejected, max 10 entries. Anything
+ * else is dropped (never throws — claims must not break sign-in).
+ */
+export function sanitizeCustomClaims(
+  input: unknown,
+): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (Object.keys(out).length >= 10) break;
+    if (!CLAIM_KEY_RE.test(key) || RESERVED_CLAIMS.has(key)) continue;
+    if (typeof value === 'string' && value.length <= 200) out[key] = value;
+    else if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
+    else if (typeof value === 'boolean') out[key] = value;
+  }
+  return out;
+}
+
 export async function signCustomerAccessToken(
   claims: { sub: string; email: string; sessionId: string; role: string },
   opts: CustomerTokenOptions,
+  customClaims?: unknown,
 ): Promise<string> {
   if (opts.jwtSecret.length < 32) throw new AuthError('WEAK_SECRET', 'JWT secret is too short');
   return new SignJWT({
@@ -41,6 +80,7 @@ export async function signCustomerAccessToken(
     sessionId: claims.sessionId,
     role: claims.role,
     tokenType: 'customer_access',
+    ...sanitizeCustomClaims(customClaims),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.sub)
@@ -60,13 +100,28 @@ export async function verifyCustomerAccessToken(
       issuer: opts.issuer,
       audience: opts.projectId,
     });
+    const record = payload as Record<string, unknown>;
+    // Custom claims ride flat beside the canonical set: forward every
+    // scalar extra to the schema (catchall), drop everything else so a
+    // malformed claim can never fail verification of a server-issued token.
+    const extra: Record<string, string | number | boolean> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        if (key.length <= 64) extra[key] = value;
+      }
+    }
     return CustomerAccessClaimsSchema.parse({
       sub: payload.sub,
-      email: (payload as Record<string, unknown>)['email'],
-      projectId: (payload as Record<string, unknown>)['projectId'],
-      sessionId: (payload as Record<string, unknown>)['sessionId'],
-      role: (payload as Record<string, unknown>)['role'],
-      tokenType: (payload as Record<string, unknown>)['tokenType'],
+      email: record['email'],
+      projectId: record['projectId'],
+      sessionId: record['sessionId'],
+      role: record['role'],
+      tokenType: record['tokenType'],
+      ...extra,
     });
   } catch {
     throw new AuthError('INVALID_CUSTOMER_TOKEN', 'Invalid or expired access token');

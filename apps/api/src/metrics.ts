@@ -27,7 +27,10 @@ const WINDOWS: Record<string, number> = {
 
 export function isMetricsRoute(pathname: string, method: string): boolean {
   void method;
-  return /^\/api\/v1\/organizations\/[^/]+\/metrics\/?$/.test(pathname);
+  return (
+    /^\/api\/v1\/organizations\/[^/]+\/metrics\/?$/.test(pathname) ||
+    /^\/api\/v1\/organizations\/[^/]+\/metrics\/prometheus\/?$/.test(pathname)
+  );
 }
 
 export function metricsOpenApi(): Record<string, unknown> {
@@ -47,9 +50,10 @@ export async function handleMetricsRoutes(
   requestId: string,
 ): Promise<boolean> {
   const url = new URL(req.url ?? '/', 'http://localhost');
-  const match = /^\/api\/v1\/organizations\/([^/]+)\/metrics\/?$/.exec(url.pathname);
+  const match = /^\/api\/v1\/organizations\/([^/]+)\/metrics(\/prometheus)?\/?$/.exec(url.pathname);
   if (!match?.[1]) return false;
   const organizationId = match[1] as string;
+  const wantProm = match[2] === '/prometheus';
   const start = Date.now();
   const finish = (status: number, body: unknown): true => {
     logger.info('metrics.request', { organization: organizationId, status, latencyMs: Date.now() - start });
@@ -105,6 +109,46 @@ export async function handleMetricsRoutes(
       allowed = [only];
     }
     const summary = ctx.metrics.summarize(windowMs, Date.now(), new Set(allowed));
+    if (wantProm) {
+      // Prometheus exposition for external scraping (Datadog/Prometheus/
+      // Grafana). Labels stay bounded (service only — never project ids or
+      // user data). Scrape with an org member token in the Authorization
+      // header; samples remain process-local since boot.
+      const lines: string[] = [
+        '# HELP cloudnivo_requests_total Requests served in window, by service.',
+        '# TYPE cloudnivo_requests_total counter',
+      ];
+      for (const s of summary.byService) {
+        lines.push(`cloudnivo_requests_total{service="${s.service}"} ${s.requests}`);
+      }
+      lines.push('# HELP cloudnivo_errors_total 5xx responses in window, by service.');
+      lines.push('# TYPE cloudnivo_errors_total counter');
+      for (const s of summary.byService) {
+        lines.push(`cloudnivo_errors_total{service="${s.service}"} ${s.errors}`);
+      }
+      lines.push('# HELP cloudnivo_latency_p50_ms p50 latency in window, by service.');
+      lines.push('# TYPE cloudnivo_latency_p50_ms gauge');
+      for (const s of summary.byService) {
+        lines.push(`cloudnivo_latency_p50_ms{service="${s.service}"} ${s.p50Ms}`);
+      }
+      lines.push('# HELP cloudnivo_latency_p95_ms p95 latency in window, by service.');
+      lines.push('# TYPE cloudnivo_latency_p95_ms gauge');
+      for (const s of summary.byService) {
+        lines.push(`cloudnivo_latency_p95_ms{service="${s.service}"} ${s.p95Ms}`);
+      }
+      lines.push('# HELP cloudnivo_up Process up (1).');
+      lines.push('# TYPE cloudnivo_up gauge');
+      lines.push('cloudnivo_up 1');
+      const body = `${lines.join('\n')}\n`;
+      logger.info('metrics.request', { organization: organizationId, status: 200, latencyMs: Date.now() - start });
+      res.writeHead(200, {
+        ...baseHeaders,
+        'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body),
+      });
+      res.end(body);
+      return true;
+    }
     return finish(
       200,
       ok(

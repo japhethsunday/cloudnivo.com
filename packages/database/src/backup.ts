@@ -50,9 +50,12 @@ export interface VerifyReport {
 }
 
 export class BackupError extends Error {
-  constructor(message: string) {
+  readonly code = 'BACKUP_FAILED';
+  readonly status: number;
+  constructor(message: string, status = 502) {
     super(message);
     this.name = 'BackupError';
+    this.status = status;
   }
 }
 

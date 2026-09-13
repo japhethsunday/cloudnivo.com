@@ -31,6 +31,7 @@ function rowToToken(row: typeof agentTokens.$inferSelect): AgentToken {
     scopes: [...(row.scopes ?? [])],
     projectIds: [...(row.projectIds ?? [])],
     approvalRequired: row.approvalRequired,
+    ipAllowlist: [...(row.ipAllowlist ?? [])],
     expiresAt: iso(row.expiresAt),
     revokedAt: iso(row.revokedAt),
     requestCount: row.requestCount,
@@ -90,6 +91,7 @@ export class DrizzleAgentTokenStore implements AgentTokenStore {
         scopes: [...token.scopes],
         projectIds: [...token.projectIds],
         approvalRequired: token.approvalRequired,
+        ipAllowlist: [...(token.ipAllowlist ?? [])],
         expiresAt: token.expiresAt ? new Date(token.expiresAt) : null,
       })
       .onConflictDoUpdate({
@@ -99,6 +101,7 @@ export class DrizzleAgentTokenStore implements AgentTokenStore {
           scopes: [...token.scopes],
           projectIds: [...token.projectIds],
           approvalRequired: token.approvalRequired,
+          ipAllowlist: [...(token.ipAllowlist ?? [])],
           expiresAt: token.expiresAt ? new Date(token.expiresAt) : null,
           revokedAt: token.revokedAt ? new Date(token.revokedAt) : null,
         },

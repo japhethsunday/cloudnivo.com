@@ -294,6 +294,94 @@ export async function inspectProjectSchema(
   }
 }
 
+/**
+ * Execute pre-validated restore statements inside ONE transaction on a
+ * single connection: BEGIN → each statement → COMMIT. Any failure rolls
+ * everything back and reports the failing statement index (truncated).
+ * Statements come from planRestore() in @cloudnivo/db-tools — never raw.
+ */
+export async function executeRestoreTransaction(
+  info: ProjectConnectionInfo,
+  statements: string[],
+  timeoutMs = 120_000,
+): Promise<{ executed: number; durationMs: number }> {
+  if (statements.length === 0) throw new SqlRejectedError('Restore script is empty');
+  const start = Date.now();
+  const sql = clientFor(info, timeoutMs);
+  try {
+    await sql`select set_config('statement_timeout', ${String(timeoutMs)}, true)`;
+    await sql`BEGIN`;
+    try {
+      let executed = 0;
+      for (const stmt of statements) {
+        await sql.unsafe(stmt);
+        executed += 1;
+      }
+      await sql`COMMIT`;
+      return { executed, durationMs: Date.now() - start };
+    } catch (err) {
+      await sql`ROLLBACK`.catch(() => undefined);
+      throw new Error(`Restore failed and was rolled back: ${redactError(err)}`);
+    }
+  } finally {
+    await sql.end({ timeout: 2 }).catch(() => undefined);
+  }
+}
+
+/**
+ * RLS simulation: run EXPLAIN on a read-only query under explicit
+ * request-context settings (app.user_id / app.role) without writing
+ * anything. Policies evaluating CURRENT_SETTING see the simulated caller,
+ * so developers preview exactly which rows each role can read. The query
+ * itself must pass the standard read-only guard; EXPLAIN never executes it.
+ */
+export interface RlsSimulation {
+  settings: { userId: string; role: string };
+  plan: unknown;
+  maxRowsEstimate: number | null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SIM_ROLES = new Set(['authenticated', 'admin', 'service_role', 'anonymous']);
+
+export async function simulateRlsQuery(
+  info: ProjectConnectionInfo,
+  input: { sql: string; userId: string; role: string },
+  timeoutMs = 15_000,
+): Promise<RlsSimulation> {
+  const statement = assertSafeSql(input.sql, 20_000);
+  if (!UUID_RE.test(input.userId)) throw new SqlRejectedError('Simulated userId must be a UUID');
+  if (!SIM_ROLES.has(input.role)) throw new SqlRejectedError('Simulated role is unknown');
+  if (!/^\s*(select|with|values|table|explain)\b/i.test(statement)) {
+    throw new SqlRejectedError('Simulation accepts read-only queries (SELECT/WITH/EXPLAIN)');
+  }
+  const inner = /^\s*explain\b/i.test(statement) ? statement : `EXPLAIN (FORMAT JSON) ${statement}`;
+  const start = Date.now();
+  const sql = clientFor(info, timeoutMs);
+  try {
+    await sql`select set_config('statement_timeout', ${String(timeoutMs)}, true)`;
+    await sql`BEGIN`;
+    try {
+      await sql`select set_config('app.user_id', ${input.userId}, true)`;
+      await sql`select set_config('app.role', ${input.role}, true)`;
+      const rows = (await sql.unsafe(inner)) as Record<string, unknown>[];
+      await sql`ROLLBACK`;
+      const plan = rows[0]?.['QUERY PLAN'] ?? rows;
+      void start;
+      return {
+        settings: { userId: input.userId, role: input.role },
+        plan,
+        maxRowsEstimate: null,
+      };
+    } catch (err) {
+      await sql`ROLLBACK`.catch(() => undefined);
+      throw new Error(`Simulation failed: ${redactError(err)}`);
+    }
+  } finally {
+    await sql.end({ timeout: 2 }).catch(() => undefined);
+  }
+}
+
 // ── Parameterized executor (API engine data plane) ────────────────────
 
 /**

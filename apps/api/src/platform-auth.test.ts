@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
+import { createServer } from 'node:http';
+import { totpNow } from '@cloudnivo/auth';
 
 const JWT_SECRET = 'p'.repeat(48);
 
@@ -300,5 +302,429 @@ describe('phase 12 account profile + password', () => {
     });
     expect(fresh.status).toBe(200);
     token = data<{ token: string }>(fresh.json).token;
+  });
+});
+
+describe('platform totp mfa + sessions', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('enrolls, challenges login, verifies, manages sessions, disables', async () => {
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'pmfa@example.com',
+      password: 'correct-horse-99',
+    });
+    expect(signup.status).toBe(201);
+    expect(data<{ user: { totpEnabled: boolean } }>(signup.json).user.totpEnabled).toBe(false);
+    let token = data<{ token: string }>(signup.json).token;
+
+    const enroll = await api(base, 'POST', '/api/v1/me/mfa/enroll', token, {});
+    expect(enroll.status).toBe(200);
+    const secret = data<{ secret: string; uri: string }>(enroll.json).secret;
+    expect(secret.length).toBeGreaterThan(15);
+    expect(JSON.stringify(enroll.json)).not.toContain('passwordHash');
+
+    const confirm = await api(base, 'POST', '/api/v1/me/mfa/confirm', token, {
+      code: totpNow(secret),
+    });
+    expect(confirm.status).toBe(200);
+    expect(data<{ backupCodes: string[] }>(confirm.json).backupCodes).toHaveLength(10);
+
+    const challenged = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'pmfa@example.com',
+      password: 'correct-horse-99',
+    });
+    expect(challenged.status).toBe(200);
+    expect(data<{ mfaRequired: boolean }>(challenged.json).mfaRequired).toBe(true);
+    const ticket = data<{ mfaTicket: string }>(challenged.json).mfaTicket;
+    expect(
+      (await api(base, 'POST', '/api/v1/auth/mfa-verify', null, { mfaTicket: ticket, code: '000000' })).status,
+    ).toBe(401);
+    const challenged2 = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'pmfa@example.com',
+      password: 'correct-horse-99',
+    });
+    const ticket2 = data<{ mfaTicket: string }>(challenged2.json).mfaTicket;
+    const verified = await api(base, 'POST', '/api/v1/auth/mfa-verify', null, {
+      mfaTicket: ticket2,
+      code: totpNow(secret),
+    });
+    expect(verified.status).toBe(200);
+    token = data<{ token: string }>(verified.json).token;
+
+    // Session inventory shows both live sessions with device metadata.
+    const sessions = await api(base, 'GET', '/api/v1/me/sessions', token);
+    expect(sessions.status).toBe(200);
+    const list = data<{ sessions: { jti: string; current: boolean }[] }>(sessions.json).sessions;
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    expect(list.some(s => s.current)).toBe(true);
+    const other = list.find(s => !s.current);
+    if (other) {
+      expect((await api(base, 'DELETE', `/api/v1/me/sessions/${other.jti}`, token)).status).toBe(200);
+    }
+    const revoked = await api(base, 'POST', '/api/v1/me/sessions/revoke-all', token, {});
+    expect(data<{ revoked: number }>(revoked.json).revoked).toBeGreaterThanOrEqual(0);
+
+    // Disable restores plain password login.
+    expect(
+      (await api(base, 'POST', '/api/v1/me/mfa/disable', token, { code: '000000' })).status,
+    ).toBe(401);
+    expect(
+      (await api(base, 'POST', '/api/v1/me/mfa/disable', token, { code: totpNow(secret) })).status,
+    ).toBe(200);
+    const plain = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'pmfa@example.com',
+      password: 'correct-horse-99',
+    });
+    expect(data<{ user: { id: string } }>(plain.json).user).toBeTruthy();
+  });
+});
+
+describe('org policy + mfa enforcement + email change', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let ownerToken = '';
+  let orgId = '';
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'owner@policy.test',
+      password: 'correct-horse-99',
+    });
+    ownerToken = data<{ token: string }>(signup.json).token;
+    const org = await api(base, 'POST', '/api/v1/organizations', ownerToken, {
+      name: 'Policy Org',
+      slug: 'policyorg',
+    });
+    orgId = data<{ organization: { id: string } }>(org.json).organization.id;
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('reads default policy, updates it as owner, rejects strangers', async () => {
+    const initial = await api(base, 'GET', `/api/v1/organizations/${orgId}/policy`, ownerToken);
+    expect(initial.status).toBe(200);
+    expect(data<{ policy: { requireMfa: boolean } }>(initial.json).policy.requireMfa).toBe(false);
+    const updated = await api(base, 'PUT', `/api/v1/organizations/${orgId}/policy`, ownerToken, {
+      allowedEmailDomains: ['policy.test'],
+      requireMfa: true,
+      passwordMinLength: 14,
+    });
+    expect(updated.status).toBe(200);
+    const policy = data<{ policy: { allowedEmailDomains: string[]; requireMfa: boolean; passwordMinLength: number } }>(
+      updated.json,
+    ).policy;
+    expect(policy.allowedEmailDomains).toEqual(['policy.test']);
+    expect(policy.requireMfa).toBe(true);
+    // Invites to foreign domains are rejected; member role cannot change policy.
+    expect(
+      (
+        await api(base, 'POST', `/api/v1/organizations/${orgId}/invites`, ownerToken, {
+          email: 'someone@elsewhere.com',
+          role: 'member',
+        })
+      ).status,
+    ).toBe(403);
+    const outsider = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'outsider@policy.test',
+      password: 'correct-horse-99',
+    });
+    const outsiderToken = data<{ token: string }>(outsider.json).token;
+    expect(
+      (await api(base, 'PUT', `/api/v1/organizations/${orgId}/policy`, outsiderToken, {
+        requireMfa: false,
+      })).status,
+    ).toBe(404);
+  });
+
+  it('forces mfa enrollment at login when the org requires it', async () => {
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'member@policy.test',
+      password: 'correct-horse-99',
+    });
+    const memberToken = data<{ token: string }>(signup.json).token;
+    // Join via invite from the owner.
+    const created = await api(base, 'POST', `/api/v1/organizations/${orgId}/invites`, ownerToken, {
+      email: 'member@policy.test',
+      role: 'member',
+    });
+    expect(created.status).toBe(201);
+    const inviteToken = data<{ token: string }>(created.json).token;
+    expect(
+      (await api(base, 'POST', `/api/v1/invites/${inviteToken}/accept`, memberToken, {})).status,
+    ).toBe(200);
+    // Password login is interrupted with a setup ticket (428).
+    const login = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'member@policy.test',
+      password: 'correct-horse-99',
+    });
+    expect(login.status).toBe(428);
+    expect(data<{ mfaSetupRequired: boolean }>(login.json).mfaSetupRequired).toBe(true);
+    const setupTicket = data<{ setupTicket: string }>(login.json).setupTicket;
+    const enroll = await api(base, 'POST', '/api/v1/me/mfa/enroll', null, { setupTicket });
+    expect(enroll.status).toBe(200);
+    const secret = data<{ secret: string }>(enroll.json).secret;
+    const confirm = await api(base, 'POST', '/api/v1/me/mfa/confirm', null, {
+      setupTicket,
+      code: totpNow(secret),
+    });
+    expect(confirm.status).toBe(200);
+    expect(data<{ token: string }>(confirm.json).token).toBeTruthy();
+    // Weak passwords are now rejected for this member (policy min 14).
+    const weak = await api(base, 'POST', '/api/v1/auth/password', data<{ token: string }>(confirm.json).token, {
+      currentPassword: 'correct-horse-99',
+      newPassword: 'short-99',
+    });
+    expect(weak.status).toBe(400);
+  });
+
+  it('changes email verified + unique + domain-gated', async () => {
+    // The owner has no MFA yet and the org requires it: enroll first.
+    const blocked = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'owner@policy.test',
+      password: 'correct-horse-99',
+    });
+    expect(blocked.status).toBe(428);
+    const setupTicket = data<{ setupTicket: string }>(blocked.json).setupTicket;
+    const enroll = await api(base, 'POST', '/api/v1/me/mfa/enroll', null, { setupTicket });
+    expect(enroll.status).toBe(200);
+    const ownerSecret = data<{ secret: string }>(enroll.json).secret;
+    const done = await api(base, 'POST', '/api/v1/me/mfa/confirm', null, {
+      setupTicket,
+      code: totpNow(ownerSecret),
+    });
+    expect(done.status).toBe(200);
+    const token = data<{ token: string }>(done.json).token;
+    expect(
+      (
+        await api(base, 'POST', '/api/v1/me/email/request', token, {
+          newEmail: 'owner2@policy.test',
+          currentPassword: 'wrong-pass',
+        })
+      ).status,
+    ).toBe(401);
+    const requested = await api(base, 'POST', '/api/v1/me/email/request', token, {
+      newEmail: 'owner2@policy.test',
+      currentPassword: 'correct-horse-99',
+    });
+    expect(requested.status).toBe(200);
+    const changeToken = data<{ changeToken: string }>(requested.json).changeToken;
+    const confirmed = await api(base, 'POST', '/api/v1/me/email/confirm', null, {
+      token: changeToken,
+    });
+    expect(confirmed.status).toBe(200);
+    expect(data<{ user: { email: string } }>(confirmed.json).user.email).toBe('owner2@policy.test');
+    // Login with the new email challenges MFA (enrolled above), then succeeds.
+    const login2 = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: 'owner2@policy.test',
+      password: 'correct-horse-99',
+    });
+    expect(login2.status).toBe(200);
+    expect(data<{ mfaRequired: boolean }>(login2.json).mfaRequired).toBe(true);
+    const verified2 = await api(base, 'POST', '/api/v1/auth/mfa-verify', null, {
+      mfaTicket: data<{ mfaTicket: string }>(login2.json).mfaTicket,
+      code: totpNow(ownerSecret),
+    });
+    expect(verified2.status).toBe(200);
+    const token2 = data<{ token: string }>(verified2.json).token;
+    // Foreign domains are refused at confirm time.
+    const again = await api(base, 'POST', '/api/v1/me/email/request', token2, {
+      newEmail: 'owner2@elsewhere.com',
+      currentPassword: 'correct-horse-99',
+    });
+    expect(again.status).toBe(200);
+    expect(
+      (
+        await api(base, 'POST', '/api/v1/me/email/confirm', null, {
+          token: data<{ changeToken: string }>(again.json).changeToken,
+        })
+      ).status,
+    ).toBe(403);
+  });
+});
+
+describe('sso oidc login', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let ownerToken = '';
+  let orgId = '';
+  const orgSlug = 'ssoorg';
+  let idpBase = '';
+  let stopIdp: () => Promise<void> = async () => {};
+  let idTokenFor = (_email: string, _nonce: string): Promise<string> =>
+    Promise.resolve('');
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'owner@sso.test',
+      password: 'correct-horse-99',
+    });
+    ownerToken = data<{ token: string }>(signup.json).token;
+    const org = await api(base, 'POST', '/api/v1/organizations', ownerToken, {
+      name: 'SSO Org',
+      slug: orgSlug,
+    });
+    orgId = data<{ organization: { id: string } }>(org.json).organization.id;
+
+    // Mock OIDC provider: discovery + JWKS + token endpoints, plus a
+    // test-only code registry mapping authorization codes to ID tokens.
+    const { generateKeyPair, exportJWK, SignJWT } = await import('jose');
+    const { privateKey, publicKey } = await generateKeyPair('RS256');
+    const jwk = await exportJWK(publicKey);
+    const codeRegistry = new Map<string, string>();
+    const readBody = (req: IncomingMessage): Promise<string> =>
+      new Promise(resolve => {
+        let text = '';
+        req.on('data', (c: unknown) => {
+          text += String(c);
+        });
+        req.on('end', () => resolve(text));
+      });
+    const srv = createServer((req, res) => {
+      const send = (status: number, body: unknown): void => {
+        const text = JSON.stringify(body);
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(text);
+      };
+      void (async () => {
+        if (req.url === '/.well-known/openid-configuration' && req.method === 'GET') {
+          send(200, {
+            issuer: idpBase,
+            authorization_endpoint: `${idpBase}/auth`,
+            token_endpoint: `${idpBase}/token`,
+            jwks_uri: `${idpBase}/jwks`,
+          });
+          return;
+        }
+        if (req.url === '/jwks' && req.method === 'GET') {
+          send(200, { keys: [{ ...jwk, kid: 'test-key', alg: 'RS256', use: 'sig' }] });
+          return;
+        }
+        if (req.url === '/token' && req.method === 'POST') {
+          const params = new URLSearchParams(await readBody(req));
+          const idToken = codeRegistry.get(params.get('code') ?? '');
+          if (!idToken) {
+            send(400, { error: 'invalid_grant' });
+            return;
+          }
+          send(200, { id_token: idToken, token_type: 'Bearer' });
+          return;
+        }
+        if (req.url === '/__register' && req.method === 'POST') {
+          const body = JSON.parse(await readBody(req)) as { code?: string; idToken?: string };
+          if (body.code && body.idToken) codeRegistry.set(body.code, body.idToken);
+          send(200, { registered: true });
+          return;
+        }
+        send(404, {});
+      })().catch(() => {
+        try {
+          res.writeHead(500);
+          res.end();
+        } catch {
+          // Already closed.
+        }
+      });
+    });
+    await new Promise<void>(resolve => srv.listen(0, '127.0.0.1', resolve));
+    const addr = srv.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 0;
+    idpBase = `http://127.0.0.1:${port}`;
+    stopIdp = () =>
+      new Promise((resolve, reject) => srv.close(e => (e ? reject(e) : resolve())));
+    idTokenFor = async (email: string, nonce: string): Promise<string> =>
+      new SignJWT({ email, email_verified: true, name: 'SSO User', nonce })
+        .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+        .setSubject(`sso-${email}`)
+        .setIssuer(idpBase)
+        .setAudience('sso-client')
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(privateKey);
+  });
+  afterAll(async () => {
+    await stopIdp();
+    await close();
+  });
+
+  it('registers a connection, starts login, completes callback', async () => {
+    // Undiscoverable issuers fail fast.
+    expect(
+      (
+        await api(base, 'POST', `/api/v1/organizations/${orgId}/sso`, ownerToken, {
+          issuer: 'http://127.0.0.1:1/',
+          clientId: 'x',
+          clientSecret: 'y',
+        })
+      ).status,
+    ).toBe(400);
+    const created = await api(base, 'POST', `/api/v1/organizations/${orgId}/sso`, ownerToken, {
+      issuer: idpBase,
+      clientId: 'sso-client',
+      clientSecret: 'sso-secret-value',
+      displayName: 'Test IdP',
+    });
+    expect(created.status).toBe(201);
+    const connection = data<{ connection: { id: string } }>(created.json).connection;
+    expect(JSON.stringify(created.json)).not.toContain('sso-secret-value');
+    const listed = await api(base, 'GET', `/api/v1/organizations/${orgId}/sso`, ownerToken);
+    expect(data<{ connections: unknown[] }>(listed.json).connections).toHaveLength(1);
+
+    const started = await api(base, 'GET', `/api/v1/auth/sso/${orgSlug}/start`, null);
+    expect(started.status).toBe(200);
+    const { authorizeUrl } = data<{ authorizeUrl: string }>(started.json);
+    expect(authorizeUrl).toContain('/auth');
+    const state = new URL(authorizeUrl).searchParams.get('state') ?? '';
+    const nonce = new URL(authorizeUrl).searchParams.get('nonce') ?? '';
+    expect(state.length).toBeGreaterThan(5);
+
+    // Bad states fail; the positive path uses a provider-signed ID token.
+    expect(
+      (await api(base, 'GET', `/api/v1/auth/sso/callback?code=bad&state=bad`, null)).status,
+    ).toBe(401);
+    const idToken = await idTokenFor('sso-user@sso.test', nonce);
+    await fetch(`${idpBase}/__register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'test-code-1', idToken }),
+    });
+    const callback = await api(
+      base,
+      'GET',
+      `/api/v1/auth/sso/callback?code=test-code-1&state=${state}`,
+      null,
+    );
+    expect(callback.status).toBe(200);
+    expect(data<{ user: { email: string } }>(callback.json).user.email).toBe('sso-user@sso.test');
+    // Membership was provisioned; replaying the state fails (single use).
+    const me = await api(base, 'GET', '/api/v1/me', data<{ token: string }>(callback.json).token);
+    expect(
+      data<{ organizations: { id: string }[] }>(me.json).organizations.map(o => o.id),
+    ).toContain(orgId);
+    expect(
+      (await api(base, 'GET', `/api/v1/auth/sso/callback?code=test-code-1&state=${state}`, null))
+        .status,
+    ).toBe(401);
+    // Connection removal disables the flow.
+    expect(
+      (await api(base, 'DELETE', `/api/v1/organizations/${orgId}/sso/${connection.id}`, ownerToken)).status,
+    ).toBe(200);
+    expect((await api(base, 'GET', `/api/v1/auth/sso/${orgSlug}/start`, null)).status).toBe(404);
   });
 });

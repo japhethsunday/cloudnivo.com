@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { expiryPreset, isKnownScope } from './scopes.js';
+import { parseIpAllowlist } from './ip.js';
 
 /**
  * Agent tokens — dedicated credentials for AI/developer agents, separate
@@ -32,6 +33,8 @@ export interface AgentToken {
   /** Empty = all projects in scope. */
   projectIds: string[];
   approvalRequired: boolean;
+  /** Empty = unrestricted. CIDR (v4) or exact IPs, max 20. */
+  ipAllowlist: string[];
   expiresAt: string | null;
   revokedAt: string | null;
   requestCount: number;
@@ -79,6 +82,8 @@ export interface CreateTokenInput {
   approvalRequired?: boolean;
   /** Preset id (7d/30d/90d/365d/never). Defaults to 30d. */
   expiresIn?: string;
+  /** IP/CIDR allowlist (empty = unrestricted). */
+  ipAllowlist?: string[];
 }
 
 let tokenCounter = 0;
@@ -98,6 +103,7 @@ export function buildTokenRecord(input: CreateTokenInput, now: Date = new Date()
   const projectIds = [...new Set(input.projectIds)].slice(0, 200);
   const preset = expiryPreset(input.expiresIn ?? '30d');
   if (!preset) throw new AgentTokenError('VALIDATION_ERROR', 'Unknown expiry preset', 400);
+  const ipAllowlist = parseIpAllowlist(input.ipAllowlist);
   tokenCounter += 1;
   return {
     id: `agent_${now.getTime().toString(36)}_${tokenCounter}`,
@@ -109,6 +115,7 @@ export function buildTokenRecord(input: CreateTokenInput, now: Date = new Date()
     scopes,
     projectIds,
     approvalRequired: input.approvalRequired ?? false,
+    ipAllowlist,
     expiresAt: preset.days === null ? null : new Date(now.getTime() + preset.days * 86_400_000).toISOString(),
     revokedAt: null,
     requestCount: 0,

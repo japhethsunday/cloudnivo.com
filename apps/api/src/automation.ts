@@ -23,6 +23,7 @@ import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import { meterUsage } from './billing.js';
 import { agentFromRequest, auditAgent, requireAgentScope, verifyAgentAccess } from './agents.js';
 import { functionsFor } from './functions.js';
 
@@ -417,6 +418,7 @@ export async function handleAutomationRoutes(
         const parsed = parseBody(PublishBody, await readBody());
         const { message, duplicate } = await service.publish(queue, parsed);
         audit('message.published', queue.name);
+        if (!duplicate) meterUsage(ctx, member.organizationId, projectId, 'jobs', 'jobs', 1);
         return finish(duplicate ? 200 : 201, ok({ message, duplicate }, requestId));
       }
       if (sub === 'consume' && method === 'POST') {

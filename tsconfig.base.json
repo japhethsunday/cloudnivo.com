@@ -29,6 +29,8 @@
       "@cloudnivo/validation/*": ["./packages/validation/src/*"],
       "@cloudnivo/database": ["./packages/database/src/index.ts"],
       "@cloudnivo/database/*": ["./packages/database/src/*"],
+      "@cloudnivo/db-tools": ["./packages/db-tools/src/index.ts"],
+      "@cloudnivo/db-tools/*": ["./packages/db-tools/src/*"],
       "@cloudnivo/auth": ["./packages/auth/src/index.ts"],
       "@cloudnivo/auth/*": ["./packages/auth/src/*"],
       "@cloudnivo/storage": ["./packages/storage/src/index.ts"],

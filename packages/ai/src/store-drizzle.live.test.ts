@@ -55,7 +55,7 @@ describe.skipIf(!LIVE_PG_URL)('ai drizzle journal on live postgres', () => {
           realtime: { channels: [] },
           functions: [],
         },
-        existing: { tables: [], endpoints: [], buckets: [], channels: [], functions: [] },
+        existing: { tables: [], buckets: [], functions: [], channels: [], roles: [] },
       });
       audit.record({
         projectId: projectA,

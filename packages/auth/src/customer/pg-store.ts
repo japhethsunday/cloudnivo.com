@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS auth.one_time_tokens (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth.one_time_tokens (user_id);
+
+-- Idempotent evolution for MFA / anonymous / magic-link / phone-OTP.
+-- IF NOT EXISTS keeps this safe to run on every boot/enable, including
+-- databases created before these columns existed.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean NOT NULL DEFAULT false;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS totp_secret text;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS totp_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS backup_code_hashes text[] NOT NULL DEFAULT '{}';
+ALTER TABLE auth.one_time_tokens DROP CONSTRAINT IF EXISTS one_time_tokens_kind_check;
+ALTER TABLE auth.one_time_tokens ADD CONSTRAINT one_time_tokens_kind_check
+  CHECK (kind IN ('verify', 'reset', 'magic', 'mfa'));
 `.trim();
 
 /** Split DDL into single statements (no `;` inside literals here by construction). */
@@ -89,6 +100,12 @@ function rowToUser(r: Record<string, unknown>): CustomerUser {
     emailVerified: r['email_verified'] === true,
     phoneVerified: r['phone_verified'] === true,
     status: (r['status'] as 'active' | 'disabled' | 'deleted') ?? 'active',
+    isAnonymous: r['is_anonymous'] === true,
+    totpSecret: (r['totp_secret'] as string | null) ?? null,
+    totpEnabled: r['totp_enabled'] === true,
+    backupCodeHashes: Array.isArray(r['backup_code_hashes'])
+      ? (r['backup_code_hashes'] as string[]).map(String)
+      : [],
     userMetadata: (r['user_metadata'] as Record<string, unknown>) ?? {},
     appMetadata: (r['app_metadata'] as Record<string, unknown>) ?? {},
     createdAt: String(r['created_at']),
@@ -128,14 +145,23 @@ export class PostgresCustomerAuthStore {
     email: string;
     passwordHash: string | null;
     userMetadata: Record<string, unknown>;
+    isAnonymous?: boolean;
+    phone?: string | null;
   }): Promise<CustomerUser> {
     const { randomUUID } = await import('node:crypto');
     const id = randomUUID();
     try {
       const rows = await this.run.query(
-        `INSERT INTO auth.users (id, email, password_hash, user_metadata)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [id, input.email.toLowerCase(), input.passwordHash, JSON.stringify(input.userMetadata)],
+        `INSERT INTO auth.users (id, email, password_hash, user_metadata, is_anonymous, phone)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [
+          id,
+          input.email.toLowerCase(),
+          input.passwordHash,
+          JSON.stringify(input.userMetadata),
+          input.isAnonymous ?? false,
+          input.phone ?? null,
+        ],
       );
       return this.withProject(rowToUser(rows[0] as Record<string, unknown>));
     } catch (err) {
@@ -166,8 +192,19 @@ export class PostgresCustomerAuthStore {
     return row ? this.withProject(rowToUser(row)) : null;
   }
 
+  async findUserByPhone(phone: string): Promise<CustomerUser | null> {
+    const rows = await this.run.query(
+      `SELECT * FROM auth.users WHERE phone = $1 AND status <> 'deleted'`,
+      [phone],
+    );
+    const row = rows[0];
+    return row ? this.withProject(rowToUser(row)) : null;
+  }
+
   async updateUser(userId: string, patch: Record<string, unknown>): Promise<CustomerUser | null> {
     const allowed = [
+      'email',
+      'phone',
       'emailVerified',
       'phoneVerified',
       'status',
@@ -175,8 +212,14 @@ export class PostgresCustomerAuthStore {
       'appMetadata',
       'passwordHash',
       'lastSignInAt',
+      'isAnonymous',
+      'totpSecret',
+      'totpEnabled',
+      'backupCodeHashes',
     ] as const;
     const colOf: Record<string, string> = {
+      email: 'email',
+      phone: 'phone',
       emailVerified: 'email_verified',
       phoneVerified: 'phone_verified',
       status: 'status',
@@ -184,16 +227,24 @@ export class PostgresCustomerAuthStore {
       appMetadata: 'app_metadata',
       passwordHash: 'password_hash',
       lastSignInAt: 'last_sign_in_at',
+      isAnonymous: 'is_anonymous',
+      totpSecret: 'totp_secret',
+      totpEnabled: 'totp_enabled',
+      backupCodeHashes: 'backup_code_hashes',
     };
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const key of allowed) {
       if (patch[key] !== undefined) {
-        params.push(
+        const value =
           key === 'userMetadata' || key === 'appMetadata'
             ? JSON.stringify(patch[key])
-            : (patch[key] as unknown),
-        );
+            : key === 'backupCodeHashes'
+              ? (patch[key] as string[])
+              : key === 'email' && typeof patch[key] === 'string'
+                ? (patch[key] as string).toLowerCase()
+                : (patch[key] as unknown);
+        params.push(value);
         sets.push(`"${colOf[key]}" = $${params.length}`);
       }
     }
@@ -312,7 +363,7 @@ export class PostgresCustomerAuthStore {
   async saveToken(input: {
     tokenHash: string;
     userId: string;
-    kind: 'verify' | 'reset';
+    kind: 'verify' | 'reset' | 'magic' | 'mfa';
     expiresAt: string;
   }): Promise<void> {
     await this.run.query(
@@ -322,7 +373,10 @@ export class PostgresCustomerAuthStore {
     );
   }
 
-  async findToken(hash: string, kind: 'verify' | 'reset'): Promise<OneTimeToken | null> {
+  async findToken(
+    hash: string,
+    kind: 'verify' | 'reset' | 'magic' | 'mfa',
+  ): Promise<OneTimeToken | null> {
     const rows = await this.run.query(
       `SELECT * FROM auth.one_time_tokens
        WHERE token_hash = $1 AND kind = $2 AND consumed_at IS NULL AND expires_at > now()`,

@@ -1,13 +1,14 @@
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, count, eq, lt, sql } from 'drizzle-orm';
 import {
   projects,
   storageBuckets,
   storageObjects,
+  storageUploadSessions,
   storageUsage,
   type Database,
 } from '@cloudnivo/database';
 import type { Bucket, StoredObject } from './types.js';
-import type { CreateBucketInput, PutObjectInput, StorageMetadataStore } from './metadata.js';
+import type { CreateBucketInput, PutObjectInput, StorageMetadataStore, UploadSession } from './metadata.js';
 
 /**
  * Drizzle-backed storage metadata (`storage_buckets`, `storage_objects`,
@@ -332,4 +333,96 @@ export class DrizzleStorageMetadataStore implements StorageMetadataStore {
     void _filesDelta;
     void _bytesDelta;
   }
+
+  async createUploadSession(input: {
+    organizationId: string;
+    projectId: string;
+    bucket: string;
+    path: string;
+    contentType: string | null;
+    totalBytes: number | null;
+    upsert: boolean;
+  }): Promise<UploadSession> {
+    const rows = await this.db
+      .insert(storageUploadSessions)
+      .values({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        bucket: input.bucket,
+        path: input.path,
+        contentType: input.contentType,
+        totalBytes: input.totalBytes,
+        upsert: input.upsert,
+        expiresAt: new Date(Date.now() + 24 * 3_600_000),
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Upload session insert failed');
+    return rowToUploadSession(row);
+  }
+
+  async getUploadSession(projectId: string, id: string): Promise<UploadSession | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+    const rows = await this.db
+      .select()
+      .from(storageUploadSessions)
+      .where(eq(storageUploadSessions.id, id))
+      .limit(1);
+    const row = rows[0];
+    if (!row || row.projectId !== projectId) return null;
+    return rowToUploadSession(row);
+  }
+
+  async recordUploadPart(projectId: string, id: string, index: number, bytes: number): Promise<UploadSession | null> {
+    const current = await this.getUploadSession(projectId, id);
+    if (!current || current.status !== 'active' || Date.parse(current.expiresAt) <= Date.now()) {
+      return null;
+    }
+    const parts = current.parts.includes(index) ? current.parts : [...current.parts, index].sort((a, b) => a - b);
+    const rows = await this.db
+      .update(storageUploadSessions)
+      .set({ parts, receivedBytes: current.receivedBytes + bytes })
+      .where(eq(storageUploadSessions.id, id))
+      .returning();
+    const row = rows[0];
+    return row ? rowToUploadSession(row) : null;
+  }
+
+  async finishUploadSession(projectId: string, id: string, status: 'completed' | 'aborted'): Promise<boolean> {
+    const current = await this.getUploadSession(projectId, id);
+    if (!current) return false;
+    await this.db
+      .update(storageUploadSessions)
+      .set({ status })
+      .where(eq(storageUploadSessions.id, id));
+    return true;
+  }
+
+  async pruneUploadSessions(beforeIso: string): Promise<number> {
+    const cutoff = new Date(beforeIso);
+    if (Number.isNaN(cutoff.getTime())) return 0;
+    const rows = await this.db
+      .delete(storageUploadSessions)
+      .where(lt(storageUploadSessions.expiresAt, cutoff))
+      .returning({ id: storageUploadSessions.id });
+    return rows.length;
+  }
+}
+
+function rowToUploadSession(row: typeof storageUploadSessions.$inferSelect): UploadSession {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    projectId: row.projectId,
+    bucket: row.bucket,
+    path: row.path,
+    contentType: row.contentType,
+    totalBytes: row.totalBytes,
+    receivedBytes: row.receivedBytes ?? 0,
+    parts: Array.isArray(row.parts) ? (row.parts as number[]).map(Number) : [],
+    upsert: row.upsert ?? false,
+    status: row.status === 'completed' || row.status === 'aborted' ? row.status : 'active',
+    expiresAt: iso(row.expiresAt),
+    createdAt: iso(row.createdAt),
+  };
 }

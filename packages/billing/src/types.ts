@@ -58,6 +58,25 @@ export const GAUGE_METRICS: ReadonlySet<UsageMetric> = new Set([
 export type LimitPolicy = 'hard' | 'soft';
 export type WarningLevel = 50 | 75 | 90 | 100;
 
+/** Spend budget: monthly cap with alert or hard-block action. */
+export type BudgetAction = 'alert' | 'block';
+
+export interface Budget {
+  id: string;
+  organizationId: string;
+  name: string;
+  limitCents: number;
+  action: BudgetAction;
+  createdAt: string;
+}
+
+export interface BudgetEvaluation {
+  budget: Budget;
+  spendCents: number;
+  breached: boolean;
+  percent: number;
+}
+
 export interface Subscription {
   id: string;
   organizationId: string;

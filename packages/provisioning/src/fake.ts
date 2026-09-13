@@ -1,4 +1,5 @@
 import type {
+  CloneRequest,
   DatabaseProvisioner,
   ProvisionedDatabase,
   ProvisionRequest,
@@ -65,6 +66,29 @@ export class FakeDatabaseProvider implements DatabaseProvisioner {
     const db = this.dbs.get(databaseId);
     if (!db) return;
     db.containerState = 'removed';
+  }
+
+  async cloneDatabase(req: CloneRequest): Promise<ProvisionedDatabase> {
+    this.calls.push(`clone:${req.sourceDatabaseId}->${req.branch}`);
+    const source = this.dbs.get(req.sourceDatabaseId);
+    if (!source || source.containerState === 'removed') {
+      throw new ProvisionerError('source database not found', false);
+    }
+    const provisioned: ProvisionedDatabase = {
+      databaseId: `fake-${req.target.projectId}-branch-${req.branch}`,
+      host: '127.0.0.1',
+      port: 15499,
+      dbName: `cn_${req.target.slug.replace(/-/g, '_')}_${req.branch.replace(/-/g, '_')}_db`,
+      dbUser: source.provisioned.dbUser,
+      version: req.target.version,
+    };
+    this.dbs.set(provisioned.databaseId, {
+      req: req.target,
+      provisioned,
+      containerState: 'running',
+      failNext: 0,
+    });
+    return provisioned;
   }
 
   async startDatabase(databaseId: string): Promise<void> {

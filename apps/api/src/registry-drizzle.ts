@@ -1,4 +1,4 @@
-import { count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
 import {
   auditLogs,
   databaseCredentials,
@@ -134,6 +134,17 @@ export class DrizzleRegistry implements Registry {
     if (ids.size === 0) return [];
     const rows = await this.db.select().from(organizations);
     return rows.filter(o => ids.has(o.id)).map(o => toOrg(o, o.createdBy ?? ''));
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<OrganizationRecord | null> {
+    if (!slugOk(slug)) return null;
+    const rows = await this.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.slug, slug))
+      .limit(1);
+    const row = rows[0];
+    return row ? toOrg(row, row.createdBy ?? '') : null;
   }
 
   async membershipsFor(userId: string): Promise<MembershipRecord[]> {
@@ -386,6 +397,27 @@ export class DrizzleRegistry implements Registry {
       userId: r.actorUserId,
       at: iso(r.createdAt),
     }));
+  }
+
+  async pruneAuditLogs(olderThanIso: string, organizationId?: string): Promise<number> {
+    const cutoff = new Date(olderThanIso);
+    if (Number.isNaN(cutoff.getTime())) return 0;
+    const conditions = [lt(auditLogs.createdAt, cutoff)];
+    if (organizationId) {
+      const oid = uuidOrNull(organizationId);
+      if (!oid) return 0;
+      conditions.push(eq(auditLogs.organizationId, oid));
+    }
+    const removed = await this.db
+      .delete(auditLogs)
+      .where(and(...conditions))
+      .returning({ id: auditLogs.id });
+    return removed.length;
+  }
+
+  async listOrganizationIds(): Promise<string[]> {
+    const rows = await this.db.select({ id: organizations.id }).from(organizations);
+    return rows.map(r => r.id);
   }
 
   async getAuthConfig(projectId: string): Promise<ProjectAuthConfig | null> {

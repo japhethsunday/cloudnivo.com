@@ -4,8 +4,10 @@ import { ApiError, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
   assertSafeSql,
   executeProjectSql,
+  executeRestoreTransaction,
   inspectProjectSchema,
   maskConnectionInfo,
+  simulateRlsQuery,
   SqlRejectedError,
   toConnectionString,
 } from '@cloudnivo/database';
@@ -25,6 +27,8 @@ import type { ProjectRecord } from './registry.js';
 import { generateDbPassword, mustOwnProject, toTenantError } from './registry.js';
 import { auditAgent, gateDestructive, requireAgent, sendApprovalRequired } from './agents.js';
 import { emitAutomationEvent } from './automation.js';
+import { requireSpendAllowed } from './billing.js';
+import { handleDbToolsRoutes } from './db-tools.js';
 import { storageFor } from './storage.js';
 
 export function sendJson(
@@ -62,11 +66,28 @@ export interface ProjectDbGateway {
     guards: { maxStatementMs: number; maxRows: number; maxLength: number },
     params?: unknown[],
   ): Promise<SqlResult>;
+  /**
+   * Multi-statement transactional execution (guarded restores). Real gateway
+   * runs BEGIN/COMMIT on one connection; fakes apply statements vacuously.
+   */
+  execTransaction(
+    conn: { host: string; port: number; database: string; user: string; password: string },
+    statements: string[],
+  ): Promise<{ executed: number; durationMs: number }>;
+  /**
+   * RLS simulation: EXPLAIN under explicit caller settings, never executes.
+   */
+  simulate(
+    conn: { host: string; port: number; database: string; user: string; password: string },
+    input: { sql: string; userId: string; role: string },
+  ): Promise<{ settings: { userId: string; role: string }; plan: unknown; maxRowsEstimate: number | null }>;
 }
 
 export const RealProjectDbGateway: ProjectDbGateway = {
   inspect: conn => inspectProjectSchema(conn),
   query: (conn, sql, guards, params) => executeProjectSql(conn, sql, guards, params ?? []),
+  execTransaction: (conn, statements) => executeRestoreTransaction(conn, statements, 120_000),
+  simulate: (conn, input) => simulateRlsQuery(conn, input),
 };
 
 export class FakeProjectDbGateway implements ProjectDbGateway {
@@ -104,6 +125,44 @@ export class FakeProjectDbGateway implements ProjectDbGateway {
     }
     return { columns: [], rows: [], rowCount: 1, truncated: false, durationMs: Date.now() - start };
   }
+
+  async execTransaction(
+    _conn: { host: string; port: number; database: string; user: string; password: string },
+    statements: string[],
+  ): Promise<{ executed: number; durationMs: number }> {
+    const start = Date.now();
+    return { executed: statements.length, durationMs: Date.now() - start };
+  }
+
+  async simulate(
+    _conn: { host: string; port: number; database: string; user: string; password: string },
+    input: { sql: string; userId: string; role: string },
+  ): Promise<{ settings: { userId: string; role: string }; plan: unknown; maxRowsEstimate: number | null }> {
+    // Mirror the real guard surface so tests exercise the same rejections.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.userId)) {
+      const err = new Error('Simulated userId must be a UUID') as Error & { code: string; status: number };
+      err.code = 'SQL_REJECTED';
+      err.status = 400;
+      throw err;
+    }
+    if (!['authenticated', 'admin', 'service_role', 'anonymous'].includes(input.role)) {
+      const err = new Error('Simulated role is unknown') as Error & { code: string; status: number };
+      err.code = 'SQL_REJECTED';
+      err.status = 400;
+      throw err;
+    }
+    if (!/^\s*(select|with|values|table|explain)\b/i.test(input.sql)) {
+      const err = new Error('Simulation accepts read-only queries (SELECT/WITH/EXPLAIN)') as Error & { code: string; status: number };
+      err.code = 'SQL_REJECTED';
+      err.status = 400;
+      throw err;
+    }
+    return {
+      settings: { userId: input.userId, role: input.role },
+      plan: [{ 'QUERY PLAN': [{ Plan: { 'Node Type': 'Seq Scan', 'Relation Name': 'users (fake)' } }] }],
+      maxRowsEstimate: null,
+    };
+  }
 }
 
 const CreateProjectBody = z.object({
@@ -135,9 +194,9 @@ const CreateOrgBody = z.object({
 const ActionBody = z.object({ action: z.enum(['start', 'stop', 'restart']) });
 const QueryBody = z.object({ sql: z.string().min(1).max(20_000) });
 
-function mapInfraError(err: unknown): ApiError {
-  if (err instanceof ApiError) return err;
-  if (err instanceof InvalidProvisionInputError || err instanceof SqlRejectedError) {
+/** Shared infra→API error mapping (db-tools routes reuse it). */
+export function mapInfraError(err: unknown): ApiError {
+  if (err instanceof ApiError) return err;  if (err instanceof InvalidProvisionInputError || err instanceof SqlRejectedError) {
     return new ApiError('VALIDATION_ERROR', err.message, 400);
   }
   if (err instanceof ProviderUnavailableError) {
@@ -264,6 +323,8 @@ export async function handleProjectRoutes(
           error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
         });
       }
+      // Spend protection: a breached block-budget freezes new paid resources.
+      await requireSpendAllowed(ctx, body.organizationId);
       const key = idempotencyKey(
         req.headers['idempotency-key'],
         `create-project:${body.organizationId}:${body.slug}`,
@@ -547,6 +608,26 @@ export async function handleProjectRoutes(
     if (rest[0] !== 'database') return false;
     const db = await ctx.registry.getDatabaseByProject(project.id);
     if (!db) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
+
+    // Database power-tools (extensions, advisors, types, diff, restore,
+    // vault, branches, environments, pause/resume).
+    if (await handleDbToolsRoutes({
+      req,
+      res,
+      ctx,
+      config,
+      logger,
+      baseHeaders,
+      requestId,
+      session,
+      project,
+      gate,
+      creds: await credsFor(ctx, project),
+      query,
+      readJson,
+    })) {
+      return true;
+    }
 
     // GET /:id/database — overview with REAL live status.
     if (rest.length === 1 && req.method === 'GET') {

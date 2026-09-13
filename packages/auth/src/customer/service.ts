@@ -1,9 +1,14 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../index.js';
 import { AuthError } from '../errors.js';
 import type { EmailService } from './email.js';
 import { sanitizeAppMetadata, sanitizeUserMetadata } from './metadata.js';
+import { generateBackupCodes, generateTotpSecret, totpProvisionUri, verifyTotp } from '../totp.js';
+import { checkPasswordPolicy, LEGACY_PASSWORD_POLICY } from '../password-policy.js';
+import type { OtpService } from '../otp.js';
+import { isValidPhone, type SmsService } from '../sms.js';
 import type { CustomerAuthStore } from './store.js';
-import { hashToken, newOpaqueToken, signCustomerAccessToken } from './tokens.js';
+import { hashToken, newOpaqueToken, sanitizeCustomClaims, signCustomerAccessToken } from './tokens.js';
 import type {
   AuthTokens,
   CustomerAuditEvent,
@@ -13,6 +18,7 @@ import type {
   CustomerUser,
   ExposedCustomerUser,
 } from './types.js';
+import type { PasswordPolicy } from '../password-policy.js';
 import { exposeUser } from './types.js';
 
 /**
@@ -43,14 +49,20 @@ export interface CustomerAuthDeps {
   audit: (event: CustomerAuditEvent, fields: Record<string, unknown>) => void;
   /** Base URL for emailed links (dashboard/app origin, never localhost in prod). */
   appUrl: string;
+  /** Short-lived OTP codes (email/phone/MFA backup path). */
+  otp: OtpService;
+  /** SMS/WhatsApp delivery for phone OTP. */
+  sms: SmsService;
 }
 
 const DUMMY_HASH =
   'scrypt:00000000000000000000000000000000:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000';
 
-function assertPasswordStrength(password: string): void {
-  if (password.length < 8 || password.length > 128) {
-    throw new CustomerAuthError('WEAK_PASSWORD', 'Password must be 8–128 characters', 400);
+function assertPasswordStrength(password: string, policy?: PasswordPolicy | null): void {
+  const active = policy ?? LEGACY_PASSWORD_POLICY;
+  const { ok, reasons } = checkPasswordPolicy(password, active);
+  if (!ok) {
+    throw new CustomerAuthError('WEAK_PASSWORD', reasons[0] ?? 'Password too weak', 400);
   }
 }
 
@@ -67,6 +79,39 @@ export class CustomerAuthService {
 
   private audit(event: CustomerAuditEvent, fields: Record<string, unknown>): void {
     this.deps.audit(event, fields);
+  }
+
+  /**
+   * Access token with custom claims: allowlisted scalars from app_metadata
+   * (role stays canonical; anonymous sessions are labeled). Reserved names
+   * and non-scalars are dropped by sanitizeCustomClaims — claims never
+   * break sign-in.
+   */
+  private accessTokenFor(
+    projectId: string,
+    user: CustomerUser,
+    sessionId: string,
+  ): Promise<string> {
+    const role = (user.appMetadata['role'] === 'admin' ? 'admin' : 'authenticated') as CustomerRole;
+    const customClaims = sanitizeCustomClaims({
+      ...(typeof user.appMetadata === 'object' && user.appMetadata !== null ? user.appMetadata : {}),
+      ...(user.isAnonymous ? { anonymous: true } : {}),
+    });
+    return signCustomerAccessToken(
+      {
+        sub: user.id,
+        email: user.email,
+        sessionId,
+        role: user.isAnonymous ? 'anonymous' : role,
+      },
+      {
+        jwtSecret: this.config.jwtSecret,
+        issuer: this.config.issuer,
+        projectId,
+        accessTtlSeconds: this.config.accessTtlSeconds,
+      },
+      customClaims,
+    );
   }
 
   private async issueSession(
@@ -86,16 +131,7 @@ export class CustomerAuthService {
       lastActiveAt: new Date().toISOString(),
       revokedAt: null,
     });
-    const role = (user.appMetadata['role'] === 'admin' ? 'admin' : 'authenticated') as CustomerRole;
-    const accessToken = await signCustomerAccessToken(
-      { sub: user.id, email: user.email, sessionId: session.id, role },
-      {
-        jwtSecret: this.config.jwtSecret,
-        issuer: this.config.issuer,
-        projectId,
-        accessTtlSeconds: this.config.accessTtlSeconds,
-      },
-    );
+    const accessToken = await this.accessTokenFor(projectId, user, session.id);
     await this.store.updateUser(projectId, user.id, { lastSignInAt: new Date().toISOString() });
     this.audit('user.session_created', { projectId, userId: user.id, sessionId: session.id });
     return {
@@ -119,7 +155,7 @@ export class CustomerAuthService {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
       throw new CustomerAuthError('INVALID_EMAIL', 'Invalid email address', 400);
     }
-    assertPasswordStrength(String(input.password ?? ''));
+    assertPasswordStrength(String(input.password ?? ''), this.config.passwordPolicy);
     const metadata =
       input.userMetadata === undefined ? {} : sanitizeUserMetadata(input.userMetadata);
     let user: CustomerUser;
@@ -157,13 +193,21 @@ export class CustomerAuthService {
     projectId: string,
     input: { email: string; password: string },
     opts: { ip: string | null; agent: string | null },
-  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+  ): Promise<
+    | { user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }
+    | { mfaRequired: true; mfaTicket: string; userId: string }
+  > {
     const email = String(input.email ?? '')
       .trim()
       .toLowerCase();
     const user = await this.store.findUserByEmail(projectId, email);
     // Dummy verify keeps timing ~constant whether the account exists or not.
     const ok = await verifyPassword(String(input.password ?? ''), user?.passwordHash ?? DUMMY_HASH);
+    // Anonymous addresses are unguessable; a distinct code is safe and honest.
+    if (user && user.isAnonymous) {
+      this.audit('user.login_failed', { projectId, userId: user.id });
+      throw new CustomerAuthError('ANONYMOUS_CONVERT_REQUIRED', 'Anonymous account must be converted first', 403);
+    }
     if (!user || !ok) {
       this.audit('user.login_failed', { projectId });
       throw new CustomerAuthError('INVALID_CREDENTIALS', 'Invalid email or password', 401);
@@ -171,6 +215,19 @@ export class CustomerAuthService {
     if (user.status !== 'active') {
       this.audit('user.login_failed', { projectId, userId: user.id });
       throw new CustomerAuthError('USER_DISABLED', 'Account is disabled', 403);
+    }
+    if (user.totpEnabled && user.totpSecret) {
+      const ticket = newOpaqueToken();
+      await this.store.saveToken({
+        tokenHash: hashToken(ticket),
+        userId: user.id,
+        projectId,
+        kind: 'mfa',
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        consumedAt: null,
+      });
+      this.audit('user.mfa_challenged', { projectId, userId: user.id });
+      return { mfaRequired: true, mfaTicket: ticket, userId: user.id };
     }
     const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
     this.audit('user.login', { projectId, userId: user.id, sessionId });
@@ -222,16 +279,7 @@ export class CustomerAuthService {
     const nextRaw = newOpaqueToken();
     await this.store.markRefreshUsed(projectId, session.id, hash);
     await this.store.touchSession(projectId, session.id, hashToken(nextRaw));
-    const role = (user.appMetadata['role'] === 'admin' ? 'admin' : 'authenticated') as CustomerRole;
-    const accessToken = await signCustomerAccessToken(
-      { sub: user.id, email: user.email, sessionId: session.id, role },
-      {
-        jwtSecret: this.config.jwtSecret,
-        issuer: this.config.issuer,
-        projectId,
-        accessTtlSeconds: this.config.accessTtlSeconds,
-      },
-    );
+    const accessToken = await this.accessTokenFor(projectId, user, session.id);
     return {
       user: exposeUser(user),
       tokens: {
@@ -349,7 +397,7 @@ export class CustomerAuthService {
   }
 
   async completePasswordReset(projectId: string, token: string, password: string): Promise<void> {
-    assertPasswordStrength(String(password ?? ''));
+    assertPasswordStrength(String(password ?? ''), this.config.passwordPolicy);
     const rec = await this.store.findToken(projectId, hashToken(String(token ?? '')), 'reset');
     if (!rec) throw new CustomerAuthError('INVALID_TOKEN', 'Invalid or expired reset token', 400);
     await this.store.consumeToken(projectId, rec.tokenHash);
@@ -375,7 +423,7 @@ export class CustomerAuthService {
     const ok = await verifyPassword(String(currentPassword ?? ''), user.passwordHash);
     if (!ok)
       throw new CustomerAuthError('INVALID_CREDENTIALS', 'Current password is incorrect', 401);
-    assertPasswordStrength(String(newPassword ?? ''));
+    assertPasswordStrength(String(newPassword ?? ''), this.config.passwordPolicy);
     await this.store.updateUser(projectId, userId, {
       passwordHash: await hashPassword(newPassword),
     });
@@ -405,5 +453,358 @@ export class CustomerAuthService {
   async listUsers(projectId: string): Promise<ExposedCustomerUser[]> {
     const users = await this.store.listUsers(projectId);
     return users.map(exposeUser);
+  }
+
+  // ── Anonymous auth + identity linking ──────────────────────────
+
+  /** Create a passwordless anonymous account (convert later via email). */
+  async signInAnonymously(
+    projectId: string,
+    input: { userMetadata?: unknown },
+    opts: { ip: string | null; agent: string | null },
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+    const metadata =
+      input.userMetadata === undefined ? {} : sanitizeUserMetadata(input.userMetadata);
+    const user = await this.store.createUser({
+      projectId,
+      email: `anon_${randomUUID().replace(/-/g, '').slice(0, 12)}@anonymous.local`,
+      passwordHash: null,
+      userMetadata: metadata,
+      isAnonymous: true,
+    });
+    const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
+    this.audit('user.anonymous_created', { projectId, userId: user.id, sessionId });
+    return { user: exposeUser(user), tokens, sessionId };
+  }
+
+  /** Link an anonymous account to a real email+password identity. */
+  async convertAnonymous(
+    projectId: string,
+    userId: string,
+    input: { email: string; password: string },
+  ): Promise<{ user: ExposedCustomerUser; verificationSent: boolean }> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    if (!user.isAnonymous) {
+      throw new CustomerAuthError('NOT_ANONYMOUS', 'Only anonymous accounts can be converted', 400);
+    }
+    const email = String(input.email ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+      throw new CustomerAuthError('INVALID_EMAIL', 'Invalid email address', 400);
+    }
+    assertPasswordStrength(String(input.password ?? ''), this.config.passwordPolicy);
+    const existing = await this.store.findUserByEmail(projectId, email);
+    if (existing && existing.id !== user.id) {
+      throw new CustomerAuthError('EMAIL_TAKEN', 'Email already registered', 409);
+    }
+    const updated = await this.store.updateUser(projectId, user.id, {
+      email,
+      passwordHash: await hashPassword(input.password),
+      isAnonymous: false,
+    });
+    if (!updated) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    const raw = newOpaqueToken();
+    await this.store.saveToken({
+      tokenHash: hashToken(raw),
+      userId: user.id,
+      projectId,
+      kind: 'verify',
+      expiresAt: new Date(Date.now() + this.config.verifyTtlSeconds * 1000).toISOString(),
+      consumedAt: null,
+    });
+    await this.deps.email.sendVerificationEmail(
+      email,
+      `${this.deps.appUrl}/verify?token=${raw}&project=${projectId}`,
+    );
+    this.audit('user.converted', { projectId, userId: user.id });
+    return { user: exposeUser(updated), verificationSent: true };
+  }
+
+  // ── Email OTP + magic links ────────────────────────────────────
+
+  /** Always {sent:true} — never reveals whether the account exists. */
+  async requestEmailOtp(
+    projectId: string,
+    email: string,
+    purpose: 'login' | 'verify' = 'login',
+  ): Promise<{ sent: boolean }> {
+    const normalized = String(email ?? '').trim().toLowerCase();
+    const user = await this.store.findUserByEmail(projectId, normalized);
+    if (user && user.status === 'active' && !user.isAnonymous) {
+      const { code } = await this.deps.otp.issue(projectId, normalized, purpose);
+      await this.deps.email.sendOtpEmail(normalized, code, purpose);
+    }
+    this.audit('user.otp_requested', { projectId });
+    return { sent: true };
+  }
+
+  async verifyEmailOtp(
+    projectId: string,
+    email: string,
+    code: string,
+    opts: { ip: string | null; agent: string | null },
+    purpose: 'login' | 'verify' = 'login',
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+    const normalized = String(email ?? '').trim().toLowerCase();
+    try {
+      await this.deps.otp.verify(projectId, normalized, purpose, code);
+    } catch (err) {
+      this.audit('user.login_failed', { projectId });
+      throw new CustomerAuthError(
+        (err as { code?: string }).code ?? 'OTP_INVALID',
+        err instanceof Error ? err.message : 'Invalid code',
+        (err as { status?: number }).status ?? 401,
+      );
+    }
+    const user = await this.store.findUserByEmail(projectId, normalized);
+    if (!user || user.status !== 'active' || user.isAnonymous) {
+      throw new CustomerAuthError('INVALID_CREDENTIALS', 'Invalid code', 401);
+    }
+    if (purpose === 'verify' && !user.emailVerified) {
+      await this.store.updateUser(projectId, user.id, { emailVerified: true });
+    }
+    const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
+    this.audit('user.otp_verified', { projectId, userId: user.id, sessionId });
+    const fresh = await this.store.findUserById(projectId, user.id);
+    return { user: exposeUser(fresh ?? user), tokens, sessionId };
+  }
+
+  /** Magic link (creates a passwordless account on first use — rate-limited at routes). */
+  async requestMagicLink(projectId: string, email: string): Promise<{ sent: boolean }> {
+    const normalized = String(email ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 320) {
+      return { sent: true };
+    }
+    let user = await this.store.findUserByEmail(projectId, normalized);
+    if (!user) {
+      try {
+        user = await this.store.createUser({
+          projectId,
+          email: normalized,
+          passwordHash: null,
+          userMetadata: {},
+        });
+      } catch {
+        return { sent: true };
+      }
+    }
+    if (user.status !== 'active' || user.isAnonymous) return { sent: true };
+    const raw = newOpaqueToken();
+    await this.store.saveToken({
+      tokenHash: hashToken(raw),
+      userId: user.id,
+      projectId,
+      kind: 'magic',
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      consumedAt: null,
+    });
+    await this.deps.email.sendMagicLink(
+      normalized,
+      `${this.deps.appUrl}/magic?token=${raw}&project=${projectId}`,
+    );
+    this.audit('user.magic_requested', { projectId });
+    return { sent: true };
+  }
+
+  async consumeMagicLink(
+    projectId: string,
+    token: string,
+    opts: { ip: string | null; agent: string | null },
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+    const rec = await this.store.findToken(projectId, hashToken(String(token ?? '')), 'magic');
+    if (!rec) throw new CustomerAuthError('INVALID_TOKEN', 'Invalid or expired link', 400);
+    await this.store.consumeToken(projectId, rec.tokenHash);
+    const user = await this.store.findUserById(projectId, rec.userId);
+    if (!user || user.status !== 'active' || user.isAnonymous) {
+      throw new CustomerAuthError('INVALID_TOKEN', 'Invalid or expired link', 400);
+    }
+    if (!user.emailVerified) {
+      await this.store.updateUser(projectId, user.id, { emailVerified: true });
+    }
+    const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
+    this.audit('user.magic_consumed', { projectId, userId: user.id, sessionId });
+    const fresh = await this.store.findUserById(projectId, user.id);
+    return { user: exposeUser(fresh ?? user), tokens, sessionId };
+  }
+
+  // ── TOTP MFA ───────────────────────────────────────────────────
+
+  /** Start MFA enrollment. Returns the secret + otpauth URI (show once as QR). */
+  async enrollTotp(
+    projectId: string,
+    userId: string,
+  ): Promise<{ secret: string; uri: string }> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    if (user.isAnonymous) throw new CustomerAuthError('NOT_SUPPORTED', 'Anonymous accounts cannot use MFA', 400);
+    const secret = generateTotpSecret();
+    await this.store.updateUser(projectId, userId, { totpSecret: secret, totpEnabled: false });
+    this.audit('user.mfa_enrolled', { projectId, userId });
+    return { secret, uri: totpProvisionUri({ secret, account: user.email }) };
+  }
+
+  /** Confirm enrollment with a live code. Returns single-use backup codes (show once). */
+  async confirmTotp(
+    projectId: string,
+    userId: string,
+    code: string,
+  ): Promise<{ enabled: boolean; backupCodes: string[] }> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user?.totpSecret) throw new CustomerAuthError('MFA_NOT_ENROLLED', 'MFA enrollment not started', 400);
+    if (!verifyTotp(user.totpSecret, code)) {
+      throw new CustomerAuthError('MFA_INVALID', 'Incorrect authenticator code', 401);
+    }
+    const { codes, hashes } = generateBackupCodes();
+    await this.store.updateUser(projectId, userId, { totpEnabled: true, backupCodeHashes: hashes });
+    return { enabled: true, backupCodes: codes };
+  }
+
+  async disableTotp(projectId: string, userId: string, code: string): Promise<void> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user?.totpSecret || !user.totpEnabled) {
+      throw new CustomerAuthError('MFA_NOT_ENROLLED', 'MFA is not enabled', 400);
+    }
+    if (!verifyTotp(user.totpSecret, code)) {
+      throw new CustomerAuthError('MFA_INVALID', 'Incorrect authenticator code', 401);
+    }
+    await this.store.updateUser(projectId, userId, {
+      totpSecret: null,
+      totpEnabled: false,
+      backupCodeHashes: [],
+    });
+    this.audit('user.mfa_disabled', { projectId, userId });
+  }
+
+  /** Exchange an MFA ticket + TOTP/backup code for a session. */
+  async verifyMfa(
+    projectId: string,
+    mfaTicket: string,
+    code: string,
+    opts: { ip: string | null; agent: string | null },
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+    const rec = await this.store.findToken(projectId, hashToken(String(mfaTicket ?? '')), 'mfa');
+    if (!rec) throw new CustomerAuthError('MFA_EXPIRED', 'Challenge expired — sign in again', 401);
+    await this.store.consumeToken(projectId, rec.tokenHash);
+    const user = await this.store.findUserById(projectId, rec.userId);
+    if (!user || user.status !== 'active' || !user.totpEnabled || !user.totpSecret) {
+      throw new CustomerAuthError('MFA_INVALID', 'MFA verification failed', 401);
+    }
+    const presented = String(code ?? '').replace(/[\s-]/g, '');
+    let ok = verifyTotp(user.totpSecret, presented);
+    if (!ok) {
+      // Single-use backup code fallback.
+      const hash = createHash('sha256').update(presented).digest('hex');
+      const remaining = user.backupCodeHashes.filter(h => h !== hash);
+      if (remaining.length !== user.backupCodeHashes.length) {
+        await this.store.updateUser(projectId, user.id, { backupCodeHashes: remaining });
+        ok = true;
+      }
+    }
+    if (!ok) {
+      this.audit('user.login_failed', { projectId, userId: user.id });
+      throw new CustomerAuthError('MFA_INVALID', 'Incorrect code', 401);
+    }
+    const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
+    this.audit('user.mfa_verified', { projectId, userId: user.id, sessionId });
+    const fresh = await this.store.findUserById(projectId, user.id);
+    return { user: exposeUser(fresh ?? user), tokens, sessionId };
+  }
+
+  // ── Phone OTP ──────────────────────────────────────────────────
+
+  async updatePhone(projectId: string, userId: string, phone: string): Promise<ExposedCustomerUser> {
+    const normalized = String(phone ?? '').trim();
+    if (!isValidPhone(normalized)) {
+      throw new CustomerAuthError('INVALID_PHONE', 'Phone must be E.164 (+15551234567)', 400);
+    }
+    const updated = await this.store.updateUser(projectId, userId, {
+      phone: normalized,
+      phoneVerified: false,
+    });
+    if (!updated) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    return exposeUser(updated);
+  }
+
+  /** Send a phone code via the configured SMS provider (honest when undeliverable). */
+  async requestPhoneOtp(projectId: string, userId: string): Promise<{ sent: boolean; delivered: boolean }> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user?.phone) throw new CustomerAuthError('PHONE_MISSING', 'No phone number on file', 400);
+    if (user.status !== 'active') throw new CustomerAuthError('USER_DISABLED', 'Account is disabled', 403);
+    const { code } = await this.deps.otp.issue(projectId, `phone:${user.phone}`, 'phone');
+    const receipt = await this.deps.sms.send({
+      to: user.phone,
+      body: `Your CloudNivo code is: ${code}. It expires in 10 minutes.`,
+      channel: 'sms',
+    });
+    this.audit('user.otp_requested', { projectId, userId });
+    return { sent: true, delivered: receipt.delivered };
+  }
+
+  async verifyPhoneOtp(
+    projectId: string,
+    userId: string,
+    code: string,
+  ): Promise<ExposedCustomerUser> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user?.phone) throw new CustomerAuthError('PHONE_MISSING', 'No phone number on file', 400);
+    try {
+      await this.deps.otp.verify(projectId, `phone:${user.phone}`, 'phone', code);
+    } catch (err) {
+      throw new CustomerAuthError(
+        (err as { code?: string }).code ?? 'OTP_INVALID',
+        err instanceof Error ? err.message : 'Invalid code',
+        (err as { status?: number }).status ?? 401,
+      );
+    }
+    const updated = await this.store.updateUser(projectId, user.id, { phoneVerified: true });
+    if (!updated) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    this.audit('user.phone_verified', { projectId, userId });
+    return exposeUser(updated);
+  }
+
+  /** Passwordless phone sign-in: code goes to the account holding the number. */
+  async requestLoginOtp(projectId: string, phone: string): Promise<{ sent: boolean; delivered: boolean }> {
+    const normalized = String(phone ?? '').trim();
+    if (!isValidPhone(normalized)) return { sent: true, delivered: false };
+    const user = await this.store.findUserByPhone(projectId, normalized);
+    if (user && user.status === 'active' && !user.isAnonymous) {
+      const { code } = await this.deps.otp.issue(projectId, `phone:${normalized}`, 'phone');
+      const receipt = await this.deps.sms
+        .send({ to: normalized, body: `Your CloudNivo code is: ${code}. It expires in 10 minutes.`, channel: 'sms' })
+        .catch(() => ({ delivered: false, queued: false, id: 'failed', driver: 'none' }));
+      this.audit('user.otp_requested', { projectId });
+      return { sent: true, delivered: receipt.delivered };
+    }
+    return { sent: true, delivered: false };
+  }
+
+  async verifyLoginOtp(
+    projectId: string,
+    phone: string,
+    code: string,
+    opts: { ip: string | null; agent: string | null },
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
+    const normalized = String(phone ?? '').trim();
+    try {
+      await this.deps.otp.verify(projectId, `phone:${normalized}`, 'phone', code);
+    } catch (err) {
+      this.audit('user.login_failed', { projectId });
+      throw new CustomerAuthError(
+        (err as { code?: string }).code ?? 'OTP_INVALID',
+        err instanceof Error ? err.message : 'Invalid code',
+        (err as { status?: number }).status ?? 401,
+      );
+    }
+    const user = await this.store.findUserByPhone(projectId, normalized);
+    if (!user || user.status !== 'active' || user.isAnonymous) {
+      throw new CustomerAuthError('INVALID_CREDENTIALS', 'Invalid code', 401);
+    }
+    if (!user.phoneVerified) {
+      await this.store.updateUser(projectId, user.id, { phoneVerified: true });
+    }
+    const { sessionId, tokens } = await this.issueSession(projectId, user, opts);
+    this.audit('user.otp_verified', { projectId, userId: user.id, sessionId });
+    const fresh = await this.store.findUserById(projectId, user.id);
+    return { user: exposeUser(fresh ?? user), tokens, sessionId };
   }
 }

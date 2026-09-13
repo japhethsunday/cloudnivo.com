@@ -10,7 +10,7 @@ export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
-  kind: 'verify' | 'reset' | 'security';
+  kind: 'verify' | 'reset' | 'security' | 'otp' | 'magic';
 }
 
 export interface EmailReceipt {
@@ -26,9 +26,34 @@ export interface EmailService {
   sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt>;
   sendSecurityNotification(to: string, text: string): Promise<EmailReceipt>;
   sendMagicLink(to: string, url: string): Promise<EmailReceipt>;
+  sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt>;
 }
 
 let emailCounter = 0;
+
+export type EmailKind = EmailMessage['kind'];
+
+/** Shared templates — every driver sends identical content. */
+export function buildEmail(
+  kind: EmailKind,
+  payload: { url?: string; code?: string; purpose?: string; text?: string },
+): { subject: string; text: string } {
+  switch (kind) {
+    case 'verify':
+      return { subject: 'Verify your email', text: `Verify your email: ${payload.url ?? ''}` };
+    case 'reset':
+      return { subject: 'Reset your password', text: `Reset your password: ${payload.url ?? ''}` };
+    case 'magic':
+      return { subject: 'Your sign-in link', text: `Sign in: ${payload.url ?? ''}` };
+    case 'otp':
+      return {
+        subject: 'Your verification code',
+        text: `Your CloudNivo code for ${payload.purpose ?? 'verification'} is: ${payload.code ?? ''}. It expires in 10 minutes.`,
+      };
+    case 'security':
+      return { subject: 'Security notice', text: payload.text ?? '' };
+  }
+}
 
 export class MemoryEmailService implements EmailService {
   readonly driver = 'memory';
@@ -43,29 +68,28 @@ export class MemoryEmailService implements EmailService {
   }
 
   async sendVerificationEmail(to: string, verifyUrl: string): Promise<EmailReceipt> {
-    return this.push({
-      to,
-      subject: 'Verify your email',
-      text: `Verify your email: ${verifyUrl}`,
-      kind: 'verify',
-    });
+    const { subject, text } = buildEmail('verify', { url: verifyUrl });
+    return this.push({ to, subject, text, kind: 'verify' });
   }
 
   async sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt> {
-    return this.push({
-      to,
-      subject: 'Reset your password',
-      text: `Reset your password: ${resetUrl}`,
-      kind: 'reset',
-    });
+    const { subject, text } = buildEmail('reset', { url: resetUrl });
+    return this.push({ to, subject, text, kind: 'reset' });
   }
 
   async sendSecurityNotification(to: string, text: string): Promise<EmailReceipt> {
-    return this.push({ to, subject: 'Security notice', text, kind: 'security' });
+    const built = buildEmail('security', { text });
+    return this.push({ to, subject: built.subject, text: built.text, kind: 'security' });
   }
 
   async sendMagicLink(to: string, url: string): Promise<EmailReceipt> {
-    return this.push({ to, subject: 'Your sign-in link', text: `Sign in: ${url}`, kind: 'verify' });
+    const { subject, text } = buildEmail('magic', { url });
+    return this.push({ to, subject, text, kind: 'magic' });
+  }
+
+  async sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
+    const { subject, text } = buildEmail('otp', { code, purpose });
+    return this.push({ to, subject, text, kind: 'otp' });
   }
 
   lastTo(to: string): { id: string; text: string } | null {

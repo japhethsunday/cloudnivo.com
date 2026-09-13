@@ -162,6 +162,41 @@ describe('phase 13 agent tokens', () => {
     ).toBe(403);
   });
 
+  it('rotates secrets and enforces ip allowlists', async () => {
+    const created = await issueAgent(base, tokenA, orgA, {
+      name: 'Rotator',
+      scopes: ['projects.read'],
+      projectIds: [projectA1],
+      ipAllowlist: ['127.0.0.1'],
+    });
+    expect(created.status).toBe(201);
+    const { token, raw } = data<{ token: { id: string }; raw: string }>(created.json);
+    // Local requests come from loopback → allowed.
+    expect((await api(base, 'GET', '/api/v1/agent/whoami', raw)).status).toBe(200);
+    // Invalid allowlists rejected at creation.
+    expect(
+      (await issueAgent(base, tokenA, orgA, {
+        name: 'bad-ip',
+        scopes: ['projects.read'],
+        projectIds: [],
+        ipAllowlist: ['not-an-ip'],
+      })).status,
+    ).toBe(400);
+    // Rotation kills the old secret and returns a fresh once-only raw value.
+    const rotated = await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens/${token.id}/rotate`, tokenA, {});
+    expect(rotated.status).toBe(200);
+    const fresh = data<{ raw: string }>(rotated.json).raw;
+    expect(fresh.startsWith('cn_agent_')).toBe(true);
+    expect(fresh).not.toBe(raw);
+    expect(JSON.stringify(rotated.json).length).toBeGreaterThan(0);
+    expect((await api(base, 'GET', '/api/v1/agent/whoami', raw)).status).toBe(401);
+    expect((await api(base, 'GET', '/api/v1/agent/whoami', fresh)).status).toBe(200);
+    // Strangers cannot rotate foreign tokens.
+    expect(
+      (await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens/${token.id}/rotate`, tokenB, {})).status,
+    ).toBe(403);
+  });
+
   it('blocks viewers from managing agent tokens', async () => {
     const email = 'agent-viewer@example.com';
     const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {

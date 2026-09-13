@@ -32,6 +32,9 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 320 }).notNull().unique(),
   passwordHash: text('password_hash'),
   displayName: varchar('display_name', { length: 120 }),
+  totpSecret: text('totp_secret'),
+  totpEnabled: boolean('totp_enabled').notNull().default(false),
+  backupCodeHashes: jsonb('backup_code_hashes').notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -101,6 +104,10 @@ export const projectEnvironments = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 63 }).notNull(),
+    /** Null = the primary (main) database; otherwise a branch id. */
+    branchId: uuid('branch_id'),
+    isPreview: boolean('is_preview').notNull().default(false),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   t => [
@@ -685,6 +692,45 @@ export const billingCredits = pgTable(
   t => [index('billing_credits_org_idx').on(t.organizationId)],
 );
 
+export const billingBudgets = pgTable(
+  'billing_budgets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    limitCents: integer('limit_cents').notNull(),
+    action: varchar('action', { length: 10 }).notNull().default('alert'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('billing_budgets_org_idx').on(t.organizationId)],
+);
+
+export const storageUploadSessions = pgTable(
+  'storage_upload_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    bucket: varchar('bucket', { length: 200 }).notNull(),
+    path: varchar('path', { length: 1024 }).notNull(),
+    contentType: varchar('content_type', { length: 200 }),
+    totalBytes: bigint('total_bytes', { mode: 'number' }),
+    receivedBytes: bigint('received_bytes', { mode: 'number' }).notNull().default(0),
+    parts: jsonb('parts').notNull().default([]),
+    upsert: boolean('upsert').notNull().default(false),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('storage_upload_sessions_project_idx').on(t.projectId)],
+);
+
 /**
  * Phase 13 — agent access tokens.
  *
@@ -710,6 +756,7 @@ export const agentTokens = pgTable(
     scopes: text('scopes').array().notNull().default([]),
     projectIds: text('project_ids').array().notNull().default([]),
     approvalRequired: boolean('approval_required').notNull().default(false),
+    ipAllowlist: text('ip_allowlist').array().notNull().default([]),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     requestCount: integer('request_count').notNull().default(0),
@@ -974,3 +1021,147 @@ export const aiUsageCounters = pgTable('ai_usage_counters', {
   lastAt: timestamp('last_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Database branches, vault, SSO-adjacent project secrets ──
+// Branches are full databases (provider handles); records live here so
+// restarts never orphan them. Vault rows hold AES-256-GCM envelopes only.
+export const projectBranches = pgTable(
+  'project_branches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 40 }).notNull(),
+    databaseId: varchar('database_id', { length: 200 }).notNull().default(''),
+    dbName: varchar('db_name', { length: 63 }).notNull().default(''),
+    dbUser: varchar('db_user', { length: 63 }).notNull().default(''),
+    dbPassword: text('db_password'),
+    host: varchar('host', { length: 255 }).notNull().default(''),
+    port: integer('port').notNull().default(5432),
+    source: varchar('source', { length: 100 }).notNull().default('main'),
+    status: varchar('status', { length: 20 }).notNull().default('creating'),
+    lastError: varchar('last_error', { length: 300 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('project_branches_project_name_unique').on(t.projectId, t.name),
+    index('project_branches_project_idx').on(t.projectId),
+  ],
+);
+
+export const projectSecrets = pgTable(
+  'project_secrets',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 64 }).notNull(),
+    ciphertext: text('ciphertext').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [unique('project_secrets_project_name_unique').on(t.projectId, t.name)],
+);
+
+// ── Status incidents, custom domains, log drains ──
+// Public status page incidents are global (no tenant scope). Domains and
+// drains are org-owned; verification tokens/secrets never echo raw twice.
+export const statusIncidents = pgTable(
+  'status_incidents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: varchar('title', { length: 200 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('open'),
+    severity: varchar('severity', { length: 20 }).notNull().default('minor'),
+    message: text('message').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  t => [index('status_incidents_status_idx').on(t.status)],
+);
+
+export const customDomains = pgTable(
+  'custom_domains',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    domain: varchar('domain', { length: 255 }).notNull().unique(),
+    purpose: varchar('purpose', { length: 20 }).notNull().default('api'),
+    verifyToken: varchar('verify_token', { length: 100 }).notNull(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('custom_domains_org_idx').on(t.organizationId)],
+);
+
+export const logDrains = pgTable(
+  'log_drains',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    url: varchar('url', { length: 2000 }).notNull(),
+    events: jsonb('events').notNull().default([]),
+    secretPrefix: varchar('secret_prefix', { length: 20 }).notNull().default(''),
+    secretHash: text('secret_hash').notNull().default(''),
+    enabled: boolean('enabled').notNull().default(true),
+    lastStatus: varchar('last_status', { length: 20 }).notNull().default('never'),
+    lastError: varchar('last_error', { length: 300 }),
+    cursor: varchar('cursor', { length: 100 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('log_drains_org_idx').on(t.organizationId)],
+);
+
+// ── Organization security policies + SSO connections ──
+// One policy row per org (created lazily, defaults = open). SSO rows hold
+// IdP metadata; client secrets are stored AES-256-GCM encrypted (never
+// returned by any read path) and re-entered after JWT_SECRET rotation.
+export const organizationPolicies = pgTable('organization_policies', {
+  organizationId: uuid('organization_id')
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  allowedEmailDomains: jsonb('allowed_email_domains').notNull().default([]),
+  requireMfa: boolean('require_mfa').notNull().default(false),
+  passwordMinLength: integer('password_min_length'),
+  passwordMinClasses: integer('password_min_classes'),
+  /** Audit/API log retention in days (null = platform default 90). */
+  logRetentionDays: integer('log_retention_days'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ssoConnections = pgTable(
+  'sso_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 40 }).notNull().default('oidc'),
+    displayName: varchar('display_name', { length: 120 }).notNull().default('SSO'),
+    issuer: varchar('issuer', { length: 500 }).notNull(),
+    clientId: varchar('client_id', { length: 500 }).notNull(),
+    clientSecretEnc: text('client_secret_enc').notNull(),
+    defaultRole: varchar('default_role', { length: 20 }).notNull().default('member'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('sso_connections_org_idx').on(t.organizationId),
+    index('sso_connections_enabled_idx').on(t.enabled),
+  ],
+);

@@ -1,5 +1,6 @@
 export * from './scopes.js';
 export * from './tokens.js';
+export * from './ip.js';
 export * from './approvals.js';
 export * from './activity.js';
 export * from './service.js';

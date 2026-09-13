@@ -59,6 +59,7 @@ import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 import { handleAiRoutes, isAiRoute } from './ai.js';
 import { handleAutomationRoutes, isAutomationRoute } from './automation.js';
 import { handleMetricsRoutes, isMetricsRoute } from './metrics.js';
+import { handlePlatformOpsRoutes, isPlatformOpsRoute } from './platform-ops.js';
 import { handleBillingRoutes, isBillingRoute } from './billing.js';
 import { agentSessionFor, handleAgentRoutes, isAgentRoute, looksLikeAgentToken } from './agents.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
@@ -403,6 +404,12 @@ export async function handleRequest(
     // Request metrics (org-scoped reads over the process-local ring).
     if (isMetricsRoute(url.pathname, req.method ?? 'GET')) {
       const handled = await handleMetricsRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
+    // Platform ops (public status, org domains + log drains).
+    if (isPlatformOpsRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handlePlatformOpsRoutes(req, res, ctx, logger, baseHeaders, requestId);
       if (handled) return;
     }
 

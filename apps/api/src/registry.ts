@@ -72,6 +72,8 @@ export interface ProjectAuthConfig {
 export interface Registry {
   createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg>;
   listOrganizations(userId: string): Promise<OrganizationRecord[]>;
+  /** Public-by-slug lookup (SSO discovery pre-login). Returns null when unknown. */
+  getOrganizationBySlug(slug: string): Promise<OrganizationRecord | null>;
   membershipsFor(userId: string): Promise<MembershipRecord[]>;
   /** All memberships of one organization (member counts, billing visibility). */
   listOrganizationMembers(organizationId: string): Promise<MembershipRecord[]>;
@@ -107,6 +109,10 @@ export interface Registry {
     fields: { projectId?: string; organizationId?: string; userId?: string },
   ): Promise<void>;
   listAudit(): Promise<AuditRecord[]>;
+  /** Delete audit rows older than the ISO cutoff (optionally one org). Returns rows removed. */
+  pruneAuditLogs(olderThanIso: string, organizationId?: string): Promise<number>;
+  /** All organization ids (retention + maintenance enumeration). */
+  listOrganizationIds(): Promise<string[]>;
   getAuthConfig(projectId: string): Promise<ProjectAuthConfig | null>;
   setAuthConfig(projectId: string, allowedOrigins: string[]): Promise<ProjectAuthConfig>;
 }
@@ -125,7 +131,7 @@ export class MemoryRegistry implements Registry {
   private readonly projects = new Map<string, ProjectRecord>();
   private readonly databases = new Map<string, ProjectDbRecord>();
   private readonly credentials = new Map<string, { dbUser: string; password: string }>();
-  private readonly audit: AuditRecord[] = [];
+  private audit: AuditRecord[] = [];
   private readonly authConfigs = new Map<string, ProjectAuthConfig>();
   private auditCounter = 0;
 
@@ -145,6 +151,13 @@ export class MemoryRegistry implements Registry {
       this.memberships.filter(m => m.userId === userId).map(m => m.organizationId),
     );
     return [...this.orgs.values()].filter(o => allowed.has(o.id));
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<OrganizationRecord | null> {
+    for (const o of this.orgs.values()) {
+      if (o.slug === slug) return o;
+    }
+    return null;
   }
 
   async membershipsFor(userId: string): Promise<MembershipRecord[]> {
@@ -286,6 +299,18 @@ export class MemoryRegistry implements Registry {
 
   async listAudit(): Promise<AuditRecord[]> {
     return [...this.audit];
+  }
+
+  async pruneAuditLogs(olderThanIso: string, organizationId?: string): Promise<number> {
+    const before = this.audit.length;
+    this.audit = this.audit.filter(
+      a => a.at >= olderThanIso || (organizationId !== undefined && a.organizationId !== organizationId),
+    );
+    return before - this.audit.length;
+  }
+
+  async listOrganizationIds(): Promise<string[]> {
+    return [...this.orgs.keys()];
   }
 
   async getAuthConfig(projectId: string): Promise<ProjectAuthConfig | null> {

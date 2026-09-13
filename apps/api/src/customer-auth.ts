@@ -5,10 +5,17 @@ import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudni
 import { bearerFromHeader } from '@cloudnivo/auth';
 import {
   CustomerAuthService,
+  HttpSmsService,
   MemoryCustomerAuthStore,
   MemoryEmailService,
+  MemorySmsService,
+  OtpService,
   PostgresCustomerAuthStore,
+  ResendEmailService,
+  SmtpEmailService,
   ensureAuthSchema,
+  mergePasswordPolicy,
+  verifyCaptcha,
   verifyCustomerAccessToken,
   decodeCustomerToken,
   type CustomerAuditEvent,
@@ -17,8 +24,10 @@ import {
   type CustomerRole,
   type CustomerSession,
   type CustomerUser,
+  type EmailService,
   type ExposedCustomerUser,
   type OneTimeToken,
+  type SmsService,
 } from '@cloudnivo/auth';
 import { queryProjectDb } from '@cloudnivo/database';
 import { FakeDatabaseProvider } from '@cloudnivo/provisioning';
@@ -29,6 +38,23 @@ import type { ProjectRecord } from './registry.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
+import { emitAutomationEvent } from './automation.js';
+import { meterUsage } from './billing.js';
+
+/** Auth hook: fan out to project webhooks (never breaks auth on failure). */
+function emitAuthHook(
+  ctx: ApiContext,
+  project: ProjectRecord,
+  type: 'user.created' | 'user.signed_in',
+  userId: string,
+): void {
+  void emitAutomationEvent(ctx, {
+    type,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    payload: { userId },
+  }).catch(() => undefined);
+}
 
 /**
  * Customer authentication routes: /api/v1/projects/:id/auth/*.
@@ -52,6 +78,8 @@ class PgCustomerAuthAdapter implements CustomerAuthStore {
     email: string;
     passwordHash: string | null;
     userMetadata: Record<string, unknown>;
+    isAnonymous?: boolean;
+    phone?: string | null;
   }): Promise<CustomerUser> {
     void input.projectId;
     return this.inner.createUser(input);
@@ -59,6 +87,10 @@ class PgCustomerAuthAdapter implements CustomerAuthStore {
   findUserByEmail(_projectId: string, email: string) {
     void _projectId;
     return this.inner.findUserByEmail(email);
+  }
+  findUserByPhone(_projectId: string, phone: string) {
+    void _projectId;
+    return this.inner.findUserByPhone(phone);
   }
   findUserById(_projectId: string, userId: string) {
     void _projectId;
@@ -109,7 +141,7 @@ class PgCustomerAuthAdapter implements CustomerAuthStore {
   saveToken(token: Omit<OneTimeToken, 'createdAt'>) {
     return this.inner.saveToken(token);
   }
-  findToken(_projectId: string, hash: string, kind: 'verify' | 'reset') {
+  findToken(_projectId: string, hash: string, kind: 'verify' | 'reset' | 'magic' | 'mfa') {
     void _projectId;
     return this.inner.findToken(hash, kind);
   }
@@ -125,7 +157,46 @@ class PgCustomerAuthAdapter implements CustomerAuthStore {
 
 export interface CustomerAuthHandle {
   service: CustomerAuthService;
-  email: MemoryEmailService;
+  /** Active email driver (memory in dev/test — the only one with an outbox). */
+  email: EmailService;
+}
+
+/** Email driver factory: memory default, resend/smtp when configured. */
+function emailServiceFor(ctx: ApiContext): EmailService {
+  const c = ctx.config;
+  if (c.EMAIL_DRIVER === 'resend' && c.RESEND_API_KEY && c.RESEND_FROM) {
+    return new ResendEmailService({ apiKey: c.RESEND_API_KEY, from: c.RESEND_FROM });
+  }
+  if (c.EMAIL_DRIVER === 'smtp' && c.SMTP_HOST && c.SMTP_FROM) {
+    return new SmtpEmailService({
+      host: c.SMTP_HOST,
+      port: c.SMTP_PORT,
+      username: c.SMTP_USERNAME,
+      password: c.SMTP_PASSWORD,
+      from: c.SMTP_FROM,
+      secure: c.SMTP_SECURE,
+    });
+  }
+  if (c.EMAIL_DRIVER !== 'memory') {
+    ctx.logger.warn('auth.email_driver_fallback', {
+      driver: c.EMAIL_DRIVER,
+      note: 'Email driver misconfigured (missing key/host) — falling back to memory outbox; delivery NOT happening',
+    });
+  }
+  return new MemoryEmailService();
+}
+
+function smsServiceFor(ctx: ApiContext): SmsService {
+  const c = ctx.config;
+  if (c.SMS_DRIVER === 'http' && c.SMS_HTTP_ENDPOINT && c.SMS_HTTP_API_KEY) {
+    return new HttpSmsService({ endpoint: c.SMS_HTTP_ENDPOINT, apiKey: c.SMS_HTTP_API_KEY });
+  }
+  if (c.SMS_DRIVER !== 'memory') {
+    ctx.logger.warn('auth.sms_driver_fallback', {
+      note: 'SMS driver misconfigured — falling back to memory outbox; delivery NOT happening',
+    });
+  }
+  return new MemorySmsService();
 }
 
 async function runnerFor(ctx: ApiContext, project: ProjectRecord) {
@@ -148,7 +219,10 @@ export async function authServiceFor(
 ): Promise<CustomerAuthHandle> {
   const cached = ctx.customerAuth.get(project.id);
   if (cached) return cached;
-  const email = new MemoryEmailService();
+  const email = emailServiceFor(ctx);
+  const sms = smsServiceFor(ctx);
+  // OTP codes live in the shared cache (cross-instance) with memory fallback.
+  const otp = new OtpService(ctx.cache, { ttlSeconds: 600, maxAttempts: 5 });
   const config: CustomerAuthConfig = {
     accessTtlSeconds: ctx.config.AUTH_ACCESS_TTL_S,
     refreshTtlSeconds: ctx.config.AUTH_REFRESH_TTL_S,
@@ -157,6 +231,15 @@ export async function authServiceFor(
     emailDriver: 'memory',
     jwtSecret: ctx.config.JWT_SECRET,
     issuer: ctx.config.JWT_ISSUER,
+    passwordPolicy:
+      // Legacy back-compat default (length-only). Raising either knob opts
+      // the project into the full configurable policy (classes, denylist).
+      ctx.config.AUTH_PASSWORD_MIN_LENGTH <= 8 && ctx.config.AUTH_PASSWORD_MIN_CLASSES === 0
+        ? null
+        : mergePasswordPolicy({
+            minLength: ctx.config.AUTH_PASSWORD_MIN_LENGTH,
+            minClasses: ctx.config.AUTH_PASSWORD_MIN_CLASSES,
+          }),
   };
   const audit = (event: CustomerAuditEvent, fields: Record<string, unknown>): void => {
     void ctx.registry
@@ -185,6 +268,8 @@ export async function authServiceFor(
     config,
     audit,
     appUrl: ctx.config.APP_URL,
+    otp,
+    sms,
   });
   const handle = { service, email };
   ctx.customerAuth.set(project.id, handle);
@@ -279,6 +364,53 @@ const ChangeBody = z.object({
 });
 const UpdateUserBody = z.object({ userMetadata: z.record(z.unknown()) });
 const ConfigBody = z.object({ allowedOrigins: z.array(z.string().max(200)).max(20) });
+const OtpRequestBody = z.object({
+  email: z.string().min(3).max(320),
+  purpose: z.enum(['login', 'verify']).default('login'),
+});
+const OtpVerifyBody = z.object({
+  email: z.string().min(3).max(320),
+  code: z.string().min(4).max(10),
+  purpose: z.enum(['login', 'verify']).default('login'),
+});
+const MagicRequestBody = z.object({ email: z.string().min(3).max(320) });
+const MagicConsumeBody = z.object({ token: z.string().min(10).max(500) });
+const MfaCodeBody = z.object({ code: z.string().min(4).max(32) });
+const MfaVerifyBody = z.object({
+  mfaTicket: z.string().min(10).max(500),
+  code: z.string().min(4).max(32),
+});
+const ConvertBody = z.object({
+  email: z.string().min(3).max(320),
+  password: z.string().min(8).max(128),
+});
+const PhoneBody = z.object({ phone: z.string().min(7).max(20) });
+const PhoneVerifyBody = z.object({ code: z.string().min(4).max(10) });
+
+/** Bot gate: enforced only when CAPTCHA_PROVIDER is keyed (dev stays open). */
+async function checkCaptcha(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  token: unknown,
+): Promise<void> {
+  const ip =
+    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
+    req.socket.remoteAddress ??
+    null;
+  let result: { ok: boolean; enforced: boolean };
+  try {
+    result = await verifyCaptcha(
+      { provider: ctx.config.CAPTCHA_PROVIDER, secretKey: ctx.config.CAPTCHA_SECRET_KEY },
+      typeof token === 'string' ? token : null,
+      ip,
+    );
+  } catch (err) {
+    throw new ApiError('CAPTCHA_UNAVAILABLE', err instanceof Error ? err.message : 'Try again', 503);
+  }
+  if (result.enforced && !result.ok) {
+    throw new ApiError('CAPTCHA_FAILED', 'Bot verification failed', 403);
+  }
+}
 
 function clientMeta(req: IncomingMessage): { ip: string | null; agent: string | null } {
   const fwd = req.headers['x-forwarded-for'];
@@ -377,23 +509,28 @@ export async function handleCustomerAuthRoutes(
     // ── Public endpoints (strict rate limits) ──
     if (head === 'signup' && req.method === 'POST') {
       await authLimit(ctx, key(`signup:${meta.ip ?? 'unknown'}`));
-      const parsed = parseBody(SignupBody, await readJson());
+      const raw = await readJson();
+      const parsed = parseBody(SignupBody, raw);
+      await checkCaptcha(ctx, req, (raw as { captcha_token?: unknown } | undefined)?.captcha_token);
       const out = await service.signUp(project.id, {
         email: parsed.email,
         password: parsed.password,
         userMetadata: parsed.userMetadata,
       });
       const body: Record<string, unknown> = { user: out.user };
-      if (config.isTest) {
+      if (config.isTest && email instanceof MemoryEmailService) {
         const last = email.lastTo(parsed.email.toLowerCase());
         const m = /token=([A-Za-z0-9_-]+)/.exec(last?.text ?? '');
         if (m?.[1]) body['verificationToken'] = m[1];
       }
+      emitAuthHook(ctx, project, 'user.created', out.user.id);
+      meterUsage(ctx, project.organizationId, project.id, 'api', 'api_requests', 1);
       return finish(201, ok(body, requestId));
     }
 
     if (head === 'token' && req.method === 'POST') {
-      const parsed = parseBody(TokenBody, await readJson());
+      const raw = await readJson();
+      const parsed = parseBody(TokenBody, raw);
       if (parsed.grant_type === 'refresh_token') {
         if (!parsed.refresh_token)
           throw new ApiError('VALIDATION_ERROR', 'refresh_token required', 400);
@@ -405,11 +542,16 @@ export async function handleCustomerAuthRoutes(
         throw new ApiError('VALIDATION_ERROR', 'email and password required', 400);
       }
       await authLimit(ctx, key(`login:${emailKey(parsed.email)}:${meta.ip ?? 'unknown'}`));
+      await checkCaptcha(ctx, req, (raw as { captcha_token?: unknown } | undefined)?.captcha_token);
       const out = await service.signIn(
         project.id,
         { email: parsed.email, password: parsed.password },
         meta,
       );
+      if (!('mfaRequired' in out)) {
+        emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+      }
+      meterUsage(ctx, project.organizationId, project.id, 'api', 'api_requests', 1);
       return finish(200, ok(out, requestId));
     }
 
@@ -439,7 +581,7 @@ export async function handleCustomerAuthRoutes(
       const parsed = parseBody(ResetRequestBody, await readJson());
       await service.requestPasswordReset(project.id, parsed.email);
       const body: Record<string, unknown> = { sent: true };
-      if (config.isTest) {
+      if (config.isTest && email instanceof MemoryEmailService) {
         const last = email.lastTo(parsed.email.toLowerCase());
         const m = /token=([A-Za-z0-9_-]+)/.exec(last?.text ?? '');
         if (m?.[1]) body['resetToken'] = m[1];
@@ -459,6 +601,135 @@ export async function handleCustomerAuthRoutes(
       const parsed = parseBody(VerifyBody, await readJson());
       const user = await service.verifyEmail(project.id, parsed.token);
       return finish(200, ok({ user }, requestId));
+    }
+
+    // ── Anonymous auth + identity linking ──
+    if (head === 'anonymous' && req.method === 'POST') {
+      await authLimit(ctx, key(`anon:${meta.ip ?? 'unknown'}`));
+      const body = (await readJson().catch(() => undefined)) as
+        { userMetadata?: unknown } | undefined;
+      const out = await service.signInAnonymously(
+        project.id,
+        { userMetadata: body?.userMetadata },
+        meta,
+      );
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'convert' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      await authLimit(ctx, key(`convert:${caller.user.id}`));
+      const parsed = parseBody(ConvertBody, await readJson());
+      const out = await service.convertAnonymous(project.id, caller.user.id, {
+        email: parsed.email,
+        password: parsed.password,
+      });
+      return finish(200, ok(out, requestId));
+    }
+
+    // ── Email OTP + magic links ──
+    if (head === 'otp-request' && req.method === 'POST') {
+      await authLimit(ctx, key(`otp:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(OtpRequestBody, await readJson());
+      const out = await service.requestEmailOtp(project.id, parsed.email, parsed.purpose);
+      const body: Record<string, unknown> = { sent: out.sent };
+      if (config.isTest && email instanceof MemoryEmailService) {
+        const last = email.lastTo(parsed.email.toLowerCase());
+        const m = /(\d{4,10})/.exec(last?.text ?? '');
+        if (m?.[1]) body['code'] = m[1];
+      }
+      return finish(200, ok(body, requestId));
+    }
+    if (head === 'otp-verify' && req.method === 'POST') {
+      await authLimit(ctx, key(`otp:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(OtpVerifyBody, await readJson());
+      const out = await service.verifyEmailOtp(
+        project.id,
+        parsed.email,
+        parsed.code,
+        meta,
+        parsed.purpose,
+      );
+      emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'magic-request' && req.method === 'POST') {
+      await authLimit(ctx, key(`magic:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(MagicRequestBody, await readJson());
+      const out = await service.requestMagicLink(project.id, parsed.email);
+      const body: Record<string, unknown> = { sent: out.sent };
+      if (config.isTest && email instanceof MemoryEmailService) {
+        const last = email.lastTo(parsed.email.toLowerCase());
+        const m = /token=([A-Za-z0-9_-]+)/.exec(last?.text ?? '');
+        if (m?.[1]) body['magicToken'] = m[1];
+      }
+      return finish(200, ok(body, requestId));
+    }
+    if (head === 'magic-consume' && req.method === 'POST') {
+      await authLimit(ctx, key(`magic:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(MagicConsumeBody, await readJson());
+      const out = await service.consumeMagicLink(project.id, parsed.token, meta);
+      emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+      return finish(200, ok(out, requestId));
+    }
+
+    // ── TOTP MFA ──
+    if (head === 'mfa-enroll' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      const out = await service.enrollTotp(project.id, caller.user.id);
+      // Secret shown ONCE — never logged, never stored raw elsewhere.
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'mfa-confirm' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      const parsed = parseBody(MfaCodeBody, await readJson());
+      const out = await service.confirmTotp(project.id, caller.user.id, parsed.code);
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'mfa-disable' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      const parsed = parseBody(MfaCodeBody, await readJson());
+      await service.disableTotp(project.id, caller.user.id, parsed.code);
+      return finish(200, ok({ disabled: true }, requestId));
+    }
+    if (head === 'mfa-verify' && req.method === 'POST') {
+      await authLimit(ctx, key(`mfa:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(MfaVerifyBody, await readJson());
+      const out = await service.verifyMfa(project.id, parsed.mfaTicket, parsed.code, meta);
+      emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+      return finish(200, ok(out, requestId));
+    }
+
+    // ── Phone OTP ──
+    if (head === 'phone' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      const parsed = parseBody(PhoneBody, await readJson());
+      const user = await service.updatePhone(project.id, caller.user.id, parsed.phone);
+      return finish(200, ok({ user }, requestId));
+    }
+    if (head === 'phone-otp-request' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      await authLimit(ctx, key(`phone:${caller.user.id}`));
+      const out = await service.requestPhoneOtp(project.id, caller.user.id);
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'phone-otp-verify' && req.method === 'POST') {
+      const caller = await customerBearer(ctx, req, project);
+      const parsed = parseBody(PhoneVerifyBody, await readJson());
+      const user = await service.verifyPhoneOtp(project.id, caller.user.id, parsed.code);
+      return finish(200, ok({ user }, requestId));
+    }
+    if (head === 'phone-login-request' && req.method === 'POST') {
+      await authLimit(ctx, key(`phonelogin:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(PhoneBody, await readJson());
+      const out = await service.requestLoginOtp(project.id, parsed.phone);
+      return finish(200, ok(out, requestId));
+    }
+    if (head === 'phone-login-verify' && req.method === 'POST') {
+      await authLimit(ctx, key(`phonelogin:${meta.ip ?? 'unknown'}`));
+      const parsed = parseBody(PhoneVerifyBody.extend({ phone: z.string().min(7).max(20) }), await readJson());
+      const out = await service.verifyLoginOtp(project.id, parsed.phone, parsed.code, meta);
+      emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+      return finish(200, ok(out, requestId));
     }
 
     // ── Customer-authenticated endpoints ──
@@ -561,7 +832,14 @@ export async function handleCustomerAuthRoutes(
       await platformAdmin(ctx, req, project);
       return finish(
         200,
-        ok({ driver: email.driver, queued: email.outbox.length, delivered: false }, requestId),
+        ok(
+          {
+            driver: email.driver,
+            queued: email instanceof MemoryEmailService ? email.outbox.length : null,
+            delivered: false,
+          },
+          requestId,
+        ),
       );
     }
 

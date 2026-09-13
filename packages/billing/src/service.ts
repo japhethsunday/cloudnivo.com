@@ -1,5 +1,7 @@
 import { BillingError, GAUGE_METRICS, periodBounds, periodOf } from './types.js';
 import type {
+  Budget,
+  BudgetEvaluation,
   Invoice,
   LimitCheck,
   Payment,
@@ -449,15 +451,17 @@ export class BillingService {
   // ── Invoices / payments / credits ───────────────────────────────
 
   /**
-   * Generate an open invoice from real usage: plan base price + metered
-   * overage lines where the plan offers overage rates. Never invents
-   * charges — every line traces to the plan catalog or a usage aggregate.
+   * Compute invoice lines from real usage WITHOUT persisting: plan base
+   * price + metered overage where the plan offers rates. Shared by
+   * generateInvoice (persists) and estimateSpendCents (budgets/preview).
    */
-  async generateInvoice(organizationId: string, period?: string): Promise<Invoice> {
+  async previewInvoice(
+    organizationId: string,
+    period?: string,
+  ): Promise<{ planId: PlanId; period: string; lines: Invoice['lines']; amountCents: number }> {
     const { planId } = await this.effectiveLimits(organizationId);
     const plan = getPlan(planId);
     const target = period ?? periodOf(this.now());
-    const { start, end } = periodBounds(target);
     const rows = await this.aggregate(organizationId, target);
     const sum = (service: UsageService, metric: UsageMetric): number =>
       rows
@@ -516,22 +520,88 @@ export class BillingService {
       units: raw / 1_000_000,
       unit: '1M invocations',
     }));
-    const amountCents = lines.reduce((a, l) => a + l.amountCents, 0);
+    return { planId, period: target, lines, amountCents: lines.reduce((a, l) => a + l.amountCents, 0) };
+  }
+
+  /**
+   * Generate an open invoice from real usage: plan base price + metered
+   * overage lines where the plan offers overage rates. Never invents
+   * charges — every line traces to the plan catalog or a usage aggregate.
+   */
+  async generateInvoice(organizationId: string, period?: string): Promise<Invoice> {
+    const preview = await this.previewInvoice(organizationId, period);
+    const { start, end } = periodBounds(preview.period);
+    const plan = getPlan(preview.planId);
     const existing = await this.store.listInvoices(organizationId);
-    const number = `INV-${target.replace('-', '')}-${String(existing.length + 1).padStart(3, '0')}`;
+    const number = `INV-${preview.period.replace('-', '')}-${String(existing.length + 1).padStart(3, '0')}`;
     return this.store.createInvoice({
       organizationId,
       number,
       periodStart: start.toISOString(),
       periodEnd: end.toISOString(),
-      lines,
-      amountCents,
+      lines: preview.lines,
+      amountCents: preview.amountCents,
       currency: plan.currency,
     });
   }
 
   async listInvoices(organizationId: string): Promise<Invoice[]> {
     return this.store.listInvoices(organizationId);
+  }
+
+  // ── Spend estimation + budgets (spend protection) ─────────────
+
+  /** Live spend estimate for the current period (plan + accrued overage). */
+  async estimateSpendCents(organizationId: string): Promise<{ spendCents: number; period: string }> {
+    const preview = await this.previewInvoice(organizationId);
+    return { spendCents: preview.amountCents, period: preview.period };
+  }
+
+  async createBudget(
+    organizationId: string,
+    input: { name: string; limitCents: number; action: Budget['action'] },
+  ): Promise<Budget> {
+    if (input.action !== 'alert' && input.action !== 'block') {
+      throw new BillingError('VALIDATION_ERROR', 'Budget action must be alert or block', 400);
+    }
+    return this.store.createBudget({
+      organizationId,
+      name: input.name,
+      limitCents: input.limitCents,
+      action: input.action,
+    });
+  }
+
+  async listBudgets(organizationId: string): Promise<Budget[]> {
+    return this.store.listBudgets(organizationId);
+  }
+
+  async deleteBudget(organizationId: string, id: string): Promise<void> {
+    const ok = await this.store.deleteBudget(organizationId, id);
+    if (!ok) throw new BillingError('NOT_FOUND', 'Budget not found', 404);
+  }
+
+  /** Evaluate every budget against live spend (alerts surface, blocks enforce). */
+  async evaluateBudgets(
+    organizationId: string,
+  ): Promise<{ spendCents: number; period: string; evaluations: BudgetEvaluation[] }> {
+    const { spendCents, period } = await this.estimateSpendCents(organizationId);
+    const budgets = await this.store.listBudgets(organizationId);
+    const evaluations: BudgetEvaluation[] = budgets.map(budget => ({
+      budget,
+      spendCents,
+      breached: spendCents >= budget.limitCents,
+      percent:
+        budget.limitCents <= 0 ? 100 : Math.min(999, Math.floor((spendCents / budget.limitCents) * 100)),
+    }));
+    return { spendCents, period, evaluations };
+  }
+
+  /** True when a breached block-budget freezes paid-accruing mutations. */
+  async isSpendBlocked(organizationId: string): Promise<{ blocked: boolean; budgetId: string | null }> {
+    const { evaluations } = await this.evaluateBudgets(organizationId);
+    const hit = evaluations.find(e => e.breached && e.budget.action === 'block');
+    return hit ? { blocked: true, budgetId: hit.budget.id } : { blocked: false, budgetId: null };
   }
 
   async getInvoice(organizationId: string, invoiceId: string): Promise<Invoice> {

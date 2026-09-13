@@ -61,6 +61,37 @@ export interface StorageMetadataStore {
   recordUpload(projectId: string, bytes: number): Promise<void>;
   recordDownload(projectId: string): Promise<void>;
   adjustUsage(projectId: string, filesDelta: number, bytesDelta: number): Promise<void>;
+  // Resumable upload sessions (multipart): tracked here so any instance can
+  // accept parts and complete the assembly.
+  createUploadSession(input: {
+    organizationId: string;
+    projectId: string;
+    bucket: string;
+    path: string;
+    contentType: string | null;
+    totalBytes: number | null;
+    upsert: boolean;
+  }): Promise<UploadSession>;
+  getUploadSession(projectId: string, id: string): Promise<UploadSession | null>;
+  recordUploadPart(projectId: string, id: string, index: number, bytes: number): Promise<UploadSession | null>;
+  finishUploadSession(projectId: string, id: string, status: 'completed' | 'aborted'): Promise<boolean>;
+  pruneUploadSessions(beforeIso: string): Promise<number>;
+}
+
+export interface UploadSession {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  bucket: string;
+  path: string;
+  contentType: string | null;
+  totalBytes: number | null;
+  receivedBytes: number;
+  parts: number[];
+  upsert: boolean;
+  status: 'active' | 'completed' | 'aborted';
+  expiresAt: string;
+  createdAt: string;
 }
 
 interface UsageCounters {
@@ -74,6 +105,7 @@ export class MemoryStorageMetadataStore implements StorageMetadataStore {
   private readonly buckets = new Map<string, Bucket>();
   private readonly objects = new Map<string, StoredObject>();
   private readonly usageCounters = new Map<string, UsageCounters>();
+  private readonly uploads = new Map<string, UploadSession>();
 
   private bucketKey(projectId: string, name: string): string {
     return `${projectId}/${name}`;
@@ -201,5 +233,68 @@ export class MemoryStorageMetadataStore implements StorageMetadataStore {
     const c = this.counters(projectId);
     c.files = Math.max(0, c.files + filesDelta);
     c.bytes = Math.max(0, c.bytes + bytesDelta);
+  }
+
+  async createUploadSession(input: {
+    organizationId: string;
+    projectId: string;
+    bucket: string;
+    path: string;
+    contentType: string | null;
+    totalBytes: number | null;
+    upsert: boolean;
+  }): Promise<UploadSession> {
+    const now = new Date();
+    const session: UploadSession = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      bucket: input.bucket,
+      path: input.path,
+      contentType: input.contentType,
+      totalBytes: input.totalBytes,
+      receivedBytes: 0,
+      parts: [],
+      upsert: input.upsert,
+      status: 'active',
+      expiresAt: new Date(now.getTime() + 24 * 3_600_000).toISOString(),
+      createdAt: now.toISOString(),
+    };
+    this.uploads.set(`${input.projectId}:${session.id}`, session);
+    return { ...session, parts: [] };
+  }
+
+  async getUploadSession(projectId: string, id: string): Promise<UploadSession | null> {
+    const s = this.uploads.get(`${projectId}:${id}`);
+    return s ? { ...s, parts: [...s.parts] } : null;
+  }
+
+  async recordUploadPart(projectId: string, id: string, index: number, bytes: number): Promise<UploadSession | null> {
+    const s = this.uploads.get(`${projectId}:${id}`);
+    if (!s || s.status !== 'active' || Date.parse(s.expiresAt) <= Date.now()) return null;
+    if (!s.parts.includes(index)) {
+      s.parts.push(index);
+      s.parts.sort((a, b) => a - b);
+    }
+    s.receivedBytes += bytes;
+    return { ...s, parts: [...s.parts] };
+  }
+
+  async finishUploadSession(projectId: string, id: string, status: 'completed' | 'aborted'): Promise<boolean> {
+    const s = this.uploads.get(`${projectId}:${id}`);
+    if (!s) return false;
+    this.uploads.set(`${projectId}:${id}`, { ...s, status });
+    return true;
+  }
+
+  async pruneUploadSessions(beforeIso: string): Promise<number> {
+    let n = 0;
+    for (const [k, s] of this.uploads) {
+      if (s.expiresAt < beforeIso && s.status === 'active') {
+        this.uploads.delete(k);
+        n += 1;
+      }
+    }
+    return n;
   }
 }

@@ -198,10 +198,17 @@ export function bearerFromHeader(header: string | null | undefined): string | nu
 
 // ── Customer authentication (per-project application users) ─────────────
 // Extends — never replaces — the platform primitives above.
+export * from './totp.js';
+export * from './password-policy.js';
+export * from './otp.js';
+export * from './captcha.js';
+export * from './sms.js';
+export * from './oidc.js';
 export * from './customer/types.js';
 export * from './customer/tokens.js';
 export * from './customer/metadata.js';
 export * from './customer/email.js';
+export * from './customer/email-providers.js';
 export * from './customer/store.js';
 export * from './customer/pg-store.js';
 export * from './customer/service.js';

@@ -74,7 +74,9 @@ export type WebhookEventType =
   | 'function.deployed'
   | 'function.invoked'
   | 'ai.plan.applied'
-  | 'project.deleted';
+  | 'project.deleted'
+  | 'user.created'
+  | 'user.signed_in';
 
 export const WEBHOOK_EVENTS: readonly WebhookEventType[] = [
   'job.completed',
@@ -83,6 +85,8 @@ export const WEBHOOK_EVENTS: readonly WebhookEventType[] = [
   'function.invoked',
   'ai.plan.applied',
   'project.deleted',
+  'user.created',
+  'user.signed_in',
 ];
 
 export function isWebhookEvent(value: string): value is WebhookEventType {

@@ -120,12 +120,35 @@ const EnvSchema = z.object({
   AUTH_RESET_TTL_S: z.coerce.number().int().min(300).max(86_400).default(3600),
   AUTH_VERIFY_TTL_S: z.coerce.number().int().min(3600).max(604_800).default(86_400),
   AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
-  EMAIL_DRIVER: z.enum(['memory']).default('memory'),
+  EMAIL_DRIVER: z.enum(['memory', 'resend', 'smtp']).default('memory'),
+  // Resend (transactional API; key server-side only, never logged).
+  RESEND_API_KEY: z.string().default(''),
+  RESEND_FROM: z.string().default(''),
+  // SMTP submission (STARTTLS by default).
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_USERNAME: z.string().default(''),
+  SMTP_PASSWORD: z.string().default(''),
+  SMTP_FROM: z.string().default(''),
+  SMTP_SECURE: z.enum(['starttls', 'tls', 'plain']).default('starttls'),
+  // SMS for phone OTP (memory = dev outbox; http = generic gateway).
+  SMS_DRIVER: z.enum(['memory', 'http']).default('memory'),
+  SMS_HTTP_ENDPOINT: z.string().default(''),
+  SMS_HTTP_API_KEY: z.string().default(''),
+  // Bot protection (disabled = open; turnstile/hcaptcha enforce when keyed).
+  CAPTCHA_PROVIDER: z.enum(['disabled', 'turnstile', 'hcaptcha']).default('disabled'),
+  CAPTCHA_SECRET_KEY: z.string().default(''),
+  // Password policy for customer accounts (8/0 = legacy back-compat default).
+  AUTH_PASSWORD_MIN_LENGTH: z.coerce.number().int().min(8).max(64).default(8),
+  AUTH_PASSWORD_MIN_CLASSES: z.coerce.number().int().min(0).max(4).default(0),
 
   // ── Durable control plane (Phase 8) ──
   // memory = dev/test default (zero friction); drizzle = Postgres-backed
   // registry/keys/jobs/storage metadata (needs migrations + seed at deploy).
   CONTROL_STORE: z.enum(['memory', 'drizzle']).default('memory'),
+  // Project vault encryption key (AES-256-GCM, 32+ chars). Required whenever
+  // the vault API is used in production — no weak default exists.
+  VAULT_KEY: z.string().default(''),
   // Opt-in boot migration for container deploys (Railway release step
   // alternative). Default OFF: migrations run explicitly via db:migrate.
   // Drizzle journal applies pending files in order; failures halt boot.

@@ -18,6 +18,54 @@ import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
 import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
+import type { UsageMetric, UsageService } from '@cloudnivo/billing';
+
+/**
+ * Fire-and-forget usage metering. Metering must never break the request it
+ * measures: failures are logged once and dropped. Callers pass server-known
+ * org/project ids (never client claims).
+ */
+export function meterUsage(
+  ctx: ApiContext,
+  organizationId: string,
+  projectId: string,
+  service: UsageService,
+  metric: UsageMetric,
+  qty = 1,
+): void {
+  if (!Number.isInteger(qty) || qty < 0) return;
+  void ctx.billing
+    .increment(organizationId, projectId, service, metric, qty)
+    .catch(err =>
+      ctx.logger.warn('billing.meter_failed', {
+        error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+      }),
+    );
+}
+
+/**
+ * Spend-protection gate for paid-accruing mutations (project create, AI
+ * apply, function deploy, branch create). A breached block-budget freezes
+ * these with 402 until the budget is raised or removed. Evaluation failures
+ * fail OPEN (billing must never wedge the platform) but are logged.
+ */
+export async function requireSpendAllowed(ctx: ApiContext, organizationId: string): Promise<void> {
+  try {
+    const { blocked } = await ctx.billing.isSpendBlocked(organizationId);
+    if (blocked) {
+      throw new ApiError(
+        'SPEND_BLOCKED',
+        'Spend budget breached — raise or remove the budget to resume paid operations',
+        402,
+      );
+    }
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'SPEND_BLOCKED') throw err;
+    ctx.logger.warn('billing.spend_check_failed', {
+      error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+  }
+}
 
 /**
  * Billing + usage metering HTTP wiring (Phase 12).
@@ -264,7 +312,7 @@ export async function handleBillingRoutes(
     }
 
     // ── Org-scoped billing ──
-    const orgMatch = /^\/api\/v1\/organizations\/([^/]+)\/billing\/([^/]+)\/?$/.exec(pathname);
+    const orgMatch = /^\/api\/v1\/organizations\/([^/]+)\/billing\/(.+?)\/?$/.exec(pathname);
     if (!orgMatch?.[1] || !orgMatch[2]) return false;
     const tail = orgMatch[2];
     const member = await requireOrgMember(ctx, req);
@@ -475,6 +523,42 @@ export async function handleBillingRoutes(
       const provider = billingProviderFor(ctx);
       const portal = await provider.createPortalSession(member.organizationId);
       return finish(200, ok({ portal }, requestId));
+    }
+
+    // ── Spend budgets (alert + block) ──
+    if (tail === 'budgets' && method === 'GET') {
+      await gateBill({ action: 'billing.budgets' });
+      const evaluation = await ctx.billing.evaluateBudgets(member.organizationId);
+      return finish(200, ok(evaluation, requestId));
+    }
+    if (tail === 'budgets' && method === 'POST') {
+      await gateBill({ deny: 'Agents cannot manage budgets', action: 'billing.budget.create' });
+      requireOwnerOrAdmin(member.role);
+      const parsed = parseBody(
+        z.object({
+          name: z.string().min(1).max(100),
+          limitCents: z.number().int().positive().max(1_000_000_000),
+          action: z.enum(['alert', 'block']),
+        }),
+        (await readJsonBody(req)) ?? {},
+      );
+      const budget = await ctx.billing.createBudget(member.organizationId, parsed);
+      await ctx.registry.recordAudit('billing.budget.created', {
+        organizationId: member.organizationId,
+        userId: member.userId,
+      });
+      return finish(201, ok({ budget }, requestId));
+    }
+    const budgetDeleteMatch = /^budgets\/([^/]+)$/.exec(tail ?? '');
+    if (budgetDeleteMatch?.[1] && method === 'DELETE') {
+      await gateBill({ deny: 'Agents cannot manage budgets', action: 'billing.budget.delete' });
+      requireOwnerOrAdmin(member.role);
+      await ctx.billing.deleteBudget(member.organizationId, budgetDeleteMatch[1]);
+      await ctx.registry.recordAudit('billing.budget.deleted', {
+        organizationId: member.organizationId,
+        userId: member.userId,
+      });
+      return finish(200, ok({ deleted: true }, requestId));
     }
 
     return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });

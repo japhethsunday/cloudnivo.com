@@ -82,17 +82,16 @@ export async function agentFromRequest(
 ): Promise<AgentToken | null> {
   const raw = bearerFromHeader(req.headers.authorization);
   if (!raw || !looksLikeAgentToken(raw)) return null;
-  return agentServiceFor(ctx).verifyToken(raw);
+  return agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req) });
 }
 
 /** Session-shaped identity for agent bearers (planes add scope checks). */
 export async function agentSessionFor(
   ctx: ApiContext,
-  _req: IncomingMessage,
+  req: IncomingMessage,
   raw: string,
 ): Promise<{ sub: string; email: string; agent: AgentToken }> {
-  void _req;
-  const token = await agentServiceFor(ctx).verifyToken(raw);
+  const token = await agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req) });
   return { sub: token.userId, email: '', agent: token };
 }
 
@@ -418,6 +417,7 @@ const CreateTokenBody = z.object({
   projectIds: z.array(z.string().min(1).max(64)).max(200).default([]),
   approvalRequired: z.boolean().default(false),
   expiresIn: z.enum(['7d', '30d', '90d', '365d', 'never']).default('30d'),
+  ipAllowlist: z.array(z.string().max(60)).max(20).default([]),
 });
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -533,6 +533,7 @@ export async function handleAgentRoutes(
         projectIds: [...new Set(parsed.projectIds ?? [])],
         approvalRequired: parsed.approvalRequired,
         expiresIn: parsed.expiresIn,
+        ipAllowlist: parsed.ipAllowlist ?? [],
       });
       await ctx.registry.recordAudit('agent.token.created', {
         organizationId: organizationId ?? undefined,
@@ -560,6 +561,20 @@ export async function handleAgentRoutes(
         userId: member.userId,
       });
       return finish(200, ok({ token: revoked }, requestId));
+    }
+
+    if (section === 'agent-tokens' && sub && verb === '/rotate' && method === 'POST') {
+      const existing = await svc.getToken(member.userId, sub).catch(() => null);
+      if (existing && existing.organizationId !== null && existing.organizationId !== member.organizationId) {
+        throw new ApiError('TENANT_FORBIDDEN', 'Access denied', 403);
+      }
+      // Rotation kills the old secret and returns the new raw value ONCE.
+      const { token, raw } = await svc.rotateToken(sub, member.userId);
+      await ctx.registry.recordAudit('agent.token.rotated', {
+        organizationId: member.organizationId,
+        userId: member.userId,
+      });
+      return finish(200, ok({ token, raw }, requestId));
     }
 
     // ── Activity ──

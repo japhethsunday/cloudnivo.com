@@ -213,3 +213,35 @@ describe('maintenance', () => {
     expect((await later.getSubscription('org-1')).status).toBe('expired');
   });
 });
+
+describe('spend budgets', () => {
+  it('creates, evaluates, blocks, and deletes budgets', async () => {
+    const svc = service(new Date('2026-03-10T12:00:00Z'));
+    await svc.changePlan('org-1', 'pro', {});
+    const budget = await svc.createBudget('org-1', { name: 'Monthly cap', limitCents: 2005, action: 'block' });
+    expect(budget.limitCents).toBe(2005);
+    // Pro base price alone (2000) is under the cap.
+    let evaled = await svc.evaluateBudgets('org-1');
+    expect(evaled.spendCents).toBe(2000);
+    expect(evaled.evaluations[0]?.breached).toBe(false);
+    expect((await svc.isSpendBlocked('org-1')).blocked).toBe(false);
+    // Push usage into overage: 10k extra requests = 1c → 2001... still under.
+    await svc.increment('org-1', '', 'api', 'api_requests', 5_010_000);
+    evaled = await svc.evaluateBudgets('org-1');
+    expect(evaled.spendCents).toBe(2001);
+    expect(evaled.evaluations[0]?.breached).toBe(false);
+    // A tighter cap breaches immediately.
+    const tight = await svc.createBudget('org-1', { name: 'Tight', limitCents: 2000, action: 'block' });
+    expect((await svc.isSpendBlocked('org-1')).blocked).toBe(true);
+    const alert = await svc.createBudget('org-1', { name: 'Watch', limitCents: 1, action: 'alert' });
+    expect((await svc.evaluateBudgets('org-1')).evaluations.find(e => e.budget.id === alert.id)?.breached).toBe(true);
+    // Alert budgets never block.
+    await svc.deleteBudget('org-1', tight.id);
+    expect((await svc.isSpendBlocked('org-1')).blocked).toBe(false);
+    await svc.deleteBudget('org-1', budget.id);
+    await svc.deleteBudget('org-1', alert.id);
+    expect(await svc.listBudgets('org-1')).toEqual([]);
+    await expect(svc.deleteBudget('org-1', 'missing')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(svc.createBudget('org-1', { name: 'x', limitCents: -5, action: 'block' })).rejects.toThrow();
+  });
+});

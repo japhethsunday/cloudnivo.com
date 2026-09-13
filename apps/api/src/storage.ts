@@ -14,6 +14,7 @@ import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
 import type { ApiContext } from './v1.js';
 import { resolveCaller, type DataCaller } from './data.js';
+import { meterUsage } from './billing.js';
 import { sendJson } from './projects.js';
 import type { AgentToken } from '@cloudnivo/agents';
 import { auditAgent, gateDestructive, requireAgentScope, sendApprovalRequired } from './agents.js';
@@ -392,6 +393,87 @@ export async function handleStorageRoutes(
       return finish(200, ok(await svc.usage(caller), requestId), { caller: caller.kind });
     }
 
+    // ── Analytics (per-bucket bytes/files from live metadata) ──
+    if (segs[0] === 'analytics' && segs.length === 1 && req.method === 'GET') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.read', action: 'storage.analytics' });
+      return finish(200, ok(await svc.analytics(caller), requestId), { caller: caller.kind });
+    }
+
+    // ── Resumable uploads (multipart sessions) ──
+    if (segs[0] === 'uploads' && segs.length === 1 && req.method === 'POST') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.write', action: 'storage.upload.create' });
+      const parsed = parseBody(
+        z.object({
+          bucket: z.string().min(1).max(200),
+          path: z.string().min(1).max(1024),
+          contentType: z.string().max(200).nullable().optional(),
+          totalBytes: z.number().int().positive().max(5_242_880_000).nullable().optional(),
+          upsert: z.boolean().default(false),
+        }),
+        await readJson(),
+      );
+      const upload = await svc.createUploadSession(caller, {
+        bucket: parsed.bucket,
+        path: parsed.path,
+        contentType: parsed.contentType ?? null,
+        totalBytes: parsed.totalBytes ?? null,
+        upsert: parsed.upsert,
+      });
+      auditSt('storage.upload.create', `${parsed.bucket}/${parsed.path}`);
+      return finish(201, ok({ upload }, requestId), { caller: caller.kind });
+    }
+    if (segs[0] === 'uploads' && segs[1] && segs.length === 2 && req.method === 'GET') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.read', action: 'storage.upload.status' });
+      return finish(200, ok({ upload: await svc.getUploadSession(caller, segs[1]) }, requestId), {
+        caller: caller.kind,
+      });
+    }
+    if (segs[0] === 'uploads' && segs[1] && segs.length === 2 && req.method === 'DELETE') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.write', action: 'storage.upload.abort' });
+      await svc.abortUploadSession(caller, segs[1]);
+      auditSt('storage.upload.abort', segs[1].slice(0, 24));
+      return finish(200, ok({ aborted: true }, requestId), { caller: caller.kind });
+    }
+    if (segs[0] === 'uploads' && segs[1] && segs[2] === 'parts' && segs.length === 4 && req.method === 'PUT') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.write', action: 'storage.upload.part', resource: segs[1].slice(0, 24) });
+      const index = Number(segs[3]);
+      if (!Number.isInteger(index) || index < 0 || index > 999) {
+        throw new ApiError('VALIDATION_ERROR', 'Part index must be 0-999', 400);
+      }
+      const maxBytes = config.STORAGE_MAX_FILE_MB * 1024 * 1024;
+      const { bytes } = await readRaw(req, maxBytes);
+      const part = await svc.uploadPart(
+        caller,
+        segs[1],
+        index,
+        (async function* () {
+          yield bytes;
+        })(),
+      );
+      meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
+      return finish(200, ok({ part }, requestId), { caller: caller.kind });
+    }
+    if (segs[0] === 'uploads' && segs[1] && segs[2] === 'complete' && segs.length === 3 && req.method === 'POST') {
+      if (caller.kind === 'anonymous')
+        throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
+      await gateSt({ scope: 'storage.write', action: 'storage.upload.complete', resource: segs[1].slice(0, 24) });
+      const object = await svc.completeUploadSession(caller, segs[1]);
+      auditSt('storage.object.upload', object.path);
+      meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
+      meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_bytes', object.size);
+      return finish(201, ok({ object }, requestId), { caller: caller.kind });
+    }
+
     // ── Buckets ──
     if (segs[0] === 'buckets' && segs.length === 1) {
       if (req.method === 'GET') {
@@ -593,6 +675,8 @@ export async function handleStorageRoutes(
           latencyMs: Date.now() - start,
           bytes: out.byteLength,
         });
+        meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
+        meterUsage(ctx, project.organizationId, projectId, 'api', 'api_bandwidth_bytes', out.byteLength);
         return true;
       }
       if (req.method === 'PUT') {
@@ -614,6 +698,9 @@ export async function handleStorageRoutes(
           upsert,
         });
         auditSt('storage.object.upload', `${bucketName}/${objectPath}`);
+        meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
+        meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_bytes', bytes.byteLength);
+        meterUsage(ctx, project.organizationId, projectId, 'api', 'api_bandwidth_bytes', bytes.byteLength);
         return finish(201, ok({ object: record }, requestId), { caller: caller.kind });
       }
       if (req.method === 'DELETE') {

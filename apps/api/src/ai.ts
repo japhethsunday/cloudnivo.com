@@ -38,6 +38,10 @@ import { storageFor } from './storage.js';
 import { functionsFor } from './functions.js';
 import { emitAutomationEvent } from './automation.js';
 import { ensureProjectFeed, realtimeFor } from './realtime.js';
+import { meterUsage, requireSpendAllowed } from './billing.js';
+
+/** Process-local high-water marks for AI token metering deltas. */
+const aiTokenHighWater = new Map<string, number>();
 
 /**
  * AI Backend Builder HTTP wiring.
@@ -453,6 +457,28 @@ export async function handleAiRoutes(
       });
     }
 
+    function meterAi(ctx: ApiContext, organizationId: string, pid: string): void {
+      meterUsage(ctx, organizationId, pid, 'ai', 'ai_requests', 1);
+      // Token deltas from the builder's cumulative counters (provider-
+      // reported only; local planner reports zero and meters nothing).
+      try {
+        const usage = state.builder.getUsage(pid) as {
+          promptTokens?: unknown;
+          completionTokens?: unknown;
+        };
+        const total =
+          (typeof usage.promptTokens === 'number' ? usage.promptTokens : 0) +
+          (typeof usage.completionTokens === 'number' ? usage.completionTokens : 0);
+        const prev = aiTokenHighWater.get(pid) ?? 0;
+        if (total > prev) {
+          aiTokenHighWater.set(pid, total);
+          meterUsage(ctx, organizationId, pid, 'ai', 'ai_tokens', total - prev);
+        }
+      } catch {
+        // Metering never breaks AI responses.
+      }
+    }
+
     if (head === undefined) {
       return finish(404, { error: { code: 'NOT_FOUND', message: 'Not found', requestId } });
     }
@@ -488,6 +514,7 @@ export async function handleAiRoutes(
         organizationId: member.organizationId,
         userId: member.userId,
       });
+      meterAi(ctx, member.organizationId, projectId);
       return finish(201, ok({ plan: exposePlan(stored) }, requestId));
     }
 
@@ -557,6 +584,7 @@ export async function handleAiRoutes(
         userId: member.userId,
       });
       auditAi('ai.diagnose');
+      meterAi(ctx, member.organizationId, projectId);
       return finish(200, ok({ diagnosis }, requestId));
     }
 
@@ -684,6 +712,7 @@ export async function handleAiRoutes(
       if (stored.status !== 'approved') {
         throw new ApiError('CONFLICT', 'Only approved plans can be applied', 409);
       }
+      await requireSpendAllowed(ctx, member.organizationId);
       const outcome = await state.builder.applyPlan({
         projectId,
         planId: stored.id,
@@ -705,6 +734,7 @@ export async function handleAiRoutes(
         },
       );
       auditAi(outcome.ok ? 'ai.plan.applied' : 'ai.plan.failed');
+      meterAi(ctx, member.organizationId, projectId);
       if (outcome.ok) {
         void emitAutomationEvent(ctx, {
           type: 'ai.plan.applied',

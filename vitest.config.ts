@@ -38,6 +38,10 @@ export default defineConfig({
         find: '@cloudnivo/database',
         replacement: resolve(rootDir, 'packages/database/src/index.ts'),
       },
+      {
+        find: '@cloudnivo/db-tools',
+        replacement: resolve(rootDir, 'packages/db-tools/src/index.ts'),
+      },
       { find: '@cloudnivo/auth', replacement: resolve(rootDir, 'packages/auth/src/index.ts') },
       {
         find: '@cloudnivo/storage',

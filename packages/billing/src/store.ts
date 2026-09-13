@@ -1,4 +1,5 @@
 import type {
+  Budget,
   Invoice,
   InvoiceLine,
   Payment,
@@ -105,6 +106,15 @@ export interface BillingStore {
   // Webhook idempotency.
   findWebhookEvent(provider: string, eventId: string): Promise<StoredWebhookEvent | null>;
   recordWebhookEvent(input: WebhookEventInput): Promise<StoredWebhookEvent>;
+  // Spend budgets.
+  createBudget(input: {
+    organizationId: string;
+    name: string;
+    limitCents: number;
+    action: Budget['action'];
+  }): Promise<Budget>;
+  listBudgets(organizationId: string): Promise<Budget[]>;
+  deleteBudget(organizationId: string, id: string): Promise<boolean>;
 }
 
 function isoNow(): string {
@@ -126,6 +136,7 @@ export class MemoryBillingStore implements BillingStore {
   private readonly invoices = new Map<string, Invoice>();
   private readonly payments = new Map<string, Payment>();
   private readonly events = new Map<string, StoredWebhookEvent>();
+  private readonly budgets = new Map<string, Budget>();
   private readonly credits: { organizationId: string; amountCents: number; reason: string; expiresAt: string | null; at: string }[] = [];
   private invoiceCounter = 0;
   private counter = 0;
@@ -320,5 +331,38 @@ export class MemoryBillingStore implements BillingStore {
     };
     this.events.set(`${input.provider}\n${input.eventId}`, entry);
     return { ...entry };
+  }
+
+  async createBudget(input: {
+    organizationId: string;
+    name: string;
+    limitCents: number;
+    action: Budget['action'];
+  }): Promise<Budget> {
+    if (!Number.isInteger(input.limitCents) || input.limitCents <= 0) {
+      throw new Error('Budget limit must be a positive integer (cents)');
+    }
+    const budget: Budget = {
+      id: this.nextId('bud'),
+      organizationId: input.organizationId,
+      name: input.name.slice(0, 100),
+      limitCents: input.limitCents,
+      action: input.action,
+      createdAt: isoNow(),
+    };
+    this.budgets.set(budget.id, budget);
+    return { ...budget };
+  }
+
+  async listBudgets(organizationId: string): Promise<Budget[]> {
+    return [...this.budgets.values()]
+      .filter(b => b.organizationId === organizationId)
+      .map(b => ({ ...b }));
+  }
+
+  async deleteBudget(organizationId: string, id: string): Promise<boolean> {
+    const b = this.budgets.get(id);
+    if (!b || b.organizationId !== organizationId) return false;
+    return this.budgets.delete(id);
   }
 }

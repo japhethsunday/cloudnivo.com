@@ -26,6 +26,17 @@ export interface ProvisionRequest {
   region: string;
 }
 
+export interface CloneRequest {
+  /** Source provider handle (databaseId of main or another branch). */
+  sourceDatabaseId: string;
+  /** Source password when socket-trust is unavailable (env-only, never logged). */
+  sourcePassword?: string;
+  /** New database request (fresh slug/password for the branch). */
+  target: ProvisionRequest;
+  /** Branch name for handles/labels. Validated slug-shaped. */
+  branch: string;
+}
+
 export interface ProvisionedDatabase {
   /** Provider handle, e.g. Docker container name. Opaque to callers. */
   databaseId: string;
@@ -55,6 +66,12 @@ export interface DatabaseProvisioner {
   startDatabase(databaseId: string): Promise<void>;
   stopDatabase(databaseId: string): Promise<void>;
   restartDatabase(databaseId: string): Promise<void>;
+  /**
+   * Clone a database for branching (copy-on-write where the engine
+   * supports it, dump/restore otherwise). Optional: providers without a
+   * safe clone path omit it and branches report unsupported.
+   */
+  cloneDatabase?(req: CloneRequest): Promise<ProvisionedDatabase>;
   getStatus(
     databaseId: string,
     conn: { host: string; port: number; database: string; user: string; password: string },
