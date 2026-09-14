@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiFetchRaw } from '../lib/api';
+import { isSystemSchema, qualifiedRef } from './DatabaseSections';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 import { StatusDot, statusTone } from './ui';
 
@@ -296,7 +297,13 @@ export function ProjectDatabase({
                   ))}
                 </tbody>
               </table>
-              <CsvActions projectId={projectId} table={t.name} />
+              {isSystemSchema(t.schema) ? (
+                <p className="muted" style={{ fontSize: 12 }}>
+                  System table — managed through the SQL editor below.
+                </p>
+              ) : (
+                <CsvActions projectId={projectId} table={qualifiedRef(t.schema, t.name)} />
+              )}
             </details>
           ))
         )}

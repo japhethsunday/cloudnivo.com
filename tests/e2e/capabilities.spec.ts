@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 /**
- * Capabilities index: all 100 capabilities are discoverable from the UI,
- * each links to the console where it runs, and previously backend-only
- * surfaces (branches, vault, power tools, budgets, domains, drains)
- * render functional panels in their sections.
+ * Capabilities are a product-requirements checklist, NOT a page.
+ * The 100 capabilities live as real workflows inside their product areas
+ * (Database → Table Editor, Authentication → OTP/MFA, Storage → buckets,
+ * Realtime → channels, …). `/capabilities` is an INTERNAL tracking index
+ * only — never the primary experience, never a card grid.
  */
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
@@ -65,7 +66,7 @@ async function login(page: Parameters<Parameters<typeof test>[1]>[0]['page'], em
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
 }
 
-test('capabilities index shows all 100 with search, filter and working links', async ({
+test('capability registry is an internal tracking index, not the product', async ({
   page,
   request,
 }) => {
@@ -73,46 +74,35 @@ test('capabilities index shows all 100 with search, filter and working links', a
   const { projectId, email, password } = await signupOrgProject(request, stamp);
   await login(page, email, password);
 
-  // Sidebar entry point (no duplicates: exactly one Capabilities nav item).
-  await expect(page.locator('.sidebar').getByRole('link', { name: 'Capabilities' })).toHaveCount(
-    1,
-  );
+  // The catalog is NOT in the primary navigation.
+  await expect(page.locator('.sidebar').getByRole('link', { name: 'Capabilities' })).toHaveCount(0);
+  // …nor promoted on the dashboard or project overview.
+  await expect(page.getByText(/100 capabilities/i)).toHaveCount(0);
+  await page.goto(`/projects/${projectId}`);
+  await expect(page.getByRole('heading', { name: /capabilit/i })).toHaveCount(0);
 
+  // The internal registry still tracks all 100 with working deep-links.
   await page.goto('/capabilities');
-  await expect(page.getByRole('heading', { name: /capabilities · 100/i })).toBeVisible({
+  await expect(page.getByRole('heading', { name: /capability registry \(internal\)/i })).toBeVisible({
     timeout: 20_000,
   });
   await expect(page.getByTestId('caps-count')).toContainText('100 of 100', { timeout: 15_000 });
   await expect(page.locator('[data-testid^="cap-"]')).toHaveCount(100);
 
-  // Category filter narrows to the 11 Auth capabilities.
-  await page.getByLabel(/filter by category/i).selectOption('Auth');
-  await expect(page.getByTestId('caps-count')).toContainText('11 of 100');
-  await expect(page.locator('[data-testid^="cap-"]')).toHaveCount(11);
-  await expect(page.getByTestId('cap-auth-app-users')).toBeVisible();
-
-  // Search finds the vault capability.
-  await page.getByLabel(/filter by category/i).selectOption('');
-  await page.getByLabel(/search capabilities/i).fill('vault');
+  // Search narrows the registry.
+  await page.getByLabel(/filter capability registry/i).fill('vault');
   await expect(page.getByTestId('cap-env-vault')).toBeVisible({ timeout: 10_000 });
 
-  // Capability links resolve into the project console when a project is in context.
-  await page.getByLabel(/search capabilities/i).fill('');
-  await page.getByLabel(/filter by category/i).selectOption('');
+  // Registry rows link into the real product area.
+  await page.getByLabel(/filter capability registry/i).fill('');
   const href = await page
     .getByTestId('cap-db-guarded-sql')
-    .getByRole('link', { name: /open in console/i })
+    .getByRole('link', { name: /open/i })
     .getAttribute('href');
   expect(href).toBe(`/projects/${projectId}/sql`);
-
-  // Command palette surfaces the catalog and individual capabilities.
-  await page.keyboard.press('Control+k');
-  await page.getByLabel(/search commands/i).fill('capabilities · 100');
-  await expect(page.getByRole('option', { name: /capabilities · 100/i })).toBeVisible();
-  await page.keyboard.press('Escape');
 });
 
-test('previously backend-only capabilities render functional panels', async ({
+test('capabilities live as real workflows in their product areas', async ({
   page,
   request,
 }) => {
@@ -121,33 +111,51 @@ test('previously backend-only capabilities render functional panels', async ({
   void _orgId;
   await login(page, email, password);
 
-  // Project settings: branches, vault, power tools + environments strip.
+  // Project settings: branches, vault, power tools.
   await page.goto(`/projects/${projectId}/settings`);
   await expect(page.getByRole('heading', { name: /database branches/i })).toBeVisible({
     timeout: 20_000,
   });
   await expect(page.getByRole('heading', { name: /project vault/i })).toBeVisible();
   await expect(page.getByRole('heading', { name: /database power tools/i })).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: /environments capabilities/i }),
-  ).toBeVisible();
 
-  // Section strips appear across the console without duplicating existing UI.
+  // Database: table editor, RLS simulator, extensions, backups — real panels.
   await page.goto(`/projects/${projectId}/database`);
-  await expect(page.getByRole('heading', { name: /database capabilities/i })).toBeVisible({
+  await expect(
+    page.getByRole('heading', { name: /rows, filtering, editing, pagination/i }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: /policy simulator/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /allowlisted extensions/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /diff, guarded restore/i })).toBeVisible();
+
+  // Authentication: tabbed workspace with users, sign-in, MFA, sessions, security.
+  await page.goto(`/projects/${projectId}/auth`);
+  const tabs = page.getByRole('tablist', { name: /authentication sections/i });
+  await expect(tabs.getByRole('tab', { name: /^users/i })).toBeVisible({ timeout: 20_000 });
+  await expect(tabs.getByRole('tab', { name: /sign-in methods/i })).toBeVisible();
+  await expect(tabs.getByRole('tab', { name: /^mfa$/i })).toBeVisible();
+  await expect(tabs.getByRole('tab', { name: /^sessions$/i })).toBeVisible();
+  await expect(tabs.getByRole('tab', { name: /^security$/i })).toBeVisible();
+
+  // Storage: move/copy operations. Realtime: broadcast composer.
+  await page.goto(`/projects/${projectId}/storage`);
+  await expect(page.getByRole('heading', { name: /move and copy/i })).toBeVisible({
     timeout: 20_000,
   });
-  await page.goto(`/projects/${projectId}/automations`);
-  await expect(page.getByRole('heading', { name: /automation capabilities/i })).toBeVisible({
+  await page.goto(`/projects/${projectId}/realtime`);
+  await expect(page.getByRole('heading', { name: /publish to a channel/i })).toBeVisible({
     timeout: 20_000,
   });
 
-  // Billing: spend budgets panel + strip.
+  // Integrations: repository subscriptions. Billing: spend budgets.
+  await page.goto(`/projects/${projectId}/integrations`);
+  await expect(page.getByRole('button', { name: /subscribe repository/i })).toBeVisible({
+    timeout: 20_000,
+  });
   await page.goto('/billing');
   await expect(page.getByRole('heading', { name: /spend budgets/i })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByRole('heading', { name: /billing capabilities/i })).toBeVisible();
 
   // Organizations: custom domains, log drains, platform status.
   await page.goto('/organizations');
@@ -159,9 +167,9 @@ test('previously backend-only capabilities render functional panels', async ({
   await expect(page.getByRole('heading', { name: 'Log drains', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Platform status', exact: true })).toBeVisible();
 
-  // Project overview links the catalog.
-  await page.goto(`/projects/${projectId}`);
-  await expect(page.getByRole('heading', { name: /capabilities · 100/i })).toBeVisible({
-    timeout: 20_000,
-  });
+  // No capability-catalog headings anywhere in the product experience.
+  for (const url of [`/projects/${projectId}`, `/projects/${projectId}/database`, '/billing']) {
+    await page.goto(url);
+    await expect(page.getByRole('heading', { name: /capabilit/i })).toHaveCount(0);
+  }
 });

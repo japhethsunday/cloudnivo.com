@@ -5,9 +5,25 @@ import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
 /* ── Visual Table Editor: real rows, filtering, editing, pagination ── */
+
+/** System schemas are managed through the SQL editor — never auto-REST. */
+export function isSystemSchema(schema: string): boolean {
+  return schema === 'auth' || schema.startsWith('pg_') || schema === 'information_schema';
+}
+
+/** Qualified reference for the data API (`public` stays bare). */
+export function qualifiedRef(schema: string, name: string): string {
+  return schema && schema !== 'public' ? `${schema}.${name}` : name;
+}
+
+interface SchemaTable {
+  schema: string;
+  name: string;
+}
+
 export function TableEditor({ projectId }: { projectId: string }): React.JSX.Element {
-  const [tables, setTables] = useState<{ name: string }[]>([]);
-  const [table, setTable] = useState('');
+  const [tables, setTables] = useState<SchemaTable[]>([]);
+  const [table, setTable] = useState<SchemaTable | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [filter, setFilter] = useState('');
   const [sortField, setSortField] = useState('');
@@ -22,22 +38,29 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   const [editBody, setEditBody] = useState('{}');
 
   const loadTables = useCallback(async () => {
-    const r = await apiFetch<{ tables: { name: string }[] }>(
+    const r = await apiFetch<{ tables: SchemaTable[] }>(
       `/api/v1/projects/${projectId}/database/schema`,
     );
     if (r.ok && r.data) {
       setTables(r.data.tables);
-      if (!table && r.data.tables[0]) setTable(r.data.tables[0].name);
+      if (!table) {
+        // Prefer editable user tables — system schemas stay out of the editor.
+        const first = r.data.tables.find(t => !isSystemSchema(t.schema)) ?? r.data.tables[0] ?? null;
+        setTable(first);
+      }
     } else setError(r.error ?? 'Could not load tables');
   }, [projectId, table]);
 
+  const tableRef = table ? qualifiedRef(table.schema, table.name) : '';
+  const tableLocked = table ? isSystemSchema(table.schema) : false;
+
   const loadRows = useCallback(async () => {
-    if (!table) return;
+    if (!table || tableLocked) return;
     setBusy(true);
     setError(null);
     const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     const r = await apiFetch<{ data: Record<string, unknown>[]; meta?: { total?: number } }>(
-      `/api/v1/projects/${projectId}/${encodeURIComponent(table)}?${q.toString()}`,
+      `/api/v1/projects/${projectId}/${encodeURIComponent(tableRef)}?${q.toString()}`,
     );
     setBusy(false);
     if (!r.ok) {
@@ -47,7 +70,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
     setRows((r.data?.data as Record<string, unknown>[]) ?? []);
     const t = (r.data as { meta?: { total?: number } })?.meta?.total;
     setTotal(typeof t === 'number' ? t : null);
-  }, [projectId, table, limit, offset]);
+  }, [projectId, table, tableLocked, tableRef, limit, offset]);
 
   useEffect(() => {
     void loadTables();
@@ -75,6 +98,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   }, [rows, filter, sortField, sortDir]);
 
   async function insert(): Promise<void> {
+    if (!table || tableLocked) return;
     let body: unknown;
     try {
       body = JSON.parse(newRow);
@@ -82,7 +106,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
       setError('New row must be valid JSON');
       return;
     }
-    const r = await apiFetch(`/api/v1/projects/${projectId}/${encodeURIComponent(table)}`, {
+    const r = await apiFetch(`/api/v1/projects/${projectId}/${encodeURIComponent(tableRef)}`, {
       method: 'POST',
       body,
     });
@@ -94,7 +118,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   }
 
   async function update(): Promise<void> {
-    if (!editId) return;
+    if (!editId || !table || tableLocked) return;
     let body: unknown;
     try {
       body = JSON.parse(editBody);
@@ -103,7 +127,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
       return;
     }
     const r = await apiFetch(
-      `/api/v1/projects/${projectId}/${encodeURIComponent(table)}/${encodeURIComponent(editId)}`,
+      `/api/v1/projects/${projectId}/${encodeURIComponent(tableRef)}/${encodeURIComponent(editId)}`,
       { method: 'PATCH', body },
     );
     if (!r.ok) setError(r.error ?? 'Update failed');
@@ -113,7 +137,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   async function remove(id: string): Promise<void> {
     if (!window.confirm(`Delete row ${id}?`)) return;
     const r = await apiFetch(
-      `/api/v1/projects/${projectId}/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+      `/api/v1/projects/${projectId}/${encodeURIComponent(tableRef)}/${encodeURIComponent(id)}`,
       { method: 'DELETE' },
     );
     if (!r.ok) setError(r.error ?? 'Delete failed');
@@ -131,9 +155,23 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
         <h2 style={{ fontSize: 15 }}>Rows, filtering, editing, pagination</h2>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <select value={table} onChange={e => { setTable(e.target.value); setOffset(0); }} aria-label="Table">
+        <select
+          value={table ? `${table.schema}.${table.name}` : ''}
+          onChange={e => {
+            const [schema, ...rest] = e.target.value.split('.');
+            const name = rest.join('.');
+            const found = tables.find(t => t.schema === schema && t.name === name) ?? null;
+            setTable(found);
+            setOffset(0);
+            setRows([]);
+            setError(null);
+          }}
+          aria-label="Table"
+        >
           {tables.map(t => (
-            <option key={t.name} value={t.name}>{t.name}</option>
+            <option key={`${t.schema}.${t.name}`} value={`${t.schema}.${t.name}`}>
+              {t.schema === 'public' ? t.name : `${t.schema}.${t.name}`}{isSystemSchema(t.schema) ? ' (system)' : ''}
+            </option>
           ))}
         </select>
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter rows…" aria-label="Filter rows" style={{ flex: '1 1 160px' }} />
@@ -153,7 +191,13 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void loadRows()}>Refresh</button>
       </div>
       {error ? <ErrorState message={error} /> : null}
-      {busy ? <LoadingSkeleton label="Loading rows" rows={2} /> : shown.length === 0 ? (
+      {tableLocked ? (
+        <p className="muted" style={{ fontSize: 13 }}>
+          <code>{table ? `${table.schema}.${table.name}` : ''}</code> is a system table — inspect
+          and manage it through the SQL editor below.
+        </p>
+      ) : null}
+      {!tableLocked && (busy ? <LoadingSkeleton label="Loading rows" rows={2} /> : shown.length === 0 ? (
         <EmptyState title="No rows" hint="Insert the first row below, or import CSV from the schema section." />
       ) : (
         <table className="table">
@@ -168,12 +212,15 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
             ))}
           </tbody>
         </table>
-      )}
+      ))}
+      {tableLocked ? null : (
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button type="button" className="btn btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - limit))}>← Prev</button>
         <span className="muted" style={{ fontSize: 12 }}>offset {offset}{total !== null ? ` · ${total} total` : ''}</span>
         <button type="button" className="btn btn-sm" onClick={() => setOffset(o => o + limit)}>Next →</button>
       </div>
+      )}
+      {!tableLocked && (
       <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
         <div className="field" style={{ margin: 0 }}>
           <label htmlFor="new-row">Insert row (JSON)</label>
@@ -189,6 +236,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
