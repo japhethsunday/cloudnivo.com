@@ -84,6 +84,9 @@
   background: var(--bg-elevated);
   border-color: var(--border-strong);
 }
+[data-theme='dark'] .nav-child[aria-current='page'] {
+  border-color: rgb(91 140 255 / 0.28);
+}
 [data-theme='dark'] .card:hover {
   border-color: var(--border-strong);
 }
@@ -646,6 +649,7 @@ textarea::placeholder {
   background: var(--bg-muted);
   white-space: nowrap;
   font-weight: 600;
+  border-bottom: 1px solid var(--border-strong);
 }
 .table tbody tr:last-child th,
 .table tbody tr:last-child td {
@@ -1468,9 +1472,11 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
   color: var(--text-faint);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 .crumbs a {
@@ -1478,6 +1484,9 @@ textarea::placeholder {
 }
 .crumbs a:hover {
   color: var(--text);
+}
+.crumbs [aria-current='page'] {
+  color: var(--text-muted);
 }
 
 .avatar {
@@ -1715,6 +1724,18 @@ textarea::placeholder {
   background: var(--accent-faint);
   color: var(--text);
   font-weight: 600;
+}
+.nav-sublabel {
+  margin: 0;
+  padding: 7px 10px 3px 37px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.nav-children-inner > .nav-sublabel:first-child {
+  padding-top: 4px;
 }
 .shell.collapsed .nav-children,
 .shell.collapsed .nav-toggle {

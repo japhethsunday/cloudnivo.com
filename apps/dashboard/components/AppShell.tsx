@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { apiFetch } from '../lib/api';
 import { getSectionTab, setSectionTab, subscribeSectionTab } from '../lib/sectiontab';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
@@ -74,6 +74,8 @@ interface ProjectChild {
   label: string;
   /** Same-page suffix: `?tab=<id>` for tabbed sections, `#<anchor>` for cards. */
   suffix: string;
+  /** Optional subgroup label rendered Supabase-style (Manage, Configuration). */
+  group?: string;
 }
 
 interface ProjectNavEntry {
@@ -87,14 +89,14 @@ const PROJECT_NAV: ProjectNavEntry[] = [
   {
     suffix: '/database', label: 'Database', icon: <IconDatabase size={16} />,
     children: [
-      { label: 'Table Editor', suffix: '#table-editor' },
-      { label: 'Connection', suffix: '#connection' },
-      { label: 'Schemas', suffix: '#schemas' },
-      { label: 'Routines', suffix: '#routines' },
-      { label: 'Extensions', suffix: '#extensions' },
-      { label: 'RLS simulator', suffix: '#rls' },
-      { label: 'Replicas', suffix: '#replicas' },
-      { label: 'Backups', suffix: '#backups' },
+      { label: 'Table Editor', suffix: '#table-editor', group: 'Manage' },
+      { label: 'Connection', suffix: '#connection', group: 'Manage' },
+      { label: 'Schemas', suffix: '#schemas', group: 'Manage' },
+      { label: 'Routines', suffix: '#routines', group: 'Manage' },
+      { label: 'Extensions', suffix: '#extensions', group: 'Configuration' },
+      { label: 'RLS simulator', suffix: '#rls', group: 'Configuration' },
+      { label: 'Replicas', suffix: '#replicas', group: 'Configuration' },
+      { label: 'Backups', suffix: '#backups', group: 'Configuration' },
     ],
   },
   {
@@ -110,20 +112,20 @@ const PROJECT_NAV: ProjectNavEntry[] = [
     suffix: '/auth', label: 'Authentication', icon: <IconAuth size={16} />,
     children: [
       { label: 'Overview', suffix: '?tab=overview' },
-      { label: 'Users', suffix: '?tab=users' },
-      { label: 'Sign-in methods', suffix: '?tab=signin' },
-      { label: 'MFA', suffix: '?tab=mfa' },
-      { label: 'Sessions', suffix: '?tab=sessions' },
-      { label: 'Security', suffix: '?tab=security' },
+      { label: 'Users', suffix: '?tab=users', group: 'Manage' },
+      { label: 'Sessions', suffix: '?tab=sessions', group: 'Manage' },
+      { label: 'MFA', suffix: '?tab=mfa', group: 'Manage' },
+      { label: 'Sign-in methods', suffix: '?tab=signin', group: 'Configuration' },
+      { label: 'Security', suffix: '?tab=security', group: 'Configuration' },
     ],
   },
   {
     suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} />,
     children: [
-      { label: 'Buckets', suffix: '#buckets' },
-      { label: 'Objects', suffix: '#objects' },
-      { label: 'Move & copy', suffix: '#storage-ops' },
-      { label: 'Policies', suffix: '#policies' },
+      { label: 'Buckets', suffix: '#buckets', group: 'Manage' },
+      { label: 'Objects', suffix: '#objects', group: 'Manage' },
+      { label: 'Move & copy', suffix: '#storage-ops', group: 'Manage' },
+      { label: 'Policies', suffix: '#policies', group: 'Configuration' },
     ],
   },
   {
@@ -151,6 +153,21 @@ function isAuthRoute(pathname: string): boolean {
 function projectIdFromPath(pathname: string): string | null {
   const m = /^\/projects\/([^/]+)/.exec(pathname);
   return m?.[1] && m[1] !== 'new' ? (m[1] as string) : null;
+}
+
+/** Bucket children into ungrouped-first, then subgroups in first-seen order. */
+function groupNavChildren(children: ProjectChild[]): { label: string | null; items: ProjectChild[] }[] {
+  const groups: { label: string | null; items: ProjectChild[] }[] = [];
+  for (const c of children) {
+    const label = c.group ?? null;
+    let bucket = groups.find(g => g.label === label);
+    if (!bucket) {
+      bucket = { label, items: [] };
+      groups.push(bucket);
+    }
+    bucket.items.push(c);
+  }
+  return groups;
 }
 
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -449,20 +466,29 @@ function ShellBody({
                   </div>
                   <div className="nav-children">
                     <div className="nav-children-inner">
-                      {r.children?.map(c => (
-                        <Link
-                          key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}
-                          className="nav-child"
-                          href={`${projHref(r.suffix)}${c.suffix}`}
-                          aria-current={childActive(r, c) ? 'page' : undefined}
-                          onClick={
-                            c.suffix.startsWith('?tab=')
-                              ? () => setSectionTab(c.suffix.slice('?tab='.length))
-                              : undefined
-                          }
-                        >
-                          <span className="nav-text">{c.label}</span>
-                        </Link>
+                      {groupNavChildren(r.children ?? []).map((g, gi) => (
+                        <Fragment key={g.label ?? `top-${gi}`}>
+                          {g.label ? (
+                            <p className="nav-sublabel" aria-hidden>
+                              {g.label}
+                            </p>
+                          ) : null}
+                          {g.items.map(c => (
+                            <Link
+                              key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}
+                              className="nav-child"
+                              href={`${projHref(r.suffix)}${c.suffix}`}
+                              aria-current={childActive(r, c) ? 'page' : undefined}
+                              onClick={
+                                c.suffix.startsWith('?tab=')
+                                  ? () => setSectionTab(c.suffix.slice('?tab='.length))
+                                  : undefined
+                              }
+                            >
+                              <span className="nav-text">{c.label}</span>
+                            </Link>
+                          ))}
+                        </Fragment>
                       ))}
                     </div>
                   </div>
