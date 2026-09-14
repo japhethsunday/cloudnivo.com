@@ -20,7 +20,7 @@ export function StorageOps({ projectId }: { projectId: string }): React.JSX.Elem
     setMsg(null);
     const r = await apiFetch(
       `/api/v1/projects/${projectId}/storage/buckets/${encodeURIComponent(bucket)}/objects/${encodeURIComponent(src.trim())}/${op}`,
-      { method: 'POST', body: { destination: dest.trim() } },
+      { method: 'POST', body: { dest: dest.trim() } },
     );
     setBusy(null);
     if (!r.ok) setError(r.error ?? `${op} failed`);

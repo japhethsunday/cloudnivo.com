@@ -299,7 +299,7 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
 /* ── Spend budgets (billing) ───────────────────────────────────── */
 export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
   const toast = useToast();
-  const [budgets, setBudgets] = useState<{ id: string; name: string; limitCents: number; action: string }[] | null>(null);
+  const [budgets, setBudgets] = useState<{ id: string; name: string; limitCents: number; action: string; breached?: boolean; percent?: number }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [limit, setLimit] = useState('5000');
@@ -307,7 +307,7 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
 
   const load = useCallback(async () => {
     if (!orgId) return;
-    const r = await apiFetch<{ budgets: { id: string; name: string; limitCents: number; action: string }[] }>(
+    const r = await apiFetch<{ spendCents: number; period: string; evaluations: { budget: { id: string; name: string; limitCents: number; action: string }; spendCents: number; breached: boolean; percent: number }[] }>(
       `/api/v1/organizations/${orgId}/billing/budgets`,
     );
     if (!r.ok) {
@@ -315,7 +315,14 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
       else setError(r.error);
       return;
     }
-    setBudgets(r.data?.budgets ?? []);
+    // Backend evaluates spend live: flatten evaluations into budget rows.
+    setBudgets(
+      (r.data?.evaluations ?? []).map(e => ({
+        ...e.budget,
+        breached: e.breached,
+        percent: e.percent,
+      })),
+    );
   }, [orgId]);
 
   useEffect(() => {
@@ -364,6 +371,8 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
                 <span className="name">{b.name}</span>
                 <div className="detail">
                   ${(b.limitCents / 100).toFixed(2)} · {b.action}
+                  {typeof b.percent === 'number' ? ` · ${b.percent}% used` : ''}
+                  {b.breached ? ' · breached' : ''}
                 </div>
               </span>
               <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(b.id)}>
@@ -391,7 +400,7 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
 /* ── Org platform: domains, drains, status ─────────────────────── */
 export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Element {
   const toast = useToast();
-  const [domains, setDomains] = useState<{ id: string; hostname: string; verified: boolean; purpose: string }[] | null>(null);
+  const [domains, setDomains] = useState<{ id: string; hostname: string; verified: boolean; purpose: string; status?: string; dnsRecord?: string }[] | null>(null);
   const [drains, setDrains] = useState<{ id: string; url: string; events: string[]; enabled: boolean }[] | null>(null);
   const [status, setStatus] = useState<{ status: string; incidents: { id: string; title: string; state: string }[] } | null>(null);
   const [hostname, setHostname] = useState('');
@@ -400,7 +409,7 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
   const load = useCallback(async () => {
     if (!orgId) return;
     const [d, dr, s] = await Promise.all([
-      apiFetch<{ domains: { id: string; hostname: string; verified: boolean; purpose: string }[] }>(
+      apiFetch<{ domains: { id: string; domain?: string; hostname?: string; verified?: boolean; verifiedAt?: string | null; status?: string; purpose: string; dnsRecord?: string }[] }>(
         `/api/v1/organizations/${orgId}/domains`,
       ),
       apiFetch<{ drains: { id: string; url: string; events: string[]; enabled: boolean }[] }>(
@@ -408,8 +417,19 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
       ),
       apiFetch<{ status: string; incidents: { id: string; title: string; state: string }[] }>('/api/v1/status'),
     ]);
-    if (d.ok && d.data) setDomains(d.data.domains);
-    else setDomains(d.status === 404 ? [] : null);
+    if (d.ok && d.data) {
+      // Backend exposes `domain` + `status`/`verifiedAt`; normalize for display.
+      setDomains(
+        d.data.domains.map(x => ({
+          id: x.id,
+          hostname: x.hostname ?? x.domain ?? '',
+          verified: x.verified ?? (x.status === 'verified' || x.verifiedAt != null),
+          purpose: x.purpose,
+          status: x.status,
+          dnsRecord: x.dnsRecord,
+        })),
+      );
+    } else setDomains(d.status === 404 ? [] : null);
     if (dr.ok && dr.data) setDrains(dr.data.drains);
     else setDrains(dr.status === 404 ? [] : null);
     if (s.ok && s.data) setStatus({ status: String((s.data as { status?: unknown }).status ?? 'ok'), incidents: ((s.data as { incidents?: unknown }).incidents ?? []) as { id: string; title: string; state: string }[] });
@@ -424,7 +444,7 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
     if (!hostname.trim()) return;
     const r = await apiFetch(`/api/v1/organizations/${orgId}/domains`, {
       method: 'POST',
-      body: { hostname: hostname.trim(), purpose: 'app' },
+      body: { domain: hostname.trim().toLowerCase(), purpose: 'app' },
     });
     if (!r.ok) {
       toast(r.error ?? 'Domain create failed', 'bad');
@@ -483,6 +503,11 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
                   </span>
                   <div className="detail">
                     {d.purpose} · {d.verified ? 'verified' : 'pending DNS verification'}
+                    {!d.verified && d.dnsRecord ? (
+                      <>
+                        {' · TXT '}<code>{d.dnsRecord}</code>
+                      </>
+                    ) : null}
                   </div>
                 </span>
                 {!d.verified ? (

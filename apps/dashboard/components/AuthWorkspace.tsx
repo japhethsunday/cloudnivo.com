@@ -344,8 +344,17 @@ function useTester(base: string): {
       return { ok: false };
     }
     const safe = { ...(r.data ?? {}) };
-    for (const k of ['accessToken', 'refreshToken', 'secret', 'uri']) {
+    // Never render credential material — top-level or nested.
+    for (const k of ['accessToken', 'refreshToken', 'secret', 'uri', 'magicToken', 'code']) {
       if (typeof safe[k] === 'string') safe[k] = redact(String(safe[k]));
+    }
+    const nested = safe['tokens'] as Record<string, unknown> | undefined;
+    if (nested && typeof nested === 'object') {
+      const copy = { ...nested };
+      for (const k of ['accessToken', 'refreshToken']) {
+        if (typeof copy[k] === 'string') copy[k] = redact(String(copy[k]));
+      }
+      safe['tokens'] = copy;
     }
     setOut(safe);
     return { ok: true, data: r.data };
@@ -360,6 +369,18 @@ function useTester(base: string): {
 function redact(v: string): string {
   if (v.length <= 8) return '••••';
   return `${v.slice(0, 4)}…${v.slice(-4)} (truncated for display)`;
+}
+
+/** Customer auth nests credentials under `tokens` — never top-level. */
+function extractTokens(d: Record<string, unknown>): { accessToken: string; refreshToken: string } | null {
+  const t = d['tokens'] as { accessToken?: unknown; refreshToken?: unknown } | undefined;
+  if (t && typeof t.accessToken === 'string') {
+    return {
+      accessToken: t.accessToken,
+      refreshToken: typeof t.refreshToken === 'string' ? t.refreshToken : '',
+    };
+  }
+  return null;
 }
 
 function Result({ tester }: { tester: ReturnType<typeof useTester> }): React.JSX.Element {
@@ -547,12 +568,13 @@ function TestSignIn({
       setMfaTicket(d['mfaTicket']);
       return;
     }
-    if (typeof d['accessToken'] === 'string') {
+    const creds = extractTokens(d);
+    if (creds) {
       setAccount({
         email: email.trim(),
         userId: String((d['user'] as Record<string, unknown> | undefined)?.['id'] ?? ''),
-        accessToken: d['accessToken'],
-        refreshToken: typeof d['refreshToken'] === 'string' ? d['refreshToken'] : '',
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
       });
       setPassword('');
     }
@@ -564,12 +586,13 @@ function TestSignIn({
     const r = await tester.call('mfa-verify', { mfaTicket, code: mfaCode.trim() });
     if (!r.ok || !r.data) return;
     const d = r.data as Record<string, unknown>;
-    if (typeof d['accessToken'] === 'string') {
+    const creds = extractTokens(d);
+    if (creds) {
       setAccount({
         email,
         userId: String((d['user'] as Record<string, unknown> | undefined)?.['id'] ?? ''),
-        accessToken: d['accessToken'],
-        refreshToken: typeof d['refreshToken'] === 'string' ? d['refreshToken'] : '',
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
       });
       setMfaTicket(null);
       setMfaCode('');

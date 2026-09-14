@@ -55,6 +55,8 @@ export async function apiFetch<T>(
     return { ok: false, status: 0, data: null, error: 'API unreachable. Is the API running?' };
   }
   let json: unknown = null;
+  // 204 No Content is success with no body (e.g. deletes) — never an error.
+  if (res.status === 204) return { ok: res.ok, status: res.status, data: null, error: null };
   try {
     json = await res.json();
   } catch {

@@ -15,8 +15,10 @@ interface Webhook {
 interface Domain {
   id: string;
   hostname: string;
+  domain?: string;
   status?: string;
   verified?: boolean;
+  verifiedAt?: string | null;
 }
 interface Drain {
   id: string;
@@ -55,7 +57,15 @@ export default function ProjectIntegrationsPage({
     ]);
     if (!w.ok) setError(w.error ?? 'Could not load webhooks');
     else setWebhooks(w.data?.webhooks ?? []);
-    if (d.ok && d.data) setDomains(d.data.domains);
+    if (d.ok && d.data) {
+      setDomains(
+        d.data.domains.map(x => ({
+          ...x,
+          hostname: x.hostname ?? x.domain ?? '',
+          verified: x.verified ?? (x.status === 'verified' || x.verifiedAt != null),
+        })),
+      );
+    }
     if (dr.ok && dr.data) setDrains(dr.data.drains);
   }, [id]);
 
