@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { InfraVisual } from '../components/InfraVisual';
+import { LogoMark } from '../components/LogoMark';
 import { ThemeToggle } from '../components/ThemeToggle';
 import {
   IconAIBuilder,
@@ -157,7 +158,10 @@ export default function HomePage(): React.JSX.Element {
       <header className={styles.nav}>
         <div className={styles.navInner}>
           <Link className={styles.brand} href="/" aria-label="CloudNivo home">
-            <span className="brand-mark">C</span>CloudNivo
+            <span className="brand-mark">
+              <LogoMark size={15} />
+            </span>
+            CloudNivo
           </Link>
           <nav className={styles.links} aria-label="Marketing">
             <Link href="#platform">Platform</Link>
@@ -549,8 +553,8 @@ export default function HomePage(): React.JSX.Element {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <Link className={styles.brand} href="/" aria-label="CloudNivo home" style={{ fontSize: 15 }}>
-            <span className="brand-mark" style={{ width: 22, height: 22, fontSize: 12 }}>
-              C
+            <span className="brand-mark" style={{ width: 22, height: 22 }}>
+              <LogoMark size={13} />
             </span>
             CloudNivo
           </Link>

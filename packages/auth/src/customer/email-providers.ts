@@ -1,6 +1,6 @@
 import { connect, type Socket } from 'node:net';
 import { connect as connectTls } from 'node:tls';
-import { buildEmail, type EmailKind, type EmailReceipt, type EmailService } from './email.js';
+import { buildEmail, buildWelcomeEmail, type EmailKind, type EmailReceipt, type EmailService, type WelcomeInput } from './email.js';
 
 /**
  * Production email drivers behind the EmailService interface.
@@ -31,10 +31,19 @@ export class ResendEmailService implements EmailService {
       throw new Error('Resend is not configured (apiKey/from required)');
     }
     const { subject, text } = buildEmail(kind, payload);
+    return this.sendRaw(to, subject, text);
+  }
+  private async sendRaw(to: string, subject: string, text: string, html?: string): Promise<EmailReceipt> {
     const res = await this.fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: this.config.from, to: [to], subject, text }),
+      body: JSON.stringify({
+        from: this.config.from,
+        to: [to],
+        subject,
+        text,
+        ...(html ? { html } : {}),
+      }),
       signal: AbortSignal.timeout(this.config.timeoutMs ?? 15000),
     });
     if (!res.ok) throw new Error(`Resend rejected the message (${res.status})`);
@@ -59,6 +68,13 @@ export class ResendEmailService implements EmailService {
   }
   sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
     return this.send(to, 'otp', { code, purpose });
+  }
+  async sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt> {
+    if (!this.config.apiKey || !this.config.from) {
+      throw new Error('Resend is not configured (apiKey/from required)');
+    }
+    const { subject, text, html } = buildWelcomeEmail(input);
+    return this.sendRaw(to, subject, text, html);
   }
 }
 
@@ -215,6 +231,12 @@ export class SmtpEmailService implements EmailService {
   }
   sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
     return this.send(to, 'otp', { code, purpose });
+  }
+  async sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt> {
+    // SMTP carries the text rendering (same content, no HTML multipart).
+    const { subject, text } = buildWelcomeEmail(input);
+    await this.sendRaw(to, subject, text);
+    return { delivered: true, queued: true, id: `smtp_${Date.now()}` };
   }
 }
 

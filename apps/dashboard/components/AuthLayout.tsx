@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { InfraVisual } from './InfraVisual';
+import { LogoMark } from './LogoMark';
 import { IconCheck } from './icons';
 import styles from '../app/marketing.module.css';
 
@@ -30,7 +31,10 @@ export function AuthLayout({
     <div className={styles.authPage}>
       <div className={styles.authAside}>
         <Link className="brand" href="/" aria-label="CloudNivo home" style={{ fontSize: 17 }}>
-          <span className="brand-mark">C</span>CloudNivo
+          <span className="brand-mark">
+            <LogoMark size={15} />
+          </span>
+          CloudNivo
         </Link>
         <h2>Build your backend without building everything from scratch.</h2>
         <p className={`${styles.lede} muted`} style={{ fontSize: 14 }}>
@@ -53,7 +57,10 @@ export function AuthLayout({
       <main className={styles.authMain}>
         <div className={styles.authCard}>
           <Link className="brand brand-sm" href="/" aria-label="CloudNivo home">
-            <span className="brand-mark">C</span>CloudNivo
+            <span className="brand-mark">
+              <LogoMark size={14} />
+            </span>
+            CloudNivo
           </Link>
           <h1>{title}</h1>
           <p className={`sub muted ${styles.sub}`}>{sub}</p>

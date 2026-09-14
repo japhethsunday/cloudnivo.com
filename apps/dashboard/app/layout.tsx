@@ -10,6 +10,7 @@ const inter = Inter({ subsets: ['latin'], display: 'swap' });
 export const metadata: Metadata = {
   title: 'CloudNivo — Backend as a Service',
   description: 'Developer-focused control plane for projects, auth, storage, and APIs.',
+  icons: { icon: '/icon.svg' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }): React.JSX.Element {

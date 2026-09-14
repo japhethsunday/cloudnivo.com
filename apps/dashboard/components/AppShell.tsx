@@ -7,6 +7,7 @@ import { apiFetch } from '../lib/api';
 import { getSectionTab, setSectionTab, subscribeSectionTab } from '../lib/sectiontab';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
 import { CommandPalette } from './CommandPalette';
+import { LogoMark } from './LogoMark';
 import { Notifications } from './Notifications';
 import { useSession } from './SessionProvider';
 import { ThemeToggle } from './ThemeToggle';
@@ -387,7 +388,9 @@ function ShellBody({
           {collapsed ? <IconExpand size={15} /> : <IconCollapse size={15} />}
         </button>
         <Link className="brand" href="/dashboard" aria-label="CloudNivo home">
-          <span className="brand-mark">C</span>
+          <span className="brand-mark">
+            <LogoMark size={15} />
+          </span>
           <span className="brand-text">CloudNivo</span>
         </Link>
 

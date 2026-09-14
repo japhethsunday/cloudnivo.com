@@ -316,6 +316,9 @@ code,
   flex: none;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
 }
+.brand-mark svg {
+  display: block;
+}
 
 [data-theme='dark'] .brand-mark {
   background: var(--accent);

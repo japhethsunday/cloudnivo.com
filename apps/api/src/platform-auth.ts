@@ -34,6 +34,7 @@ import {
 } from '@cloudnivo/database';
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
+import { sendSignupWelcome } from './platform-mail.js';
 import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
 
@@ -1143,6 +1144,14 @@ export async function handlePlatformAuthRoutes(
       });
       const { token, cookie } = await issueSession(ctx, user, clientMeta(req));
       await ctx.registry.recordAudit('platform.signup', { userId: user.id });
+      // Welcome email is best-effort and centralized in platform-mail.ts: it
+      // never throws, never blocks signup, and fires exactly once per
+      // successful account create (duplicates fail above).
+      void sendSignupWelcome(ctx, {
+        to: user.email,
+        displayName: user.displayName,
+        userId: user.id,
+      }).catch(() => undefined);
       return finish(201, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
     }
 
