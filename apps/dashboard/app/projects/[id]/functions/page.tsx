@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { FunctionsPanel } from '../../../../components/FunctionsPanel';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectFunctionsPage({
   params,
@@ -20,6 +21,7 @@ export default function ProjectFunctionsPage({
         </p>
       </div>
       <FunctionsPanel projectId={id} />
+      <SectionCapabilities category="Functions" projectId={id} />
     </div>
   );
 }

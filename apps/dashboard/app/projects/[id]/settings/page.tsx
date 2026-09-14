@@ -21,6 +21,8 @@ import {
 } from '../../../../lib/environments';
 import { ErrorState, EmptyState, LoadingSkeleton } from '../../../../components/States';
 import { Modal, StatusDot, useToast } from '../../../../components/ui';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
+import { BranchesPanel, DbToolsPanel, VaultPanel } from '../../../../components/AdvancedPanels';
 
 interface Project {
   id: string;
@@ -103,6 +105,14 @@ export default function ProjectSettingsPage({
       </div>
 
       <EnvironmentsCard projectId={project.id} />
+
+      <BranchesPanel projectId={project.id} />
+
+      <VaultPanel projectId={project.id} />
+
+      <DbToolsPanel projectId={project.id} />
+
+      <SectionCapabilities category="Environments" projectId={project.id} />
 
       <div className="card" style={{ borderColor: 'var(--danger)' }}>
         <h2 style={{ marginTop: 0 }}>Danger zone</h2>

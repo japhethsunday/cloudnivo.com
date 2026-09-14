@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { StoragePanel } from '../../../../components/StoragePanel';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectStoragePage({
   params,
@@ -20,6 +21,7 @@ export default function ProjectStoragePage({
         </p>
       </div>
       <StoragePanel projectId={id} />
+      <SectionCapabilities category="Storage" projectId={id} />
     </div>
   );
 }

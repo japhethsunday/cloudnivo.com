@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { RealtimePanel } from '../../../../components/RealtimePanel';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectRealtimePage({
   params,
@@ -20,6 +21,7 @@ export default function ProjectRealtimePage({
         </p>
       </div>
       <RealtimePanel projectId={id} />
+      <SectionCapabilities category="Realtime" projectId={id} />
     </div>
   );
 }

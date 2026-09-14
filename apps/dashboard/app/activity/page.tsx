@@ -8,6 +8,7 @@ import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, statusTone } from '../../components/ui';
 import { IconInfo } from '../../components/icons';
+import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 interface Project {
   id: string;
@@ -208,6 +209,7 @@ function ActivityBody(): React.JSX.Element {
               </ul>
             </div>
           )}
+          <SectionCapabilities category="Observability" />
         </>
       )}
     </section>

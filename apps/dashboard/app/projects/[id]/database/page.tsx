@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { ProjectDatabase } from '../../../../components/ProjectDatabase';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectDatabasePage({
   params,
@@ -17,6 +18,7 @@ export default function ProjectDatabasePage({
         <p>Isolated PostgreSQL with live status, schema inspection, and guarded queries.</p>
       </div>
       <ProjectDatabase projectId={id} />
+      <SectionCapabilities category="Database" projectId={id} />
     </div>
   );
 }

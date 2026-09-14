@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { formatMetric, prettifyKey, timeAgo } from '../../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface ServiceSummary {
   service: string;
@@ -211,6 +212,7 @@ export default function ProjectMetricsPage({
           <p className="muted" style={{ fontSize: 12, margin: 0 }}>
             {metrics.note}
           </p>
+          <SectionCapabilities category="Observability" projectId={id} />
         </div>
       ) : null}
     </div>

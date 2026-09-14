@@ -6,6 +6,7 @@ import { apiFetch } from '../../../../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
 import { Badge, statusTone } from '../../../../components/ui';
 import { IconSearch } from '../../../../components/icons';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface Job {
   id: string;
@@ -287,6 +288,7 @@ export default function ProjectLogsPage({
           </>
         )}
       </div>
+      <SectionCapabilities category="Observability" projectId={id} />
     </div>
   );
 }

@@ -191,7 +191,22 @@ function DashboardBody(): React.JSX.Element {
             />
           ) : (
             <>
-              <div className="ov-grid" style={{ marginBottom: 12 }}>
+              <div className="card" style={{ marginBottom: 12 }}>
+            <div className="section-head split">
+              <div>
+                <p className="eyebrow">Platform</p>
+                <h2 style={{ margin: 0 }}>100 capabilities, one console</h2>
+                <p style={{ margin: '4px 0 0' }}>
+                  Database branches, vault, signed URLs, cron schedules, AI debugger, spend budgets, SSO and more — browse the full index.
+                </p>
+              </div>
+              <Link className="btn btn-primary" href="/capabilities">
+                Browse capabilities →
+              </Link>
+            </div>
+          </div>
+
+          <div className="ov-grid" style={{ marginBottom: 12 }}>
                 <div className="card">
                   <h2 style={{ marginTop: 0 }}>Infrastructure health</h2>
                   {components.length === 0 ? (

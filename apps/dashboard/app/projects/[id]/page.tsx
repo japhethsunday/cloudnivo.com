@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { formatBytes, timeAgo } from '../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, StatusDot, statusTone } from '../../../components/ui';
+import { CAPABILITIES } from '../../../lib/capabilities';
 
 interface Job {
   id: string;
@@ -172,6 +173,35 @@ export default function ProjectOverviewPage({
             </Link>
           </li>
         </ul>
+      </div>
+
+      <div className="card">
+        <div className="section-head split">
+          <div>
+            <p className="eyebrow">Project</p>
+            <h2>Capabilities · {CAPABILITIES.length}</h2>
+            <p>Database, API, auth, storage, realtime, functions, AI, automation, observability, billing and more — all live in this project.</p>
+          </div>
+          <Link href="/capabilities">Browse all {CAPABILITIES.length} →</Link>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[
+            ['Database', `/projects/${id}/database`],
+            ['API', `/projects/${id}/api`],
+            ['Auth', `/projects/${id}/auth`],
+            ['Storage', `/projects/${id}/storage`],
+            ['Realtime', `/projects/${id}/realtime`],
+            ['Functions', `/projects/${id}/functions`],
+            ['AI', `/projects/${id}/ai`],
+            ['Automations', `/projects/${id}/automations`],
+            ['Metrics', `/projects/${id}/metrics`],
+            ['Settings', `/projects/${id}/settings`],
+          ].map(([label, href]) => (
+            <Link key={label} className="btn btn-sm" href={href}>
+              {label}
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="card">

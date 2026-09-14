@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { AIBuilderPanel } from '../../../../components/AIBuilderPanel';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectAIPage({
   params,
@@ -20,6 +21,7 @@ export default function ProjectAIPage({
         </p>
       </div>
       <AIBuilderPanel projectId={id} />
+      <SectionCapabilities category="AI" projectId={id} />
     </div>
   );
 }

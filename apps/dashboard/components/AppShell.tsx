@@ -62,6 +62,7 @@ const WORKSPACE_NAV: NavItem[] = [
 ];
 
 const MANAGE_NAV: NavItem[] = [
+  { href: '/capabilities', label: 'Capabilities', icon: <IconOverview size={16} />, match: p => p === '/capabilities' },
   { href: '/security', label: 'Security', icon: <IconShield size={16} />, match: p => p === '/security' },
   { href: '/agents', label: 'Agent Access', icon: <IconAgents size={16} />, match: p => p === '/agents' },
   { href: '/billing', label: 'Billing', icon: <IconBilling size={16} />, match: p => p === '/billing' },

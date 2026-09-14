@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
 import { Badge } from '../../../../components/ui';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface Slice {
   service: string;
@@ -124,6 +125,7 @@ export default function ProjectUsagePage({
         )}
       </div>
 
+      <SectionCapabilities category="Billing" projectId={id} />
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Organization invoices</h2>
         {invoices.length === 0 ? (

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { CAPABILITIES, resolveCapabilityHref } from '../lib/capabilities';
 import { getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
 import {
   IconAccount,
@@ -201,7 +202,20 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       { id: 'go-orgs', group: 'Go to', label: 'Organizations', icon: <IconOrganizations size={16} />, keywords: 'organizations teams membership', run: go('/organizations') },
       { id: 'go-account', group: 'Go to', label: 'Account', icon: <IconAccount size={16} />, keywords: 'account profile security sessions', run: go('/account') },
       { id: 'go-settings', group: 'Go to', label: 'Settings', icon: <IconSettings size={16} />, keywords: 'settings preferences appearance theme', run: go('/settings') },
+      { id: 'go-capabilities', group: 'Go to', label: 'Capabilities · 100', icon: <IconOverview size={16} />, keywords: 'capabilities all 100 features catalog database auth storage api realtime functions ai security observability environments billing developer', run: go('/capabilities') },
     );
+
+    for (const cap of CAPABILITIES) {
+      list.push({
+        id: `cap:${cap.id}`,
+        group: `Capability · ${cap.category}`,
+        label: cap.title,
+        hint: cap.category,
+        icon: <IconSearch size={16} />,
+        keywords: `${cap.title} ${cap.category} ${cap.id} capability feature`,
+        run: go(resolveCapabilityHref(cap, selected?.id ?? null)),
+      });
+    }
     return list;
   }, [projects, orgs, onClose, router]);
 

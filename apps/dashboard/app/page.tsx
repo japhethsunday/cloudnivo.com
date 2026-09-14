@@ -347,9 +347,12 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} aria-labelledby="caps-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Platform</p>
+            <p className={styles.eyebrow}>Platform · 100 capabilities</p>
             <h2 id="caps-h">Everything a backend needs</h2>
-            <p>Every capability below is implemented in the product — open the console and use it.</p>
+            <p>
+              Every capability below is implemented in the product — open the console and use it.{' '}
+              <Link href="/capabilities">Browse all 100 capabilities →</Link>
+            </p>
           </div>
           <div className={styles.grid3}>
             {PLATFORM.map(p => (

@@ -5,6 +5,7 @@ import { apiBase } from '../../lib/api';
 import { RequireAuth } from '../../components/RequireAuth';
 import { IconInfo } from '../../components/icons';
 import { CopyButton, SectionHead } from '../../components/ui';
+import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 function Snippet({ title, code }: { title: string; code: string }): React.JSX.Element {
   return (
@@ -123,6 +124,7 @@ const { token, raw } = await cn.createAgentToken(orgId, {
             </div>
           </div>
 
+          <SectionCapabilities category="Developer Tools" />
           <div>
             <SectionHead
               eyebrow="Raw HTTP"

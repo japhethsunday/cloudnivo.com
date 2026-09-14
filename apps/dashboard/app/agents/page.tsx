@@ -19,6 +19,7 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, Modal, StatusDot, statusTone, useToast } from '../../components/ui';
+import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 interface ProjectLite {
   id: string;
@@ -364,6 +365,7 @@ function AgentsBody(): React.JSX.Element {
               </div>
             )}
           </div>
+          <SectionCapabilities category="Developer Tools" />
         </>
       )}
 

@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { AuthPanel } from '../../../../components/AuthPanel';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectAuthPage({
   params,
@@ -20,6 +21,7 @@ export default function ProjectAuthPage({
         </p>
       </div>
       <AuthPanel projectId={id} />
+      <SectionCapabilities category="Auth" projectId={id} />
     </div>
   );
 }

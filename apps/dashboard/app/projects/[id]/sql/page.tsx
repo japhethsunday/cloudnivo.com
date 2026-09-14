@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { ProjectDatabase } from '../../../../components/ProjectDatabase';
+import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectSqlPage({
   params,
@@ -17,6 +18,7 @@ export default function ProjectSqlPage({
         <p>Guarded execution against this project&apos;s database. Results never leave your session.</p>
       </div>
       <ProjectDatabase projectId={id} mode="query" />
+      <SectionCapabilities category="Database" projectId={id} />
     </div>
   );
 }
