@@ -42,16 +42,16 @@
 }
 
 [data-theme='dark'] {
-  --bg: #0b1220;
-  --bg-muted: #0e1626;
-  --bg-elevated: #111a2e;
-  --bg-inset: #0a111d;
-  --bg-overlay: rgb(2 6 17 / 0.66);
-  --border: #1d2a45;
-  --border-strong: #2e3f63;
-  --text: #e6edf7;
-  --text-muted: #9aa9c1;
-  --text-faint: #61738f;
+  --bg: #0a111f;
+  --bg-muted: #0d1526;
+  --bg-elevated: #101a2e;
+  --bg-inset: #070d18;
+  --bg-overlay: rgb(2 6 17 / 0.7);
+  --border: #1a2540;
+  --border-strong: #2b3d61;
+  --text: #e8eef8;
+  --text-muted: #a3b2c9;
+  --text-faint: #7c8fa9;
   --accent: #5b8cff;
   --accent-hover: #7ea6ff;
   --accent-contrast: #ffffff;
@@ -65,10 +65,42 @@
   --danger-soft: #3c1a1a;
   --info: #3aa1f2;
   --info-soft: #0e293e;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
-  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 24px 60px -16px rgb(0 0 0 / 0.6);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -12px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.35), 0 24px 60px -16px rgb(0 0 0 / 0.6);
   color-scheme: dark;
+}
+
+/* ── Dark theme refinements: confident controls, quiet depth ── */
+
+[data-theme='dark'] .btn-primary {
+  color: #071224;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(126 166 255 / 0.25), 0 4px 16px -4px rgb(91 140 255 / 0.45);
+}
+[data-theme='dark'] .btn-primary:hover {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(126 166 255 / 0.35), 0 6px 20px -4px rgb(91 140 255 / 0.55);
+}
+[data-theme='dark'] .nav a[aria-current='page'] {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+[data-theme='dark'] .card:hover {
+  border-color: var(--border-strong);
+}
+[data-theme='dark'] input:focus,
+[data-theme='dark'] select:focus,
+[data-theme='dark'] textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(91 140 255 / 0.22);
+}
+[data-theme='dark'] .table thead th {
+  background: var(--bg-inset);
+}
+[data-theme='dark'] .badge.ok,
+[data-theme='dark'] .badge.warn,
+[data-theme='dark'] .badge.bad,
+[data-theme='dark'] .badge.info {
+  border-color: rgb(255 255 255 / 0.06);
 }
 
 * {

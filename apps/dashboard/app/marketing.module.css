@@ -900,7 +900,7 @@
 .infra {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--shadow-md);
   min-width: 0;
   overflow: hidden;
@@ -909,11 +909,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.004em;
   color: var(--text-muted);
 }
 .infraBar .dots {
@@ -1000,4 +1001,39 @@
   .infra .pulse {
     animation: none;
   }
+}
+
+/* ── Dark theme refinements: depth, glow, confident accents ── */
+
+:global([data-theme='dark']) .priceFlag {
+  color: #071224;
+}
+:global([data-theme='dark']) .priceCard.featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 16px 48px -16px rgb(91 140 255 / 0.4);
+}
+:global([data-theme='dark']) .console {
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 24px 64px -24px rgb(0 0 0 / 0.7);
+}
+:global([data-theme='dark']) .infra {
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 24px 64px -24px rgb(0 0 0 / 0.7);
+}
+:global([data-theme='dark']) .panel,
+:global([data-theme='dark']) .secPanel {
+  border-color: var(--border);
+}
+:global([data-theme='dark']) .grid3 .panel:hover {
+  border-color: var(--border-strong);
+}
+:global([data-theme='dark']) .nav {
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+:global([data-theme='dark']) .code {
+  background: #060b14;
+}
+:global([data-theme='dark']) .ctaInner {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
 }
