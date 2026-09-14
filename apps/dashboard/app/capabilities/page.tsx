@@ -4,11 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { getSelectedProject } from '../../lib/selection';
-import {
-  CAPABILITIES,
-  CAPABILITY_CATEGORIES,
-  resolveCapabilityHref,
-} from '../../lib/capabilities';
+import { CAPABILITIES, CAPABILITY_CATEGORIES, resolveCapabilityHref } from '../../lib/capabilities';
 import { RequireAuth } from '../../components/RequireAuth';
 
 interface ProjectLite {
@@ -25,9 +21,14 @@ export default function CapabilitiesPage(): React.JSX.Element {
   );
 }
 
+/**
+ * INTERNAL registry — not the product experience.
+ * The 100 capabilities live in their real product areas
+ * (Database, Auth, Storage, Realtime, Functions, AI, …).
+ * This index exists only for tracking/testing coverage.
+ */
 function CapabilitiesBody(): React.JSX.Element {
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<string>('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
 
@@ -43,32 +44,23 @@ function CapabilitiesBody(): React.JSX.Element {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return CAPABILITIES.filter(c => {
-      if (category && c.category !== category) return false;
-      if (!q) return true;
-      return `${c.title} ${c.body} ${c.category} ${c.id}`.toLowerCase().includes(q);
-    });
-  }, [query, category]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof CAPABILITIES>();
-    for (const c of filtered) {
-      const list = map.get(c.category) ?? [];
-      list.push(c);
-      map.set(c.category, list);
-    }
-    return [...map.entries()];
-  }, [filtered]);
+    if (!q) return CAPABILITIES;
+    return CAPABILITIES.filter(c =>
+      `${c.title} ${c.body} ${c.category} ${c.id}`.toLowerCase().includes(q),
+    );
+  }, [query]);
 
   return (
     <section aria-labelledby="caps-title">
       <div className="page-head">
         <div>
-          <h1 id="caps-title">Capabilities · {CAPABILITIES.length}</h1>
+          <p className="eyebrow">Internal · tracking only</p>
+          <h1 id="caps-title">Capability registry (internal)</h1>
           <p className="sub muted">
-            The full CloudNivo surface — database, auth, storage, API, realtime, functions, AI,
-            automation, observability, security, environments, billing and developer tools. Every
-            entry links to the console where it runs.
+            This is <strong>not</strong> the product. Every capability below runs in its real
+            product area — Database → Table Editor, Authentication → OTP, Storage → buckets,
+            Realtime → channels, and so on. Use this table only to verify coverage during
+            development and testing.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -76,7 +68,7 @@ function CapabilitiesBody(): React.JSX.Element {
             <select
               value={projectId ?? ''}
               onChange={e => setProjectId(e.target.value || null)}
-              aria-label="Capability project context"
+              aria-label="Registry project context"
             >
               <option value="">No project context</option>
               {projects.map(p => (
@@ -86,8 +78,8 @@ function CapabilitiesBody(): React.JSX.Element {
               ))}
             </select>
           ) : null}
-          <Link className="btn" href="/dashboard">
-            Dashboard
+          <Link className="btn btn-primary" href="/dashboard">
+            Open workspace →
           </Link>
         </div>
       </div>
@@ -96,61 +88,60 @@ function CapabilitiesBody(): React.JSX.Element {
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search 100 capabilities… (e.g. vault, branches, signed URLs)"
-          aria-label="Search capabilities"
+          placeholder="Filter registry… (e.g. vault, branches, signed URLs)"
+          aria-label="Filter capability registry"
           style={{ flex: '2 1 240px' }}
         />
-        <select value={category} onChange={e => setCategory(e.target.value)} aria-label="Filter by category">
-          <option value="">All categories ({CAPABILITIES.length})</option>
-          {CAPABILITY_CATEGORIES.map(c => (
-            <option key={c} value={c}>
-              {c} ({CAPABILITIES.filter(x => x.category === c).length})
-            </option>
-          ))}
-        </select>
         <span className="muted" style={{ fontSize: 14 }} aria-live="polite" data-testid="caps-count">
-          {filtered.length} of {CAPABILITIES.length}
+          {filtered.length} of {CAPABILITIES.length} tracked
         </span>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="card">
-          <p className="muted" style={{ margin: 0 }}>
-            Nothing matches “{query.trim()}”. Try “vault”, “branches”, “webhook” or “MFA”.
-          </p>
-        </div>
-      ) : (
-        grouped.map(([cat, items]) => (
-          <div key={cat} style={{ marginBottom: 16 }}>
+      {CAPABILITY_CATEGORIES.map(cat => {
+        const items = filtered.filter(c => c.category === cat);
+        if (items.length === 0) return null;
+        return (
+          <div key={cat} className="card" style={{ marginBottom: 12 }}>
             <div className="section-head split">
               <div>
                 <p className="eyebrow">{cat}</p>
-                <h2>
+                <h2 style={{ fontSize: 15 }}>
                   {cat} · {items.length}
                 </h2>
               </div>
             </div>
-            <div className="ov-grid">
-              {items.map(c => (
-                <div key={c.id} className="card" data-testid={`cap-${c.id}`}>
-                  <h3 style={{ marginTop: 0, fontSize: 15 }}>{c.title}</h3>
-                  <p className="muted" style={{ fontSize: 13, margin: '6px 0 10px' }}>
-                    {c.body}
-                  </p>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Link className="btn btn-sm btn-primary" href={resolveCapabilityHref(c, projectId)}>
-                      Open in console →
-                    </Link>
-                    <code className="muted" style={{ fontSize: 11 }} title={c.api}>
-                      {c.api}
-                    </code>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <table className="table" aria-label={`${cat} capability coverage`}>
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Lives in</th>
+                  <th>Backend proof</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(c => (
+                  <tr key={c.id} data-testid={`cap-${c.id}`}>
+                    <td>
+                      <strong>{c.title}</strong>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {c.body}
+                      </div>
+                    </td>
+                    <td>
+                      <Link href={resolveCapabilityHref(c, projectId)}>Open →</Link>
+                    </td>
+                    <td>
+                      <code className="muted" style={{ fontSize: 11 }} title={c.api}>
+                        {c.api}
+                      </code>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))
-      )}
+        );
+      })}
     </section>
   );
 }

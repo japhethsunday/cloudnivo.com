@@ -29,12 +29,15 @@ const TABS = [
   { href: '/realtime', label: 'Realtime' },
   { href: '/functions', label: 'Functions' },
   { href: '/automations', label: 'Automations' },
-  { href: '/logs', label: 'Logs' },
+  { href: '/ai', label: 'AI' },
+  { href: '/security', label: 'Security' },
+  { href: '/logs', label: 'Observability' },
   { href: '/metrics', label: 'Metrics' },
+  { href: '/environments', label: 'Environments' },
+  { href: '/deployments', label: 'Deployments' },
+  { href: '/integrations', label: 'Integrations' },
   { href: '/usage', label: 'Usage' },
-  { href: '/api#keys', label: 'API Keys' },
-  { href: '/ai', label: 'AI Builder' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/settings', label: 'Project Settings' },
 ];
 
 export default function ProjectLayout({

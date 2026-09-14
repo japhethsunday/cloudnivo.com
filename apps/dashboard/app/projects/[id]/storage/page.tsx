@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { StoragePanel } from '../../../../components/StoragePanel';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
+import { StorageOps } from '../../../../components/IntegrationSections';
 
 export default function ProjectStoragePage({
   params,
@@ -13,15 +13,17 @@ export default function ProjectStoragePage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
+        <p className="eyebrow">Project · Storage</p>
         <h2>Storage</h2>
         <p>
-          Buckets, files, usage, and policies. Bytes persist through the configured provider; metadata
-          stays tenant-scoped.
+          Buckets, files, upload/download, move/copy, policies and signed URLs. Bytes persist
+          through the configured provider; metadata stays tenant-scoped.
         </p>
       </div>
-      <StoragePanel projectId={id} />
-      <SectionCapabilities category="Storage" projectId={id} />
+      <div style={{ display: 'grid', gap: 12 }}>
+        <StoragePanel projectId={id} />
+        <StorageOps projectId={id} />
+      </div>
     </div>
   );
 }

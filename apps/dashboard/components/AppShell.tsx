@@ -59,10 +59,10 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: '/projects', label: 'Projects', icon: <IconProjects size={16} />, match: p => p === '/projects' || p === '/projects/new' },
   { href: '/activity', label: 'Activity', icon: <IconActivity size={16} />, match: p => p === '/activity' },
   { href: '/organizations', label: 'Organizations', icon: <IconOrganizations size={16} />, match: p => p === '/organizations' },
+  { href: '/account', label: 'Account', icon: <IconAccount size={16} />, match: p => p === '/account' },
 ];
 
 const MANAGE_NAV: NavItem[] = [
-  { href: '/capabilities', label: 'Capabilities', icon: <IconOverview size={16} />, match: p => p === '/capabilities' },
   { href: '/security', label: 'Security', icon: <IconShield size={16} />, match: p => p === '/security' },
   { href: '/agents', label: 'Agent Access', icon: <IconAgents size={16} />, match: p => p === '/agents' },
   { href: '/billing', label: 'Billing', icon: <IconBilling size={16} />, match: p => p === '/billing' },

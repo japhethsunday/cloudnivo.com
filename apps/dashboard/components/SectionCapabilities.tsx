@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { CAPABILITIES, resolveCapabilityHref, type CapabilityCategory } from '../lib/capabilities';
 
-/** Compact strip listing the capabilities that live in a given section. */
+/** Minimal footer link — the real workflows live above, not in a capability grid. */
 export function SectionCapabilities({
   category,
   projectId = null,
@@ -13,38 +13,17 @@ export function SectionCapabilities({
   projectId?: string | null;
   compact?: boolean;
 }): React.JSX.Element {
+  void compact;
   const items = CAPABILITIES.filter(c => c.category === category);
   if (items.length === 0) return <></>;
+  const sample = items[0];
   return (
-    <div className="card" style={{ marginTop: 12 }} aria-label={`${category} capabilities`}>
-      <div className="section-head split">
-        <div>
-          <p className="eyebrow">{category}</p>
-          <h2 style={{ fontSize: 15 }}>
-            {category} capabilities · {items.length}
-          </h2>
-          {!compact ? (
-            <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
-              Every item below is live in this workspace — open it where it runs.
-            </p>
-          ) : null}
-        </div>
-        <Link href="/capabilities">All 100 →</Link>
-      </div>
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
-        {items.map(c => (
-          <li key={c.id} className="health-row" style={{ alignItems: 'flex-start' }}>
-            <span className="dot ok" aria-hidden style={{ marginTop: 6 }} />
-            <span className="grow">
-              <span className="name">{c.title}</span>
-              {!compact ? <div className="detail">{c.body}</div> : null}
-            </span>
-            <Link className="value" href={resolveCapabilityHref(c, projectId)}>
-              Open →
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <p className="muted" style={{ marginTop: 12, fontSize: 12 }}>
+      {items.length} {category.toLowerCase()} workflows live in this section ·{' '}
+      <Link href={sample ? resolveCapabilityHref(sample, projectId) : '/dashboard'}>
+        open section
+      </Link>{' '}
+      · <Link href="/capabilities">internal registry</Link>
+    </p>
   );
 }

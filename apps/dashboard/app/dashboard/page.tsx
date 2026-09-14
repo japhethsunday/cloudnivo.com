@@ -194,14 +194,15 @@ function DashboardBody(): React.JSX.Element {
               <div className="card" style={{ marginBottom: 12 }}>
             <div className="section-head split">
               <div>
-                <p className="eyebrow">Platform</p>
-                <h2 style={{ margin: 0 }}>100 capabilities, one console</h2>
+                <p className="eyebrow">Product areas</p>
+                <h2 style={{ margin: 0 }}>Open a product area</h2>
                 <p style={{ margin: '4px 0 0' }}>
-                  Database branches, vault, signed URLs, cron schedules, AI debugger, spend budgets, SSO and more — browse the full index.
+                  Database, authentication, storage, realtime, functions, automations, AI,
+                  observability and billing — pick a project to work in its real console.
                 </p>
               </div>
-              <Link className="btn btn-primary" href="/capabilities">
-                Browse capabilities →
+              <Link className="btn btn-primary" href="/projects">
+                Open projects →
               </Link>
             </div>
           </div>

@@ -7,7 +7,6 @@ import { apiFetch } from '../../../lib/api';
 import { formatBytes, timeAgo } from '../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, StatusDot, statusTone } from '../../../components/ui';
-import { CAPABILITIES } from '../../../lib/capabilities';
 
 interface Job {
   id: string;
@@ -179,23 +178,28 @@ export default function ProjectOverviewPage({
         <div className="section-head split">
           <div>
             <p className="eyebrow">Project</p>
-            <h2>Capabilities · {CAPABILITIES.length}</h2>
-            <p>Database, API, auth, storage, realtime, functions, AI, automation, observability, billing and more — all live in this project.</p>
+            <h2>Product areas</h2>
+            <p>Every workflow lives in its own section — open the console where it runs.</p>
           </div>
-          <Link href="/capabilities">Browse all {CAPABILITIES.length} →</Link>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {[
             ['Database', `/projects/${id}/database`],
+            ['SQL Editor', `/projects/${id}/sql`],
             ['API', `/projects/${id}/api`],
-            ['Auth', `/projects/${id}/auth`],
+            ['Authentication', `/projects/${id}/auth`],
             ['Storage', `/projects/${id}/storage`],
             ['Realtime', `/projects/${id}/realtime`],
             ['Functions', `/projects/${id}/functions`],
-            ['AI', `/projects/${id}/ai`],
             ['Automations', `/projects/${id}/automations`],
-            ['Metrics', `/projects/${id}/metrics`],
-            ['Settings', `/projects/${id}/settings`],
+            ['AI', `/projects/${id}/ai`],
+            ['Security', `/projects/${id}/security`],
+            ['Observability', `/projects/${id}/logs`],
+            ['Environments', `/projects/${id}/environments`],
+            ['Deployments', `/projects/${id}/deployments`],
+            ['Integrations', `/projects/${id}/integrations`],
+            ['Usage', `/projects/${id}/usage`],
+            ['Project Settings', `/projects/${id}/settings`],
           ].map(([label, href]) => (
             <Link key={label} className="btn btn-sm" href={href}>
               {label}

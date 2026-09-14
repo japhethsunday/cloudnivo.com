@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { RealtimePanel } from '../../../../components/RealtimePanel';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
+import { RealtimeComposer } from '../../../../components/IntegrationSections';
 
 export default function ProjectRealtimePage({
   params,
@@ -13,15 +13,17 @@ export default function ProjectRealtimePage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
+        <p className="eyebrow">Project · Realtime</p>
         <h2>Realtime</h2>
         <p>
-          Live connections, channels, events, presence, and usage. Events travel over real WebSocket
-          connections scoped to this project — never across projects.
+          Project-scoped channels, broadcast, presence and monitoring — over one authenticated
+          socket per project. Postgres change feeds fan out on subscribe.
         </p>
       </div>
-      <RealtimePanel projectId={id} />
-      <SectionCapabilities category="Realtime" projectId={id} />
+      <div style={{ display: 'grid', gap: 12 }}>
+        <RealtimeComposer projectId={id} />
+        <RealtimePanel projectId={id} />
+      </div>
     </div>
   );
 }
