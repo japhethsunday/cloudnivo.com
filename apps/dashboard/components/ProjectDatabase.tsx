@@ -223,7 +223,7 @@ export function ProjectDatabase({
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" id="connection">
         <h2 style={{ marginTop: 0 }}>Connection information</h2>
         {!conn ? (
           <button type="button" className="btn" onClick={() => void loadMasked()}>

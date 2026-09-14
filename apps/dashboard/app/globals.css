@@ -785,6 +785,45 @@ textarea::placeholder {
   border-bottom-color: var(--accent);
 }
 
+/* ── In-page section tabs (buttons, same visual language as .tabs) ── */
+
+.subtabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.subtabs button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 9px 13px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.subtabs button:hover {
+  color: var(--text);
+}
+.subtabs button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.subtabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* ── States ────────────────────────────────────────────── */
 
 .empty,

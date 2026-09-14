@@ -91,6 +91,20 @@ export default function ProjectOverviewPage({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {failed > 0 ? (
+        <div className="card" style={{ borderColor: 'var(--danger)' }} role="alert">
+          <div className="section-head split">
+            <div>
+              <p className="eyebrow">Needs attention</p>
+              <h2 style={{ margin: 0 }}>{failed} failed operation{failed === 1 ? '' : 's'}</h2>
+              <p style={{ margin: '4px 0 0' }}>
+                {jobs.filter(j => j.status === 'failed').slice(0, 3).map(j => j.kind).join(', ')}
+              </p>
+            </div>
+            <Link className="btn btn-sm" href={`/projects/${id}/logs`}>Investigate →</Link>
+          </div>
+        </div>
+      ) : null}
       <div className="card">
         <div className="section-head">
           <p className="eyebrow">Project</p>

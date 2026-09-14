@@ -22,6 +22,68 @@ interface IssuedKey {
   raw: string;
 }
 
+function RequestTester({ projectId, tables }: { projectId: string; tables: string[] }): React.JSX.Element {
+  const [table, setTable] = useState('');
+  const [limit, setLimit] = useState('20');
+  const [order, setOrder] = useState('');
+  const [out, setOut] = useState<{ status: number; ms: number; body: unknown } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!table && tables[0]) setTable(tables[0]);
+  }, [tables, table]);
+
+  async function run(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!table) return;
+    setBusy(true);
+    setError(null);
+    const q = new URLSearchParams();
+    if (limit.trim()) q.set('limit', limit.trim());
+    if (order.trim()) q.set('order', order.trim());
+    const started = Date.now();
+    const r = await apiFetch<unknown>(`/api/v1/projects/${projectId}/${encodeURIComponent(table)}?${q.toString()}`);
+    setBusy(false);
+    if (!r.ok) {
+      setOut(null);
+      setError(r.error ?? 'Request failed');
+      return;
+    }
+    setOut({ status: r.status, ms: Date.now() - started, body: r.data });
+  }
+
+  return (
+    <div className="card">
+      <div className="section-head">
+        <p className="eyebrow">REST</p>
+        <h2 style={{ marginTop: 0 }}>Try it — live request</h2>
+        <p>Run a real read against your API with your session. Filtering, ordering and pagination included.</p>
+      </div>
+      {tables.length === 0 ? (
+        <EmptyState title="No tables yet" hint="Create a table first — then test the endpoint it generates." />
+      ) : (
+        <form onSubmit={e => void run(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <select value={table} onChange={e => setTable(e.target.value)} aria-label="Table">
+            {tables.map(t => (
+              <option key={t} value={t}>GET /{t}</option>
+            ))}
+          </select>
+          <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="limit" aria-label="Limit" inputMode="numeric" style={{ width: 90 }} />
+          <input value={order} onChange={e => setOrder(e.target.value)} placeholder="order, e.g. created_at.desc" aria-label="Order" style={{ flex: '2 1 180px' }} />
+          <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !table}>{busy ? 'Sending…' : 'Send'}</button>
+        </form>
+      )}
+      {error ? <ErrorState message={error} /> : null}
+      {out ? (
+        <div style={{ marginTop: 8 }}>
+          <p className="muted" style={{ fontSize: 12 }}>HTTP {out.status} · {out.ms} ms</p>
+          <pre className="codeblock" style={{ maxHeight: 320 }}>{JSON.stringify(out.body, null, 2)}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 function curlFor(base: string, projectId: string, table: string, keyPrefix: string): string {
   return `curl -H "apikey: ${keyPrefix}…" "${base}/api/v1/projects/${projectId}/${table}?limit=20"`;
 }
@@ -205,6 +267,8 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
           ))
         )}
       </div>
+
+      <RequestTester projectId={projectId} tables={tables} />
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>OpenAPI documentation</h2>

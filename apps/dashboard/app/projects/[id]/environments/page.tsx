@@ -24,12 +24,12 @@ export default function ProjectEnvironmentsPage({
         <BranchesPanel projectId={id} />
         <VaultPanel projectId={id} />
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Manage pointers in Settings</h2>
+          <h2 style={{ fontSize: 15, marginTop: 0 }}>Environment configuration</h2>
           <p className="muted" style={{ fontSize: 13 }}>
-            Environment pointers (name, slug, branch pin) live under{' '}
+            Environment pointers (name, slug, branch pin) are managed in{' '}
             <a href={`/projects/${id}/settings#environments`}>Project Settings → Environments</a>.
             Database power tools (extensions, advisors, types, diff, restore, import, RLS
-            simulation) live under <a href={`/projects/${id}/database`}>Database</a>.
+            simulation) live in <a href={`/projects/${id}/database`}>Database</a>.
           </p>
         </div>
       </div>

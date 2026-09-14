@@ -119,6 +119,11 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
             ))}
           </div>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <Link className="btn btn-primary btn-sm" href={`${base}/database#connection`}>
+            Connect
+          </Link>
+        </div>
       </div>
       <nav className="tabs" aria-label="Project sections">
         {TABS.map(t => {

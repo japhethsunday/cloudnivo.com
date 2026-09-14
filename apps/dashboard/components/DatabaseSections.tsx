@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
@@ -10,6 +10,8 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   const [table, setTable] = useState('');
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [filter, setFilter] = useState('');
+  const [sortField, setSortField] = useState('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [limit, setLimit] = useState(20);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -54,9 +56,23 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
     if (table) void loadRows();
   }, [table, loadRows]);
 
-  const shown = filter.trim()
-    ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(filter.trim().toLowerCase()))
-    : rows;
+  const shown = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const filtered = q ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q)) : [...rows];
+    const field = sortField.trim();
+    if (field) {
+      filtered.sort((a, b) => {
+        const av = a[field];
+        const bv = b[field];
+        if (av === bv) return 0;
+        if (av === null || av === undefined) return 1;
+        if (bv === null || bv === undefined) return -1;
+        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return filtered;
+  }, [rows, filter, sortField, sortDir]);
 
   async function insert(): Promise<void> {
     let body: unknown;
@@ -121,6 +137,16 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
           ))}
         </select>
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter rows…" aria-label="Filter rows" style={{ flex: '1 1 160px' }} />
+        <input value={sortField} onChange={e => setSortField(e.target.value)} placeholder="Sort by field…" aria-label="Sort by field" style={{ flex: '1 1 120px' }} />
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+          aria-label={`Sort direction: ${sortDir}. Activate to reverse.`}
+          disabled={!sortField.trim()}
+        >
+          {sortDir === 'asc' ? '↑' : '↓'}
+        </button>
         <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setOffset(0); }} aria-label="Page size">
           {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}/page</option>)}
         </select>

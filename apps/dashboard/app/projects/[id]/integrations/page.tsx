@@ -7,9 +7,10 @@ import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/
 
 interface Webhook {
   id: string;
+  name: string;
   url: string;
-  events: string[];
-  status?: string;
+  eventTypes: string[];
+  enabled?: boolean;
 }
 interface Domain {
   id: string;
@@ -35,9 +36,8 @@ export default function ProjectIntegrationsPage({
   const [orgId, setOrgId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // GitHub connection state (real OAuth-device style handshake is org-managed;
-  // here we surface linked repos via webhook targets + connection status).
   const [ghRepo, setGhRepo] = useState('');
+  const [ghUrl, setGhUrl] = useState('');
   const [ghStatus, setGhStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -65,19 +65,22 @@ export default function ProjectIntegrationsPage({
 
   async function connectGithub(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (!ghRepo.trim()) return;
-    // Real integration: register a deployment webhook targeting the repo's
-    // CI endpoint is org-specific; here we record the repo link as a project
-    // webhook note via a test delivery so the connection is verifiable.
+    const repo = ghRepo.trim();
+    const url = ghUrl.trim();
+    if (!repo || !url) return;
+    // Honest integration: CloudNivo delivers signed deployment events to YOUR
+    // receiver URL (CI endpoint, deploy hook). The repository name labels the
+    // subscription so you can tell subscriptions apart.
     setGhStatus(null);
     const r = await apiFetch(`/api/v1/projects/${id}/webhooks`, {
       method: 'POST',
-      body: { url: `https://github.com/${ghRepo.trim()}`, events: ['deployment'] },
+      body: { name: `github-${repo}`.slice(0, 64), url, eventTypes: ['function.deployed'] },
     });
-    if (!r.ok) setGhStatus(`GitHub link failed: ${r.error}`);
+    if (!r.ok) setGhStatus(`Could not create subscription: ${r.error}`);
     else {
-      setGhStatus(`Linked ${ghRepo.trim()} — deployment events will sign and deliver.`);
+      setGhStatus(`Subscribed — signed function.deployed events for ${repo} will be delivered to your endpoint.`);
       setGhRepo('');
+      setGhUrl('');
       void load();
     }
   }
@@ -96,12 +99,14 @@ export default function ProjectIntegrationsPage({
         <div className="card">
           <h2 style={{ fontSize: 15, marginTop: 0 }}>GitHub</h2>
           <p className="muted" style={{ fontSize: 13 }}>
-            Connect a repository to receive signed deployment events. Connection and repository
-            selection write through to the project webhook pipeline — no fake links.
+            Subscribe a repository&apos;s pipeline to signed <code>function.deployed</code> events.
+            Deliveries go to your own receiver URL (CI endpoint or deploy hook) with HMAC
+            signatures — manage, replay and rotate them under Automations.
           </p>
           <form onSubmit={e => void connectGithub(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input value={ghRepo} onChange={e => setGhRepo(e.target.value)} placeholder="owner/repo" aria-label="GitHub repository" style={{ flex: '2 1 200px' }} />
-            <button type="submit" className="btn btn-sm btn-primary" disabled={!ghRepo.trim()}>Connect repository</button>
+            <input value={ghRepo} onChange={e => setGhRepo(e.target.value)} placeholder="owner/repo" aria-label="GitHub repository" style={{ flex: '1 1 160px' }} />
+            <input value={ghUrl} onChange={e => setGhUrl(e.target.value)} placeholder="https://ci.example.com/hooks/cloudnivo" aria-label="Receiver URL" style={{ flex: '2 1 240px' }} />
+            <button type="submit" className="btn btn-sm btn-primary" disabled={!ghRepo.trim() || !ghUrl.trim()}>Subscribe repository</button>
           </form>
           {ghStatus ? <p role="status" style={{ fontSize: 13 }}>{ghStatus}</p> : null}
         </div>
@@ -114,8 +119,8 @@ export default function ProjectIntegrationsPage({
               {webhooks.map(w => (
                 <li key={w.id} className="health-row">
                   <span className="grow">
-                    <span className="name"><code>{w.url}</code></span>
-                    <div className="detail">{(w.events ?? []).join(', ')}{w.status ? ` · ${w.status}` : ''}</div>
+                    <span className="name"><code>{w.name}</code></span>
+                    <div className="detail"><code>{w.url}</code> · {(w.eventTypes ?? []).join(', ')}{w.enabled === false ? ' · paused' : ''}</div>
                   </span>
                   <a className="value" href={`/projects/${id}/automations`}>Manage →</a>
                 </li>

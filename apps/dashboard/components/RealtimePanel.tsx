@@ -168,15 +168,12 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
               <code>{info.ws}</code>
             </dd>
           </div>
-          <div>
-            <dt>Event bus / presence drivers</dt>
-            <dd>
-              <code>
-                {info.drivers.bus} / {info.drivers.presence}
-              </code>
-              {info.degraded ? ' (Redis degraded — local-only delivery)' : ''}
-            </dd>
-          </div>
+          {info.degraded ? (
+            <div>
+              <dt>Delivery mode</dt>
+              <dd>Local-only delivery (event bus degraded)</dd>
+            </div>
+          ) : null}
         </dl>
       ) : (
         <EmptyState title="No realtime info" hint="The realtime service did not answer." />
@@ -255,21 +252,28 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
         </details>
       ) : null}
 
-      <h2>Usage</h2>
+      <h2>Limits</h2>
       <p className="muted">
-        Server-enforced limits (configurable via environment): 500 connections per project, 50
-        subscriptions per connection, 64 KB max payload, 20 messages/second per connection, 60
-        broadcasts/minute per sender. Upgrade floods are rate-limited per IP.
+        Guardrails per project: 500 connections, 50 subscriptions per connection, 64 KB max
+        payload, 20 messages/second per connection, 60 broadcasts/minute per sender.
       </p>
 
-      <h2>Settings</h2>
-      <p className="muted">
-        Driver: <code>REALTIME_DRIVER</code> (<code>memory</code> for local dev, <code>redis</code>{' '}
-        for multi-instance production with <code>REDIS_URL</code>). Standalone service on{' '}
-        <code>REALTIME_PORT</code> (set <code>REALTIME_STANDALONE=true</code> for an independent
-        Railway service). Heartbeats, payload caps, and broadcast budgets are environment-driven —
-        see <code>docs/realtime.md</code>.
-      </p>
+      <details>
+        <summary>Diagnostics</summary>
+        <dl>
+          <div>
+            <dt>Event bus / presence backend</dt>
+            <dd>
+              <code>
+                {info ? `${info.drivers.bus} / ${info.drivers.presence}` : '—'}
+              </code>
+            </dd>
+          </div>
+        </dl>
+        <p className="muted">
+          Full operator reference: <code>docs/realtime.md</code>.
+        </p>
+      </details>
 
       <h2>Live check</h2>
       <p>

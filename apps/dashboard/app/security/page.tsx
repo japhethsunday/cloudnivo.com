@@ -318,7 +318,7 @@ function SecurityBody(): React.JSX.Element {
               service: 'Authentication',
               title: 'Verification emails never leave the server',
               resource: pname,
-              detail: 'The dev email driver queues messages locally instead of delivering them.',
+              detail: 'Verification emails are captured for inspection instead of reaching inboxes. Connect a production email provider before inviting real users.',
               fix: 'Configure email',
               href: `/projects/${proj.id}/auth`,
             });
