@@ -252,7 +252,7 @@ export function ProjectDatabase({
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="schemas">
         <h2 style={{ marginTop: 0 }}>Tables</h2>
         {!schema ? (
           <button type="button" className="btn" onClick={() => void loadSchema()}>

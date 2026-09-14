@@ -1634,6 +1634,126 @@ textarea::placeholder {
   opacity: 0.55;
 }
 
+/* ── Collapsible nested navigation ─────────────────────── */
+
+.nav-parent-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.nav-parent-row > a {
+  flex: 1;
+  min-width: 0;
+}
+.nav-toggle {
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.nav-toggle:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.nav-toggle svg {
+  transition: transform 0.16s ease;
+}
+.nav-parent[data-open='false'] .nav-toggle svg {
+  transform: rotate(-90deg);
+}
+.nav-children {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 0.18s ease,
+    opacity 0.15s ease;
+}
+.nav-children-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 4px;
+}
+.nav-parent[data-open='false'] .nav-children {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.nav-child {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px 5px 37px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: -0.004em;
+  border: 1px solid transparent;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.nav-child:hover {
+  text-decoration: none;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.nav-child[aria-current='page'] {
+  background: var(--accent-faint);
+  color: var(--text);
+  font-weight: 600;
+}
+.shell.collapsed .nav-children,
+.shell.collapsed .nav-toggle {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-children,
+  .nav-toggle svg {
+    transition: none;
+  }
+}
+
+/* ── Anchored cards + console polish ───────────────────── */
+
+.card[id] {
+  scroll-margin-top: 14px;
+}
+.subtabs button:hover {
+  color: var(--text);
+  background: var(--bg-muted);
+}
+.empty {
+  padding: 28px 22px;
+}
+.empty h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.empty .empty-icon {
+  width: 40px;
+  height: 40px;
+}
+.ws-meta {
+  font-size: 13px;
+}
+.ws-meta code {
+  font-size: 12px;
+}
+
 /* Sidebar search trigger */
 .search-trigger {
   width: 100%;

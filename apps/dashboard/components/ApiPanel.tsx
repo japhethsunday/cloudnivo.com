@@ -54,7 +54,7 @@ function RequestTester({ projectId, tables }: { projectId: string; tables: strin
   }
 
   return (
-    <div className="card">
+    <div className="card" id="request">
       <div className="section-head">
         <p className="eyebrow">REST</p>
         <h2 style={{ marginTop: 0 }}>Try it — live request</h2>
@@ -238,7 +238,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
         {error ? <ErrorState message={error} /> : null}
       </div>
 
-      <div className="card">
+      <div className="card" id="endpoints">
         <h2 style={{ marginTop: 0 }}>Endpoints</h2>
         {tables.length === 0 ? (
           <EmptyState
@@ -270,7 +270,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
 
       <RequestTester projectId={projectId} tables={tables} />
 
-      <div className="card">
+      <div className="card" id="openapi">
         <h2 style={{ marginTop: 0 }}>OpenAPI documentation</h2>
         <p className="muted">Generated live from your database schema — never stale.</p>
         {!doc ? (

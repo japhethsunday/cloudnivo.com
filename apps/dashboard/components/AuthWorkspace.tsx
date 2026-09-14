@@ -98,6 +98,7 @@ export function AuthWorkspace({ projectId }: { projectId: string }): React.JSX.E
   return (
     <SectionTabs
       label="Authentication sections"
+      param="tab"
       tabs={[
         { id: 'overview', label: 'Overview' },
         { id: 'users', label: `Users · ${stats.total}` },

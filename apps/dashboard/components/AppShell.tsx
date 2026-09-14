@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { apiFetch } from '../lib/api';
+import { getSectionTab, setSectionTab, subscribeSectionTab } from '../lib/sectiontab';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
 import { CommandPalette } from './CommandPalette';
 import { Notifications } from './Notifications';
@@ -69,12 +70,69 @@ const MANAGE_NAV: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: <IconSettings size={16} />, match: p => p === '/settings' },
 ];
 
-const RESOURCES: { suffix: string; label: string; icon: React.ReactNode }[] = [
-  { suffix: '/database', label: 'Database', icon: <IconDatabase size={16} /> },
-  { suffix: '/api', label: 'API', icon: <IconAPI size={16} /> },
-  { suffix: '/auth', label: 'Authentication', icon: <IconAuth size={16} /> },
-  { suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} /> },
-  { suffix: '/realtime', label: 'Realtime', icon: <IconRealtime size={16} /> },
+interface ProjectChild {
+  label: string;
+  /** Same-page suffix: `?tab=<id>` for tabbed sections, `#<anchor>` for cards. */
+  suffix: string;
+}
+
+interface ProjectNavEntry {
+  suffix: string;
+  label: string;
+  icon: React.ReactNode;
+  children?: ProjectChild[];
+}
+
+const PROJECT_NAV: ProjectNavEntry[] = [
+  {
+    suffix: '/database', label: 'Database', icon: <IconDatabase size={16} />,
+    children: [
+      { label: 'Table Editor', suffix: '#table-editor' },
+      { label: 'Connection', suffix: '#connection' },
+      { label: 'Schemas', suffix: '#schemas' },
+      { label: 'Routines', suffix: '#routines' },
+      { label: 'Extensions', suffix: '#extensions' },
+      { label: 'RLS simulator', suffix: '#rls' },
+      { label: 'Replicas', suffix: '#replicas' },
+      { label: 'Backups', suffix: '#backups' },
+    ],
+  },
+  {
+    suffix: '/api', label: 'API', icon: <IconAPI size={16} />,
+    children: [
+      { label: 'API keys', suffix: '#keys' },
+      { label: 'Try it', suffix: '#request' },
+      { label: 'Endpoints', suffix: '#endpoints' },
+      { label: 'OpenAPI', suffix: '#openapi' },
+    ],
+  },
+  {
+    suffix: '/auth', label: 'Authentication', icon: <IconAuth size={16} />,
+    children: [
+      { label: 'Overview', suffix: '?tab=overview' },
+      { label: 'Users', suffix: '?tab=users' },
+      { label: 'Sign-in methods', suffix: '?tab=signin' },
+      { label: 'MFA', suffix: '?tab=mfa' },
+      { label: 'Sessions', suffix: '?tab=sessions' },
+      { label: 'Security', suffix: '?tab=security' },
+    ],
+  },
+  {
+    suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} />,
+    children: [
+      { label: 'Buckets', suffix: '#buckets' },
+      { label: 'Objects', suffix: '#objects' },
+      { label: 'Move & copy', suffix: '#storage-ops' },
+      { label: 'Policies', suffix: '#policies' },
+    ],
+  },
+  {
+    suffix: '/realtime', label: 'Realtime', icon: <IconRealtime size={16} />,
+    children: [
+      { label: 'Monitor', suffix: '' },
+      { label: 'Broadcast', suffix: '#broadcast' },
+    ],
+  },
   { suffix: '/functions', label: 'Functions', icon: <IconFunctions size={16} /> },
   { suffix: '/automations', label: 'Automations', icon: <IconWorkflows size={16} /> },
   { suffix: '/metrics', label: 'Metrics', icon: <IconUsage size={16} /> },
@@ -218,6 +276,60 @@ function ShellBody({
   };
   const usageHref = scopeProject ? `/projects/${scopeProject.id}/usage` : '/projects';
 
+  /* Nested-nav signals: shared tab (?tab=) + location hash (#anchor). */
+  const sectionTab = useSyncExternalStore(subscribeSectionTab, getSectionTab, () => null);
+  const [hash, setHash] = useState('');
+  useEffect(() => {
+    const sync = (): void => {
+      try {
+        setHash(window.location.hash);
+      } catch {
+        setHash('');
+      }
+    };
+    sync();
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, [pathname]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      return (JSON.parse(window.localStorage.getItem('cn_nav_expanded') ?? '{}') ?? {}) as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  });
+
+  function groupActive(entry: ProjectNavEntry): boolean {
+    if (!scopeProject) return false;
+    const href = `/projects/${scopeProject.id}${entry.suffix}`;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+  function isOpen(entry: ProjectNavEntry): boolean {
+    return expanded[entry.suffix] ?? groupActive(entry);
+  }
+  function toggleGroup(entry: ProjectNavEntry): void {
+    setExpanded(prev => {
+      const next = { ...prev, [entry.suffix]: !isOpen(entry) };
+      try {
+        window.localStorage.setItem('cn_nav_expanded', JSON.stringify(next));
+      } catch {
+        // Private browsing: expansion still works for this session.
+      }
+      return next;
+    });
+  }
+  function childActive(entry: ProjectNavEntry, child: ProjectChild): boolean {
+    if (!scopeProject) return false;
+    const base = `/projects/${scopeProject.id}${entry.suffix}`;
+    if (pathname !== base) return false;
+    if (child.suffix.startsWith('?tab=')) {
+      return (sectionTab ?? 'overview') === child.suffix.slice('?tab='.length);
+    }
+    if (child.suffix.startsWith('#')) return hash === child.suffix;
+    return hash === '';
+  }
+
   function pickOrg(id: string): void {
     setOrgId(id);
     setSelectedOrg(id);
@@ -296,14 +408,67 @@ function ShellBody({
           </div>
           <div className="nav-group">
             <p className="nav-context">Resources</p>
-            {RESOURCES.map(r => (
-              <Link key={r.suffix} href={projHref(r.suffix)} aria-current={projActive(r.suffix)} aria-label={r.label}>
-                <span className="nav-icon" aria-hidden>
-                  {r.icon}
-                </span>
-                <span className="nav-text">{r.label}</span>
-              </Link>
-            ))}
+            {PROJECT_NAV.map(r => {
+              const hasKids = !!r.children && !!scopeProject;
+              const active = projActive(r.suffix);
+              const open = hasKids && isOpen(r);
+              if (!hasKids) {
+                return (
+                  <Link key={r.suffix} href={projHref(r.suffix)} aria-current={active} aria-label={r.label}>
+                    <span className="nav-icon" aria-hidden>
+                      {r.icon}
+                    </span>
+                    <span className="nav-text">{r.label}</span>
+                  </Link>
+                );
+              }
+              const hasTabs = r.children?.some(c => c.suffix.startsWith('?tab=')) ?? false;
+              return (
+                <div key={r.suffix} className="nav-parent" data-open={open ? 'true' : 'false'}>
+                  <div className="nav-parent-row">
+                    <Link
+                      href={projHref(r.suffix)}
+                      aria-current={active}
+                      aria-label={r.label}
+                      onClick={hasTabs ? () => setSectionTab(null) : undefined}
+                    >
+                      <span className="nav-icon" aria-hidden>
+                        {r.icon}
+                      </span>
+                      <span className="nav-text">{r.label}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      className="nav-toggle"
+                      aria-expanded={open}
+                      aria-label={`${open ? 'Collapse' : 'Expand'} ${r.label} submenu`}
+                      onClick={() => toggleGroup(r)}
+                    >
+                      <IconChevronDown size={14} />
+                    </button>
+                  </div>
+                  <div className="nav-children">
+                    <div className="nav-children-inner">
+                      {r.children?.map(c => (
+                        <Link
+                          key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}
+                          className="nav-child"
+                          href={`${projHref(r.suffix)}${c.suffix}`}
+                          aria-current={childActive(r, c) ? 'page' : undefined}
+                          onClick={
+                            c.suffix.startsWith('?tab=')
+                              ? () => setSectionTab(c.suffix.slice('?tab='.length))
+                              : undefined
+                          }
+                        >
+                          <span className="nav-text">{c.label}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="nav-group">
             <p className="nav-context">Development</p>
