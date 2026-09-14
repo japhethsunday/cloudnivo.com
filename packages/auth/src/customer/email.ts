@@ -122,6 +122,11 @@ export function buildEmail(
       };
     case 'security':
       return { subject: 'Security notice', text: payload.text ?? '' };
+    case 'welcome':
+      // Branded welcome content lives in buildWelcomeEmail (needs
+      // displayName/URLs); this is only a type-level fallback, never used
+      // by the dedicated sendWelcomeEmail paths.
+      return { subject: 'Welcome to CloudNivo', text: payload.text ?? '' };
   }
 }
 
