@@ -27,7 +27,7 @@
   max-width: 1120px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 64px;
+  height: 60px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -36,8 +36,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 800;
-  font-size: 16px;
+  font-weight: 700;
+  font-size: 15.5px;
   letter-spacing: -0.02em;
   color: var(--text);
   margin-right: 16px;
@@ -52,9 +52,10 @@
 }
 .links a {
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 8px 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
+  padding: 7px 11px;
   border-radius: 6px;
 }
 .links a:hover {
@@ -86,32 +87,33 @@
 .hero {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 96px 24px 64px;
+  padding: 80px 24px 56px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 48px;
   align-items: center;
 }
 .eyebrow {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
-  margin: 0 0 16px;
+  margin: 0 0 14px;
 }
 .hero h1 {
-  font-size: 46px;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-  font-weight: 800;
-  margin: 0 0 20px;
+  font-size: 44px;
+  line-height: 1.06;
+  letter-spacing: -0.032em;
+  font-weight: 700;
+  margin: 0 0 18px;
 }
 .lede {
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 15.5px;
+  line-height: 1.6;
+  letter-spacing: -0.004em;
   color: var(--text-muted);
-  margin: 0 0 32px;
+  margin: 0 0 28px;
   max-width: 52ch;
 }
 .ctaRow {
@@ -121,8 +123,8 @@
 }
 .figureTag {
   font-size: 12px;
-  color: var(--text-faint);
-  margin: 12px 0 0;
+  color: var(--text-muted);
+  margin: 10px 0 0;
   text-align: center;
 }
 
@@ -143,24 +145,26 @@
   align-items: center;
 }
 .stripLabel {
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-right: 8px;
 }
 .cap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 650;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
   color: var(--text-muted);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 7px;
+  padding: 7px 11px;
+  box-shadow: var(--shadow-sm);
 }
 .capDot {
   width: 8px;
@@ -175,22 +179,23 @@
 .section {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 96px 24px 0;
+  padding: 72px 24px 0;
 }
 .sectionHead {
   max-width: 68ch;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 .sectionHead h2 {
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1.15;
-  letter-spacing: -0.025em;
-  font-weight: 800;
-  margin: 0 0 12px;
+  letter-spacing: -0.028em;
+  font-weight: 700;
+  margin: 0 0 10px;
 }
 .sectionHead p {
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  letter-spacing: -0.004em;
   color: var(--text-muted);
   margin: 0;
 }
@@ -215,8 +220,8 @@
 .priceFlag {
   align-self: flex-start;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--accent-contrast);
   background: var(--accent);
@@ -225,24 +230,25 @@
   margin-bottom: 12px;
 }
 .price {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.028em;
   margin: 8px 0 4px;
+  font-variant-numeric: tabular-nums;
 }
 .price span {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--text-muted);
   letter-spacing: 0;
 }
 .priceList {
   list-style: none;
-  margin: 16px 0 24px;
+  margin: 14px 0 20px;
   padding: 0;
   display: grid;
-  gap: 8px;
-  font-size: 14px;
+  gap: 7px;
+  font-size: 13.5px;
 }
 .priceList li {
   display: flex;
@@ -266,9 +272,10 @@
 .panel {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 10px;
+  padding: 20px;
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 .grid3 .panel {
   transition:
@@ -278,28 +285,31 @@
 }
 .grid3 .panel:hover {
   border-color: var(--border-strong);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 .panel h3 {
-  font-size: 15px;
-  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  margin: 0 0 6px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .panel p {
-  font-size: 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
   color: var(--text-muted);
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 .panel p:last-child {
   margin-bottom: 0;
 }
 .panelIcon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   background: var(--accent-faint);
   color: var(--accent);
   display: inline-flex;
@@ -322,10 +332,11 @@
   background: var(--bg-elevated);
   color: var(--text-muted);
   font: inherit;
-  font-size: 14px;
-  font-weight: 650;
-  padding: 8px 12px;
-  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
+  padding: 7px 12px;
+  border-radius: 7px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -334,9 +345,11 @@
 .showTabs button:hover {
   color: var(--text);
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
 }
 .showTabs button[aria-selected='true'] {
   color: var(--text);
+  font-weight: 600;
   border-color: var(--accent);
   background: var(--accent-faint);
 }
@@ -359,7 +372,7 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .checkList .ok {
   color: var(--success);
@@ -369,19 +382,20 @@
 .prompt {
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 15px;
+  border-radius: 7px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.6;
   margin: 0 0 4px;
 }
 .prompt cite {
   display: block;
   font-style: normal;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 .pipeline {
@@ -389,8 +403,8 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   margin-top: 12px;
 }
 .pipeline .arrow {
@@ -407,19 +421,21 @@
 .step {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px 12px;
+  border-radius: 7px;
+  padding: 14px 10px;
   text-align: center;
+  box-shadow: var(--shadow-sm);
 }
 .step .n {
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--accent);
   letter-spacing: 0.06em;
 }
 .step .t {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.004em;
   margin-top: 4px;
 }
 .step .d {
@@ -433,11 +449,11 @@
 .code {
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 7px;
+  padding: 14px 16px;
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.7;
   margin: 0;
 }
@@ -456,7 +472,7 @@
 .console {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   box-shadow: var(--shadow-md);
   min-width: 0;
@@ -472,10 +488,10 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .liveDot i {
   width: 7px;
@@ -489,16 +505,17 @@
 .secPanel {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
 }
 .secRow {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border);
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .secRow:last-child {
   border-bottom: none;
@@ -508,7 +525,8 @@
   min-width: 0;
 }
 .secRow .t {
-  font-weight: 650;
+  font-weight: 500;
+  letter-spacing: -0.004em;
 }
 .secRow .d {
   font-size: 12px;
@@ -555,40 +573,44 @@
 
 .cta {
   max-width: 1120px;
-  margin: 96px auto 0;
+  margin: 72px auto 0;
   padding: 0 24px;
 }
 .ctaInner {
   background: var(--bg-muted);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 64px 32px;
+  border-radius: 10px;
+  padding: 56px 32px;
   text-align: center;
+  box-shadow: var(--shadow-sm);
 }
 .ctaInner h2 {
-  font-size: 34px;
-  letter-spacing: -0.025em;
-  margin: 0 0 12px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.15;
+  margin: 0 0 10px;
 }
 .ctaInner p {
   color: var(--text-muted);
-  font-size: 16px;
-  margin: 0 auto 28px;
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0 auto 24px;
   max-width: 56ch;
 }
 .footer {
   border-top: 1px solid var(--border);
-  margin-top: 96px;
+  margin-top: 64px;
 }
 .footerInner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 28px 24px;
   display: flex;
   gap: 16px;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-muted);
 }
 .footerInner nav {
@@ -599,9 +621,10 @@
 }
 .footerInner nav a {
   color: var(--text-muted);
-  padding: 8px 12px;
+  padding: 7px 11px;
   border-radius: 6px;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 13.5px;
 }
 .footerInner nav a:hover {
   color: var(--text);
@@ -645,13 +668,14 @@
     gap: 40px;
   }
   .hero h1 {
-    font-size: 34px;
+    font-size: 32px;
+    letter-spacing: -0.028em;
   }
   .section {
-    padding: 64px 20px 0;
+    padding: 56px 20px 0;
   }
   .sectionHead h2 {
-    font-size: 22px;
+    font-size: 21px;
   }
   .grid3 {
     grid-template-columns: 1fr 1fr;
@@ -683,9 +707,9 @@
   }
   .mobileMenu a {
     display: block;
-    padding: 12px 8px;
-    font-size: 15px;
-    font-weight: 650;
+    padding: 11px 8px;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--text);
     border-bottom: 1px solid var(--border);
   }
@@ -696,7 +720,7 @@
 
 @media (max-width: 640px) {
   .hero h1 {
-    font-size: 32px;
+    font-size: 30px;
   }
   .grid3 {
     grid-template-columns: 1fr;
@@ -708,10 +732,10 @@
     grid-template-columns: repeat(2, 1fr);
   }
   .ctaInner {
-    padding: 48px 20px;
+    padding: 44px 20px;
   }
   .ctaInner h2 {
-    font-size: 22px;
+    font-size: 21px;
   }
   .navInner {
     padding: 0 16px;
@@ -752,8 +776,9 @@
   overflow-y: auto;
 }
 .authAside h2 {
-  font-size: 22px;
-  letter-spacing: -0.02em;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
   line-height: 1.3;
   margin: 0;
   max-width: 22ch;
@@ -792,7 +817,9 @@
   max-width: 420px;
 }
 .authCard h1 {
-  font-size: 22px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
   margin: 16px 0 4px;
 }
 .authCard .sub {
