@@ -6,6 +6,19 @@ import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
 /* ── Visual Table Editor: real rows, filtering, editing, pagination ── */
 
+/**
+ * When the API answers a database power-tool with a bare "Not found", the
+ * route itself is missing on the deployed backend — either the database is
+ * still provisioning, or the deployed API predates this console. Say so
+ * plainly instead of surfacing an opaque error.
+ */
+export function describeDbToolsError(message: string | null): string {
+  if (message && message.trim().toLowerCase() === 'not found') {
+    return 'The API did not recognize this operation (Not found). If the database is still provisioning, wait for Ready and retry — otherwise redeploy the API service so it matches this console, then retry.';
+  }
+  return message ?? 'Request failed';
+}
+
 /** System schemas are managed through the SQL editor — never auto-REST. */
 export function isSystemSchema(schema: string): boolean {
   return schema === 'auth' || schema.startsWith('pg_') || schema === 'information_schema';
@@ -252,7 +265,7 @@ export function RoutinesPanel({ projectId }: { projectId: string }): React.JSX.E
       `/api/v1/projects/${projectId}/database/routines`,
     );
     setBusy(false);
-    if (!r.ok) setError(r.error ?? 'Could not load routines');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load routines');
     else if (r.data) { setData(r.data); setError(null); }
   }
   return (
@@ -284,7 +297,7 @@ export function ExtensionsPanel({ projectId }: { projectId: string }): React.JSX
       `/api/v1/projects/${projectId}/database/extensions`,
     );
     setBusy(false);
-    if (!r.ok) setError(r.error ?? 'Could not load extensions');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load extensions');
     else if (r.data) { setData(r.data); setError(null); }
   }
   async function install(e: React.FormEvent): Promise<void> {
@@ -296,7 +309,7 @@ export function ExtensionsPanel({ projectId }: { projectId: string }): React.JSX
       body: { name: name.trim() },
     });
     setBusy(false);
-    if (!r.ok) setError(r.error ?? 'Install failed');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Install failed');
     else { setName(''); void load(); }
   }
   useEffect(() => { void load(); }, []);
@@ -338,7 +351,7 @@ export function RlsSimulator({ projectId }: { projectId: string }): React.JSX.El
       body: { sql, userId, role },
     });
     setBusy(false);
-    if (!r.ok) setError(r.error ?? 'Simulation failed');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Simulation failed');
     else setOut(r.data ?? null);
   }
   return (
@@ -376,7 +389,7 @@ export function ReplicasPanel({ projectId }: { projectId: string }): React.JSX.E
     setBusy(true);
     const r = await apiFetch(`/api/v1/projects/${projectId}/database/replication`);
     setBusy(false);
-    if (!r.ok) setError(r.error ?? 'Could not load replication status');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load replication status');
     else { setData(r.data ?? null); setError(null); }
   }
   useEffect(() => { void load(); }, []);
@@ -421,7 +434,7 @@ export function BackupsPanel({ projectId }: { projectId: string }): React.JSX.El
       body: { base, compare, includeDrops: false },
     });
     setBusy(null);
-    if (!r.ok) setError(r.error ?? 'Diff failed');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Diff failed');
     else setDiff(r.data ?? null);
   }
 
@@ -434,7 +447,7 @@ export function BackupsPanel({ projectId }: { projectId: string }): React.JSX.El
       body: { sql: restoreSql },
     });
     setBusy(null);
-    if (!r.ok) setError(r.error ?? 'Restore failed');
+    if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Restore failed');
     else setOut(r.data ?? null);
   }
 
