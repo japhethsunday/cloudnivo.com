@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiBase, apiFetch, getToken } from '../lib/api';
+import { apiBase, apiFetch, getToken, isAuthFailure } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
 interface RealtimeInfo {
@@ -53,6 +53,7 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
   const [loaded, setLoaded] = useState(false);
   const [smoke, setSmoke] = useState<string>('Not run yet.');
   const [smokeBusy, setSmokeBusy] = useState(false);
+  const [sessionLost, setSessionLost] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
   const load = useCallback(async () => {
@@ -63,7 +64,14 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
       apiFetch<{ presence: Record<string, unknown> }>(`${base}/presence`),
     ]);
     if (!i.ok) {
-      setError(i.error);
+      if (isAuthFailure(i.status)) {
+        // Expired/revoked session: stop the 5s poll instead of emitting a
+        // 401 every tick for as long as the tab stays open.
+        setSessionLost(true);
+        setError('Session expired — sign in again to keep watching realtime.');
+      } else {
+        setError(i.error);
+      }
       setLoaded(true);
       return;
     }
@@ -76,10 +84,11 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
   }, [base]);
 
   useEffect(() => {
+    if (sessionLost) return;
     void load();
     const t = setInterval(() => void load(), 5000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, sessionLost]);
 
   useEffect(() => {
     return () => {
@@ -254,8 +263,8 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
 
       <h2>Limits</h2>
       <p className="muted">
-        Guardrails per project: 500 connections, 50 subscriptions per connection, 64 KB max
-        payload, 20 messages/second per connection, 60 broadcasts/minute per sender.
+        Guardrails per project: 500 connections, 50 subscriptions per connection, 64 KB max payload,
+        20 messages/second per connection, 60 broadcasts/minute per sender.
       </p>
 
       <details>
@@ -264,9 +273,7 @@ export function RealtimePanel({ projectId }: { projectId: string }): React.JSX.E
           <div>
             <dt>Event bus / presence backend</dt>
             <dd>
-              <code>
-                {info ? `${info.drivers.bus} / ${info.drivers.presence}` : '—'}
-              </code>
+              <code>{info ? `${info.drivers.bus} / ${info.drivers.presence}` : '—'}</code>
             </dd>
           </div>
         </dl>

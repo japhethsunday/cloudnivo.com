@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, apiFetchRaw } from '../lib/api';
+import { apiFetch, apiFetchRaw, isAuthFailure } from '../lib/api';
 import { isSystemSchema, qualifiedRef } from './DatabaseSections';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 import { StatusDot, statusTone } from './ui';
@@ -40,6 +40,7 @@ export function ProjectDatabase({
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionLost, setSessionLost] = useState(false);
 
   const load = useCallback(async () => {
     const r = await apiFetch<{ database: DbRecord | null; health: string }>(
@@ -51,16 +52,22 @@ export function ProjectDatabase({
       setError(null);
     } else if (r.status === 404) {
       setDb(null);
+    } else if (isAuthFailure(r.status)) {
+      // Expired/revoked session: retrying on a timer just produces a 401
+      // every 5s forever. Stop and say so.
+      setSessionLost(true);
+      setError('Session expired — sign in again to keep watching this database.');
     } else {
       setError(r.error);
     }
   }, [projectId]);
 
   useEffect(() => {
+    if (sessionLost) return;
     void load();
     const t = setInterval(() => void load(), 5000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, sessionLost]);
 
   async function reveal(): Promise<void> {
     const r = await apiFetch(`/api/v1/projects/${projectId}/database/connection?reveal=true`);
@@ -309,7 +316,18 @@ export function ProjectDatabase({
         )}
       </div>
 
-      <QueryCard sql={sql} setSql={setSql} result={result} error={error} busy={busy} onRun={runSql} onClear={() => { setResult(null); setError(null); }} />
+      <QueryCard
+        sql={sql}
+        setSql={setSql}
+        result={result}
+        error={error}
+        busy={busy}
+        onRun={runSql}
+        onClear={() => {
+          setResult(null);
+          setError(null);
+        }}
+      />
     </div>
   );
 }
@@ -349,10 +367,11 @@ function CsvActions({ projectId, table }: { projectId: string; table: string }):
     setResult(null);
     try {
       const text = await file.text();
-      const r = await apiFetch<{ inserted: number; failed: number; errors: { row: number; error: string }[] }>(
-        `/api/v1/projects/${projectId}/${table}/import`,
-        { method: 'POST', body: { csv: text } },
-      );
+      const r = await apiFetch<{
+        inserted: number;
+        failed: number;
+        errors: { row: number; error: string }[];
+      }>(`/api/v1/projects/${projectId}/${table}/import`, { method: 'POST', body: { csv: text } });
       if (!r.ok || !r.data) {
         setError(r.error ?? 'Import failed');
         return;
@@ -396,7 +415,11 @@ function CsvActions({ projectId, table }: { projectId: string; table: string }):
           {result.inserted} inserted{result.failed > 0 ? `, ${result.failed} rejected` : ''}
         </span>
       ) : null}
-      {error ? <span role="alert" style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</span> : null}
+      {error ? (
+        <span role="alert" style={{ fontSize: 12, color: 'var(--danger)' }}>
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -96,3 +96,12 @@ export async function apiFetchRaw(
     body: opts.body,
   });
 }
+
+/**
+ * A response the session cannot recover from by retrying: the token is gone,
+ * expired or revoked. Background pollers use this to stop instead of hammering
+ * the API with 401s every few seconds until the tab is closed.
+ */
+export function isAuthFailure(status: number): boolean {
+  return status === 401 || status === 403;
+}

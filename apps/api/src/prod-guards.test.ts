@@ -15,6 +15,7 @@ function prodEnv(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
     PROVISION_DRIVER: 'managed',
     CONTROL_STORE: 'drizzle',
     REDIS_URL: 'redis://:pw@prod-redis.internal:6379',
+    VAULT_KEY: 'v'.repeat(48),
     ...overrides,
   };
 }
@@ -27,11 +28,22 @@ describe('production boot guards', () => {
     expect(() =>
       assertProductionSafety(
         loadConfig(
-          prodEnv({ DATABASE_URL: 'postgres://cloudnivo:cloudnivo_dev_password_change_me@h:5432/db' }),
+          prodEnv({
+            DATABASE_URL: 'postgres://cloudnivo:cloudnivo_dev_password_change_me@h:5432/db',
+          }),
         ),
         logger,
       ),
     ).toThrow(/development password/i);
+  });
+
+  it('refuses production boot without a usable VAULT_KEY', () => {
+    expect(() => assertProductionSafety(loadConfig(prodEnv({ VAULT_KEY: '' })), logger)).toThrow(
+      /VAULT_KEY/,
+    );
+    expect(() =>
+      assertProductionSafety(loadConfig(prodEnv({ VAULT_KEY: 'too-short' })), logger),
+    ).toThrow(/VAULT_KEY/);
   });
 
   it('passes sane production config, warns (not throws) on memory store', () => {
