@@ -28,7 +28,9 @@ function LoginForm(): React.JSX.Element {
       setError(err);
       return;
     }
-    router.replace(params.get('next') || '/dashboard');
+    const next = params.get('next');
+    const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+    router.replace(safeNext);
   }
 
   return (

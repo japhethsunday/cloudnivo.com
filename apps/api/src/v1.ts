@@ -118,6 +118,7 @@ export function createContext(config: AppConfig): ApiContext {
     },
   };
   const registry = new MemoryRegistry();
+  registry.setCredentialKeyFromSecret(config.VAULT_KEY);
   const isFake = config.PROVISION_DRIVER === 'fake';
   const isManaged = config.PROVISION_DRIVER === 'managed';
   if (isManaged && !config.MANAGED_PG_URL) {
@@ -193,7 +194,9 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
     throw new Error(`Control database unreachable: ${health.error ?? 'unknown'} (run db:migrate)`);
   }
   ctx.controlDb = svc;
-  ctx.registry = new DrizzleRegistry(svc.db);
+  const drizzleRegistry = new DrizzleRegistry(svc.db);
+  drizzleRegistry.setCredentialKeyFromSecret(ctx.config.VAULT_KEY);
+  ctx.registry = drizzleRegistry;
   ctx.keys = new DrizzleKeyStore(svc.db);
   ctx.jobs = new DrizzleJobStore(svc.db);
   ctx.billing = new BillingService(new DrizzleBillingStore(svc.db));

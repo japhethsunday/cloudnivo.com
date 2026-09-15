@@ -860,7 +860,8 @@ async function effectivePasswordPolicy(
   }
 }
 
-/** True when any of the user's orgs mandates MFA. */
+/** True when any of the user's orgs mandates MFA. Fail-closed: registry
+ *  errors assume MFA is required rather than skipping enrollment. */
 async function orgRequiresMfa(
   ctx: ApiContext,
   store: PlatformAuth,
@@ -872,9 +873,11 @@ async function orgRequiresMfa(
       const policy = await store.policies.getPolicy(m.organizationId).catch(() => null);
       if (policy?.requireMfa) return true;
     }
-  } catch {
-    // Fail open here would weaken enforcement; fail closed is wrong too
-    // when the registry hiccups — treat as not-required but audit it.
+  } catch (err) {
+    ctx.logger.warn('platform.mfa_policy_degraded', {
+      error: err instanceof Error ? err.message.slice(0, 120) : 'unknown',
+    });
+    return true;
   }
   return false;
 }
@@ -1113,6 +1116,20 @@ export async function handlePlatformAuthRoutes(
     });
     if (!rl.allowed) throw new ApiError('RATE_LIMITED', 'Too many attempts', 429);
   };
+  // MFA code guessing gets its own bucket (separate from login brute-force)
+  // with a tighter per-code budget but no starvation of legit setup flows.
+  const mfaLimit = async (): Promise<void> => {
+    const ip =
+      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
+      req.socket.remoteAddress ||
+      'unknown';
+    const rl = await checkRateLimit(ctx.rateLimitStore, `platform-mfa:${ip}`, {
+      windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
+      max: ctx.config.AUTH_RATE_MAX * 3,
+      keyPrefix: 'platform-mfa',
+    });
+    if (!rl.allowed) throw new ApiError('RATE_LIMITED', 'Too many attempts', 429);
+  };
   const readJson = async (): Promise<unknown> => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -1310,6 +1327,9 @@ export async function handlePlatformAuthRoutes(
         passwordHash: await hashPassword(parsed.newPassword),
       });
       if (!updated) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
+      // Stolen sessions must not survive a password change: revoke all other
+      // sessions, keep the current one so the user is not logged out.
+      await revokeOtherPlatformSessions(ctx, user.id, session.jti ?? null);
       await ctx.registry.recordAudit('platform.password.changed', { userId: user.id });
       return finish(200, ok({ changed: true }, requestId));
     }
@@ -1319,6 +1339,7 @@ export async function handlePlatformAuthRoutes(
     // enrollment at login). Confirming with a setup ticket issues the
     // session directly, completing the interrupted login.
     if (url.pathname === '/api/v1/me/mfa/enroll' && req.method === 'POST') {
+      await mfaLimit();
       const { userId, setupTicket } = await mfaIdentity(ctx, req, await readJson());
       const user = await store.users.findById(userId);
       if (!user) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
@@ -1339,6 +1360,7 @@ export async function handlePlatformAuthRoutes(
     }
 
     if (url.pathname === '/api/v1/me/mfa/confirm' && req.method === 'POST') {
+      await mfaLimit();
       const raw = await readJson();
       const { userId, setupTicket } = await mfaIdentity(ctx, req, raw);
       const parsed = parseBody(z.object({ code: z.string().min(4).max(32) }), raw);
@@ -1364,6 +1386,7 @@ export async function handlePlatformAuthRoutes(
     }
 
     if (url.pathname === '/api/v1/me/mfa/disable' && req.method === 'POST') {
+      await mfaLimit();
       const token = bearerFromHeader(req.headers.authorization);
       if (!token) throw new ApiError('UNAUTHORIZED', 'Missing bearer token', 401);
       const session = await verifyPlatformSession(ctx, token);

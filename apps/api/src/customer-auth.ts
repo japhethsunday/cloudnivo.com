@@ -433,6 +433,17 @@ async function authLimit(ctx: ApiContext, key: string): Promise<void> {
   if (!r.allowed) throw new ApiError('RATE_LIMITED', 'Too many authentication attempts', 429);
 }
 
+// MFA setup endpoints share a separate, roomier bucket so legit enroll/
+// confirm flows cannot starve the login brute-force budget (and vice versa).
+async function mfaLimit(ctx: ApiContext, key: string): Promise<void> {
+  const r = await checkRateLimit(ctx.rateLimitStore, key, {
+    windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
+    max: ctx.config.AUTH_RATE_MAX * 3,
+    keyPrefix: 'auth-mfa',
+  });
+  if (!r.allowed) throw new ApiError('RATE_LIMITED', 'Too many authentication attempts', 429);
+}
+
 async function platformAdmin(
   ctx: ApiContext,
   req: IncomingMessage,
@@ -674,18 +685,21 @@ export async function handleCustomerAuthRoutes(
 
     // ── TOTP MFA ──
     if (head === 'mfa-enroll' && req.method === 'POST') {
+      await mfaLimit(ctx, key(`mfa:${meta.ip ?? 'unknown'}`));
       const caller = await customerBearer(ctx, req, project);
       const out = await service.enrollTotp(project.id, caller.user.id);
       // Secret shown ONCE — never logged, never stored raw elsewhere.
       return finish(200, ok(out, requestId));
     }
     if (head === 'mfa-confirm' && req.method === 'POST') {
+      await mfaLimit(ctx, key(`mfa:${meta.ip ?? 'unknown'}`));
       const caller = await customerBearer(ctx, req, project);
       const parsed = parseBody(MfaCodeBody, await readJson());
       const out = await service.confirmTotp(project.id, caller.user.id, parsed.code);
       return finish(200, ok(out, requestId));
     }
     if (head === 'mfa-disable' && req.method === 'POST') {
+      await mfaLimit(ctx, key(`mfa:${meta.ip ?? 'unknown'}`));
       const caller = await customerBearer(ctx, req, project);
       const parsed = parseBody(MfaCodeBody, await readJson());
       await service.disableTotp(project.id, caller.user.id, parsed.code);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ApiError, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
   assertSafeSql,
+  can,
   executeProjectSql,
   executeRestoreTransaction,
   inspectProjectSchema,
@@ -834,11 +835,23 @@ export async function handleProjectRoutes(
     }
 
     // POST /:id/database/query — guarded SQL execution.
+    // Viewers are read-only (SELECT/WITH/EXPLAIN only); writes require
+    // projects:update (member+). Tenant isolation already enforced above.
     if (rest.length === 2 && rest[1] === 'query' && req.method === 'POST') {
       try {
         const body = parseBody(QueryBody, await readJson());
         // Guards enforced at the boundary for every gateway (defense in depth).
         assertSafeSql(body.sql, 20_000);
+        if (!agent) {
+          const role =
+            (await ctx.registry.membershipsFor(session.sub)).find(
+              m => m.organizationId === project.organizationId,
+            )?.role ?? 'viewer';
+          const readOnly = /^\s*(select|with|explain)\b/i.test(body.sql);
+          if (!readOnly && !can(role, 'projects:update')) {
+            throw new ApiError('FORBIDDEN', 'Viewers cannot run write queries', 403);
+          }
+        }
         if (agent) {
           const destructive = /^\s*(drop|truncate|alter)\b/i.test(body.sql);
           if (destructive) {

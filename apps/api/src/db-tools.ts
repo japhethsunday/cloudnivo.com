@@ -90,6 +90,22 @@ function mapInfraErrorCaught(err: unknown): ApiError | unknown {
   }
 }
 
+/** Human role gate: destructive database operations require admin/owner.
+ *  Agents are gated separately via scopes; this closes viewer/member escalation. */
+async function requireDbManager(
+  ctx: ApiContext,
+  sessionSub: string,
+  project: ProjectRecord,
+): Promise<void> {
+  const role =
+    (await ctx.registry.membershipsFor(sessionSub)).find(
+      m => m.organizationId === project.organizationId,
+    )?.role ?? 'viewer';
+  if (role !== 'owner' && role !== 'admin') {
+    throw new ApiError('FORBIDDEN', 'Database management requires admin', 403);
+  }
+}
+
 /** Runner adapter: advisor/introspection SQL through the project gateway. */
 function runnerFor(deps: DbToolsDeps): (text: string, params: unknown[]) => Promise<Record<string, unknown>[]> {
   return async (text: string, params: unknown[]) => {
@@ -513,6 +529,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
       const name = assertExtensionAllowed(parsed.name);
       if (agent) {
         await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.extension.install', resource: name });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       await ctx.gateway.query(deps.creds, `CREATE EXTENSION IF NOT EXISTS "${name}"`, {
         maxStatementMs: 30_000,
@@ -589,6 +607,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     // ── Guarded restore ──
     if (head === 'restore' && method === 'POST') {      if (agent) {
         await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.restore', resource: 'restore' });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const parsed = parseBody(RestoreBody, await readJson());
       const { statements } = planRestore(parsed.sql);
@@ -635,6 +655,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     // ── PostgreSQL import (external URL → project database) ──
     if (head === 'import' && method === 'POST') {      if (agent) {
         await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.import', resource: 'postgres-import' });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const parsed = parseBody(
         z.object({ sourceUrl: z.string().min(12).max(2000) }),
@@ -659,6 +681,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     if ((head === 'pause' || head === 'resume') && method === 'POST') {
       if (agent) {
         await gate({ scope: 'projects.update', organizationId: project.organizationId, projectId: project.id, action: `database.${head}`, resource: head });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const main = await ctx.registry.getDatabaseByProject(project.id);
       if (!main) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
@@ -690,6 +714,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
       assertVaultName(secretName);
       if (agent) {
         await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.vault.write', resource: secretName });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const vault = vaultServiceFor(ctx);
       if (method === 'PUT') {
@@ -749,6 +775,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     if (head === 'branches' && seg(2) === null && method === 'POST') {
       if (agent) {
         await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.branch.create', resource: 'branch' });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const parsed = parseBody(BranchBody, await readJson());
       await requireSpendAllowed(ctx, project.organizationId);
@@ -803,6 +831,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
       if (!verb && method === 'DELETE') {
         if (agent) {
           await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.branch.delete', resource: branch.name });
+        } else {
+          await requireDbManager(ctx, session.sub, project);
         }
         await branches.deleteBranch(project.id, branchId);
         await ctx.registry.recordAudit('database.branch.deleted', {
@@ -815,6 +845,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
       if (verb === 'reset' && method === 'POST') {
         if (agent) {
           await gate({ scope: 'database.destructive', organizationId: project.organizationId, projectId: project.id, action: 'database.branch.reset', resource: branch.name });
+        } else {
+          await requireDbManager(ctx, session.sub, project);
         }
         const parsed = parseBody(z.object({ password: z.string().min(12).max(128).optional() }), await readJson());
         const main = await ctx.registry.getDatabaseByProject(project.id);
@@ -843,6 +875,7 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
         const conn = branchConn(branch);
         if (query.get('reveal') === 'true') {
           if (agent) throw new ApiError('FORBIDDEN', 'Agents cannot reveal database credentials', 403);
+          if (!agent) await requireDbManager(ctx, session.sub, project);
           await ctx.registry.recordAudit('database.credentials.accessed', {
             projectId: project.id,
             organizationId: project.organizationId,
@@ -863,6 +896,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     if (head === 'environments' && seg(2) === null && method === 'POST') {
       if (agent) {
         await gate({ scope: 'projects.update', organizationId: project.organizationId, projectId: project.id, action: 'database.environment.create', resource: 'environment' });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       const parsed = parseBody(EnvBody, await readJson());
       let branchId: string | null = parsed.branchId ?? null;
@@ -913,6 +948,8 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
       const envId = decodeURIComponent(envMatch[1]);
       if (agent) {
         await gate({ scope: 'projects.update', organizationId: project.organizationId, projectId: project.id, action: 'database.environment.write', resource: envId.slice(0, 24) });
+      } else {
+        await requireDbManager(ctx, session.sub, project);
       }
       if (method === 'DELETE') {
         const removed = await envServiceFor(ctx).remove(envId, project.id);

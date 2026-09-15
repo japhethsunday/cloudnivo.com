@@ -435,6 +435,7 @@ export class CustomerAuthService {
     await this.store.updateUser(projectId, userId, {
       passwordHash: await hashPassword(newPassword),
     });
+    await this.store.revokeUserSessions(projectId, userId);
     await this.store.deleteUserTokens(projectId, userId);
     this.audit('user.password_changed', { projectId, userId });
   }

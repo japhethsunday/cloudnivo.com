@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseStatus } from '@cloudnivo/database';
 import { TenantAccessError, assertSameTenant } from '@cloudnivo/database';
 import { ApiError } from '@cloudnivo/api-core';
+import { credentialKeyFromSecret, decryptCredential, encryptCredential } from './credential-crypto.js';
 
 /**
  * Control-plane metadata store.
@@ -134,6 +135,12 @@ export class MemoryRegistry implements Registry {
   private audit: AuditRecord[] = [];
   private readonly authConfigs = new Map<string, ProjectAuthConfig>();
   private auditCounter = 0;
+  private credentialKey: Buffer | null = null;
+
+  /** Set at-rest encryption key (derived from VAULT_KEY). Null = legacy plaintext (dev). */
+  setCredentialKeyFromSecret(secret: string | undefined): void {
+    this.credentialKey = secret ? credentialKeyFromSecret(secret) : null;
+  }
 
   async createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg> {
     if (!slugOk(slug)) throw new ApiError('VALIDATION_ERROR', 'Invalid organization slug', 400);
@@ -271,11 +278,13 @@ export class MemoryRegistry implements Registry {
   }
 
   async saveCredential(projectId: string, dbUser: string, password: string): Promise<void> {
-    this.credentials.set(projectId, { dbUser, password });
+    this.credentials.set(projectId, { dbUser, password: encryptCredential(password, this.credentialKey) });
   }
 
   async getCredential(projectId: string): Promise<{ dbUser: string; password: string } | null> {
-    return this.credentials.get(projectId) ?? null;
+    const rec = this.credentials.get(projectId) ?? null;
+    if (!rec) return null;
+    return { dbUser: rec.dbUser, password: decryptCredential(rec.password, this.credentialKey) };
   }
 
   async deleteCredential(projectId: string): Promise<void> {

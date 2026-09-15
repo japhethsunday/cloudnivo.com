@@ -212,7 +212,15 @@ describe('phase 4 customer auth E2E (§21)', () => {
         })
       ).status,
     ).toBe(200);
-    const sess = await req(base, 'GET', `${A}/sessions`, { customer: access });
+    // Password change revokes all sessions: old token must be dead.
+    const stale = await req(base, 'GET', `${A}/sessions`, { customer: access });
+    expect(stale.status).toBe(401);
+    const relogin = await req(base, 'POST', `${A}/token`, {
+      body: { email: 'pw@example.com', password: 'newer-pass-3' },
+    });
+    expect(relogin.status).toBe(200);
+    const fresh = data<{ tokens: { accessToken: string } }>(relogin.json).tokens.accessToken;
+    const sess = await req(base, 'GET', `${A}/sessions`, { customer: fresh });
     expect(sess.status).toBe(200);
     expect(data<{ sessions: unknown[] }>(sess.json).sessions.length).toBeGreaterThan(0);
   });

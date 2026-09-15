@@ -12,6 +12,7 @@ import {
 } from '@cloudnivo/database';
 import { assertSameTenant } from '@cloudnivo/database';
 import { ApiError } from '@cloudnivo/api-core';
+import { credentialKeyFromSecret, decryptCredential, encryptCredential } from './credential-crypto.js';
 import type {
   AuditRecord,
   MembershipRecord,
@@ -94,7 +95,13 @@ function toDbRecord(row: typeof projectDatabases.$inferSelect): ProjectDbRecord 
 }
 
 export class DrizzleRegistry implements Registry {
+  private credentialKey: Buffer | null = null;
   constructor(private readonly db: Database) {}
+
+  /** Set at-rest encryption key (derived from VAULT_KEY). Null = legacy plaintext. */
+  setCredentialKeyFromSecret(secret: string | undefined): void {
+    this.credentialKey = secret ? credentialKeyFromSecret(secret) : null;
+  }
 
   async createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg> {
     if (!slugOk(slug)) throw new ApiError('VALIDATION_ERROR', 'Invalid organization slug', 400);
@@ -344,7 +351,7 @@ export class DrizzleRegistry implements Registry {
         projectId: pid,
         organizationId: dbRow.organizationId,
         dbUser,
-        dbPassword: password,
+        dbPassword: encryptCredential(password, this.credentialKey),
       });
     });
   }
@@ -358,7 +365,8 @@ export class DrizzleRegistry implements Registry {
       .where(eq(databaseCredentials.projectId, pid))
       .limit(1);
     const row = rows[0];
-    return row ? { dbUser: row.dbUser, password: row.dbPassword } : null;
+    if (!row) return null;
+    return { dbUser: row.dbUser, password: decryptCredential(row.dbPassword, this.credentialKey) };
   }
 
   async deleteCredential(projectId: string): Promise<void> {

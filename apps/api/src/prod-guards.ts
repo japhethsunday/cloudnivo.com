@@ -31,6 +31,9 @@ export function assertProductionSafety(config: AppConfig, logger: Logger): void 
       'Refusing production boot: DATABASE_URL uses the docker-compose development password',
     );
   }
+  if (!config.VAULT_KEY || config.VAULT_KEY.length < 32) {
+    throw new Error('Refusing production boot: VAULT_KEY (32+ chars) is required for credential encryption');
+  }
   if (config.CONTROL_STORE === 'memory') {
     logger.warn('prod.memory_store', {
       note: 'CONTROL_STORE=memory in production: registry, keys, jobs, billing and AI state are lost on restart. Set CONTROL_STORE=drizzle with migrations.',
