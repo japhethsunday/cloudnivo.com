@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react';
 import Link from 'next/link';
-import { IconX } from './icons';
+import { IconCheck, IconCopy, IconX } from './icons';
 
 // ── Badge + status dot ────────────────────────────────────
 
@@ -92,8 +92,29 @@ export function Breadcrumbs({ trail }: { trail: { label: string; href?: string }
 
 // ── Copy button + copy field ────────────────────────────
 
-export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }): React.JSX.Element {
+export function CopyButton({ text, label = 'Copy', iconOnly = false }: { text: string; label?: string; iconOnly?: boolean }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
+  if (iconOnly) {
+    return (
+      <button
+        type="button"
+        className="icon-btn icon-btn-sm"
+        aria-label={copied ? 'Copied' : label}
+        title={copied ? 'Copied' : label}
+        onClick={() => {
+          void navigator.clipboard?.writeText(text).then(
+            () => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 2000);
+            },
+            () => setCopied(false),
+          );
+        }}
+      >
+        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+      </button>
+    );
+  }
   return (
     <button
       type="button"

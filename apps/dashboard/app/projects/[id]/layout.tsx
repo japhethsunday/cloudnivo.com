@@ -100,24 +100,26 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
             <Badge tone={statusTone(status)}>{status}</Badge>
           </h1>
           <div className="ws-meta">
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span className="ws-health" role="status" aria-label={`Health ${health}`}>
               <StatusDot tone={statusTone(health)} pulse={status === 'provisioning' || status === 'pending'} />
-              {health === 'unknown' ? 'health unknown' : health}
+              {health === 'unknown' ? 'Unknown' : health}
             </span>
-            <span aria-hidden>·</span>
+            <span className="ws-sep" aria-hidden>·</span>
             <EnvSwitcher projectId={project.id} region={project.region} />
-            <span aria-hidden>·</span>
-            <code title={project.id}>{project.id.slice(0, 8)}…</code>
-            <CopyButton text={project.id} label="Copy ID" />
+            <span className="ws-sep" aria-hidden>·</span>
+            <span className="ws-id">
+              <code title={project.id}>{project.id.slice(0, 8)}…</code>
+              <CopyButton text={project.id} label="Copy project ID" iconOnly />
+            </span>
           </div>
-          <div className="ws-services" aria-label="Enabled services">
+          <ul className="ws-services" aria-label="Enabled services">
             {['PostgreSQL', 'API', 'Storage', 'Realtime', 'Functions'].map(s => (
-              <span key={s} className="ws-service">
+              <li key={s} className="ws-service">
                 <StatusDot tone={status === 'provisioning' ? 'warn' : 'ok'} />
                 {s}
-              </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <Link className="btn btn-primary btn-sm" href={`${base}/database#connection`}>
