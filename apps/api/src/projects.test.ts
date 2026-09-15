@@ -230,6 +230,18 @@ describe('phase 2 provisioning API (fake provider)', () => {
     expect(data<{ connectionCount: number }>(metrics.json).connectionCount).toBe(1);
   });
 
+  it('project detail reports live database status and health (never stale)', async () => {
+    const r = await api(base, 'GET', `/api/v1/projects/${projectId}`, tokenA);
+    expect(r.status).toBe(200);
+    const body = data<{ database: { status: string; health?: string } | null }>(r.json);
+    expect(body.database).not.toBeNull();
+    // Must reflect the live provider state (running/healthy after the
+    // completed provision above), not a stale stored row — and must carry
+    // the health signal the console header renders.
+    expect(body.database?.status).toBe('running');
+    expect(body.database?.health).toBe('healthy');
+  });
+
   it('runs lifecycle actions and deletes cleanly', async () => {
     const stop = await api(base, 'POST', `/api/v1/projects/${projectId}/database/actions`, tokenA, {
       action: 'stop',
