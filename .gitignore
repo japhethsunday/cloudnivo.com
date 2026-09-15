@@ -45,3 +45,6 @@ test-results/
 tests/load/results.json
 
 .vercel
+
+# Local Claude Code settings (machine-specific permissions)
+.claude/settings.local.json
