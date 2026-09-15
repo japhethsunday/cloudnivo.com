@@ -26,6 +26,12 @@ export class ResendEmailService implements EmailService {
     private readonly config: ResendConfig,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
+  /** List-Unsubscribe identity derived from the configured sender (no invented addresses). */
+  private unsubscribeHeaders(): Record<string, string> {
+    const m = /<([^<>@\s]+@[^<>@\s]+)>/.exec(this.config.from);
+    const addr = (m?.[1] ?? this.config.from).trim();
+    return addr.includes('@') ? { 'List-Unsubscribe': `<mailto:${addr}>` } : {};
+  }
   private async send(to: string, kind: EmailKind, payload: Record<string, string>): Promise<EmailReceipt> {
     if (!this.config.apiKey || !this.config.from) {
       throw new Error('Resend is not configured (apiKey/from required)');
@@ -34,6 +40,7 @@ export class ResendEmailService implements EmailService {
     return this.sendRaw(to, subject, text);
   }
   private async sendRaw(to: string, subject: string, text: string, html?: string): Promise<EmailReceipt> {
+    const unsub = this.unsubscribeHeaders();
     const res = await this.fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
@@ -43,6 +50,7 @@ export class ResendEmailService implements EmailService {
         subject,
         text,
         ...(html ? { html } : {}),
+        ...(Object.keys(unsub).length > 0 ? { headers: unsub } : {}),
       }),
       signal: AbortSignal.timeout(this.config.timeoutMs ?? 15000),
     });

@@ -155,6 +155,17 @@ describe('welcome delivery', () => {
     expect(String(body['html'])).toContain('https://app.example.com/icon.svg');
   });
 
+  it('adds List-Unsubscribe derived from the sender (deliverability)', async () => {
+    const seen: { body: string }[] = [];
+    const stubFetch = (async (_url: string, init: { body?: string }) => {
+      seen.push({ body: init.body ?? '' });
+      return { ok: true, status: 200, json: async () => ({ id: 're_1' }) };
+    }) as unknown as typeof fetch;
+    await new ResendEmailService({ apiKey: 'k', from: 'CloudNivo <welcome@example.com>' }, stubFetch).sendWelcomeEmail('a@b.c', INPUT);
+    const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(body['headers']).toEqual({ 'List-Unsubscribe': '<mailto:welcome@example.com>' });
+  });
+
   it('resend failure is honest (throws, never fake-delivers)', async () => {
     const stubFetch = (async () => ({ ok: false, status: 422, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(
