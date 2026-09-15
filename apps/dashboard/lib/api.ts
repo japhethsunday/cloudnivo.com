@@ -44,6 +44,10 @@ export async function apiFetch<T>(
   try {
     res = await fetch(`${apiBase()}${path}`, {
       method: opts.method ?? 'GET',
+      // Live infrastructure console: never serve API responses from the
+      // browser HTTP cache. A cached project/database payload freezes the
+      // whole UI on stale status (e.g. "provisioning" forever).
+      cache: 'no-store',
       headers: {
         ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -83,6 +87,7 @@ export async function apiFetchRaw(
   const token = opts.token ?? getToken();
   return fetch(`${apiBase()}${path}`, {
     method: opts.method ?? 'GET',
+    cache: 'no-store',
     headers: {
       ...(opts.contentType ? { 'Content-Type': opts.contentType } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
