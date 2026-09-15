@@ -1,6 +1,6 @@
 import { connect, type Socket } from 'node:net';
 import { connect as connectTls } from 'node:tls';
-import { buildEmail, buildWelcomeEmail, type EmailKind, type EmailReceipt, type EmailService, type WelcomeInput } from './email.js';
+import { buildEmail, buildMagicLinkEmail, buildOtpEmailContent, buildResetEmail, buildSecurityEmail, buildVerifyEmail, buildWelcomeEmail, type BrandContext, type EmailKind, type EmailReceipt, type EmailService, type WelcomeInput } from './email.js';
 
 /**
  * Production email drivers behind the EmailService interface.
@@ -54,19 +54,39 @@ export class ResendEmailService implements EmailService {
       id: typeof json.id === 'string' ? json.id : `resend_${Date.now()}`,
     };
   }
-  sendVerificationEmail(to: string, verifyUrl: string): Promise<EmailReceipt> {
+  sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildVerifyEmail(verifyUrl, brand);
+      return this.sendRaw(to, built.subject, built.text, built.html);
+    }
     return this.send(to, 'verify', { url: verifyUrl });
   }
-  sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt> {
+  sendPasswordResetEmail(to: string, resetUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildResetEmail(resetUrl, brand);
+      return this.sendRaw(to, built.subject, built.text, built.html);
+    }
     return this.send(to, 'reset', { url: resetUrl });
   }
-  sendSecurityNotification(to: string, text: string): Promise<EmailReceipt> {
+  sendSecurityNotification(to: string, text: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildSecurityEmail(text, brand);
+      return this.sendRaw(to, built.subject, built.text, built.html);
+    }
     return this.send(to, 'security', { text });
   }
-  sendMagicLink(to: string, url: string): Promise<EmailReceipt> {
+  sendMagicLink(to: string, url: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildMagicLinkEmail(url, brand);
+      return this.sendRaw(to, built.subject, built.text, built.html);
+    }
     return this.send(to, 'magic', { url });
   }
-  sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
+  sendOtpEmail(to: string, code: string, purpose: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildOtpEmailContent(code, purpose, brand);
+      return this.sendRaw(to, built.subject, built.text, built.html);
+    }
     return this.send(to, 'otp', { code, purpose });
   }
   async sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt> {

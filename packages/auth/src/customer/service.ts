@@ -81,6 +81,12 @@ export class CustomerAuthService {
     this.deps.audit(event, fields);
   }
 
+  /** Branding for transactional emails (logo + real product links). */
+  private brand(): { appUrl: string; logoUrl: string } {
+    const appUrl = this.deps.appUrl.replace(/\/$/, '');
+    return { appUrl, logoUrl: `${appUrl}/icon.svg` };
+  }
+
   /**
    * Access token with custom claims: allowlisted scalars from app_metadata
    * (role stays canonical; anonymous sessions are labeled). Reserved names
@@ -184,6 +190,7 @@ export class CustomerAuthService {
     await this.deps.email.sendVerificationEmail(
       email,
       `${this.deps.appUrl}/verify?token=${raw}&project=${projectId}`,
+      this.brand(),
     );
     this.audit('user.signup', { projectId, userId: user.id });
     return { user: exposeUser(user), verificationSent: true };
@@ -390,6 +397,7 @@ export class CustomerAuthService {
       await this.deps.email.sendPasswordResetEmail(
         user.email,
         `${this.deps.appUrl}/reset?token=${raw}&project=${projectId}`,
+        this.brand(),
       );
     }
     this.audit('user.password_reset_requested', { projectId });
@@ -515,6 +523,7 @@ export class CustomerAuthService {
     await this.deps.email.sendVerificationEmail(
       email,
       `${this.deps.appUrl}/verify?token=${raw}&project=${projectId}`,
+      this.brand(),
     );
     this.audit('user.converted', { projectId, userId: user.id });
     return { user: exposeUser(updated), verificationSent: true };
@@ -532,7 +541,7 @@ export class CustomerAuthService {
     const user = await this.store.findUserByEmail(projectId, normalized);
     if (user && user.status === 'active' && !user.isAnonymous) {
       const { code } = await this.deps.otp.issue(projectId, normalized, purpose);
-      await this.deps.email.sendOtpEmail(normalized, code, purpose);
+      await this.deps.email.sendOtpEmail(normalized, code, purpose, this.brand());
     }
     this.audit('user.otp_requested', { projectId });
     return { sent: true };
@@ -601,6 +610,7 @@ export class CustomerAuthService {
     await this.deps.email.sendMagicLink(
       normalized,
       `${this.deps.appUrl}/magic?token=${raw}&project=${projectId}`,
+      this.brand(),
     );
     this.audit('user.magic_requested', { projectId });
     return { sent: true };

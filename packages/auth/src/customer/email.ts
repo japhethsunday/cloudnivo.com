@@ -10,6 +10,7 @@ export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  html?: string;
   kind: 'verify' | 'reset' | 'security' | 'otp' | 'magic' | 'welcome';
 }
 
@@ -22,11 +23,11 @@ export interface EmailReceipt {
 
 export interface EmailService {
   readonly driver: string;
-  sendVerificationEmail(to: string, verifyUrl: string): Promise<EmailReceipt>;
-  sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt>;
-  sendSecurityNotification(to: string, text: string): Promise<EmailReceipt>;
-  sendMagicLink(to: string, url: string): Promise<EmailReceipt>;
-  sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt>;
+  sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt>;
+  sendPasswordResetEmail(to: string, resetUrl: string, brand?: BrandContext): Promise<EmailReceipt>;
+  sendSecurityNotification(to: string, text: string, brand?: BrandContext): Promise<EmailReceipt>;
+  sendMagicLink(to: string, url: string, brand?: BrandContext): Promise<EmailReceipt>;
+  sendOtpEmail(to: string, code: string, purpose: string, brand?: BrandContext): Promise<EmailReceipt>;
   sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt>;
 }
 
@@ -37,6 +38,159 @@ export interface WelcomeInput {
   appUrl: string;
   /** Absolute URL of the CloudNivo mark for email clients. */
   logoUrl: string;
+}
+
+/** Branding context for transactional templates (logo + real links). */
+export interface BrandContext {
+  appUrl: string;
+  logoUrl: string;
+}
+
+function brandFooterText(appUrl: string): string[] {
+  return [
+    'Helpful links:',
+    `Documentation: ${appUrl}/developer`,
+    `Security: ${appUrl}/#security`,
+    '',
+    'Questions? Just reply to this email.',
+  ];
+}
+
+function brandFooterHtml(appUrl: string): string {
+  return `<a href="${appUrl}/developer" style="color:#2e6fe8;text-decoration:none;">Documentation</a> &nbsp;·&nbsp; <a href="${appUrl}/#security" style="color:#2e6fe8;text-decoration:none;">Security</a><div style="margin-top:8px;">Questions? Just reply to this email.</div>`;
+}
+
+interface ActionContent {
+  subject: string;
+  intro: string[];
+  bullets?: string[];
+  code?: string;
+  action?: { label: string; url: string };
+  closing?: string[];
+}
+
+/**
+ * Shared premium shell for transactional emails: light card, brand blue,
+ * logo header, single CTA, real-link footer. Email-safe table HTML, no JS.
+ */
+export function buildActionEmail(content: ActionContent, brand: BrandContext): WelcomeContent {
+  const { subject } = content;
+  const text: string[] = [subject, '', ...content.intro, ''];
+  if (content.bullets) {
+    text.push(...content.bullets.map(b => `• ${b}`), '');
+  }
+  if (content.code) {
+    text.push(`Code: ${content.code}`, '');
+  }
+  if (content.action) {
+    text.push(`${content.action.label}: ${content.action.url}`, '');
+  }
+  if (content.closing) {
+    text.push(...content.closing, '');
+  }
+  text.push(...brandFooterText(brand.appUrl));
+  const bullets = content.bullets
+    ? `<ul style="margin:8px 0 0;padding-left:20px;">${content.bullets.map(b => `<li style="margin:0 0 6px;">${b}</li>`).join('')}</ul>`
+    : '';
+  const code = content.code
+    ? `<div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;font-weight:700;letter-spacing:0.2em;color:#101828;background-color:#f1f5f9;border:1px solid #e6ebf2;border-radius:8px;padding:16px;text-align:center;margin:16px 0;">${escapeHtml(content.code)}</div>`
+    : '';
+  const action = content.action
+    ? `<tr><td style="padding:24px 32px;"><a href="${content.action.url}" style="display:inline-block;background-color:#2e6fe8;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;">${content.action.label}</a></td></tr>`
+    : '';
+  const closing = (content.closing ?? [])
+    .map(p => `<tr><td style="padding:8px 32px 0;font-size:14px;line-height:22px;color:#667085;">${p}</td></tr>`)
+    .join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background-color:#f4f6fb;font-family:Inter,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6fb;padding:32px 16px;"><tr><td align="center"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border:1px solid #e6ebf2;border-radius:12px;overflow:hidden;"><tr><td style="padding:32px 32px 8px;"><img src="${brand.logoUrl}" alt="CloudNivo" width="36" height="36" style="display:block;border:0;border-radius:8px;"><div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:#101828;margin-top:12px;">CloudNivo</div></td></tr><tr><td style="padding:8px 32px 0;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#101828;">${subject}</td></tr>${content.intro.map(p => `<tr><td style="padding:12px 32px 0;font-size:15px;line-height:24px;color:#344054;">${p}</td></tr>`).join('')}${bullets ? `<tr><td style="padding:8px 32px 0;font-size:15px;line-height:24px;color:#344054;">${bullets}</td></tr>` : ''}${code ? `<tr><td style="padding:8px 32px 0;">${code}</td></tr>` : ''}${action}${closing}<tr><td style="padding:24px 32px 32px;font-size:13px;line-height:20px;color:#667085;border-top:1px solid #e6ebf2;">${brandFooterHtml(brand.appUrl)}</td></tr></table></td></tr></table></body></html>`;
+  return { subject, text: text.join('\n'), html };
+}
+
+/** Email verification link. */
+export function buildVerifyEmail(url: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    {
+      subject: 'Verify your email',
+      intro: ['Confirm this address to finish setting up your account. The link expires soon and can only be used once.'],
+      action: { label: 'Verify email', url },
+    },
+    brand,
+  );
+}
+
+/** Password reset link. */
+export function buildResetEmail(url: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    {
+      subject: 'Reset your password',
+      intro: ['Someone requested a password reset. If that was you, choose a new password with the button below. The link expires soon and can only be used once.'],
+      action: { label: 'Reset password', url },
+      closing: ['Didn’t ask for this? Your password stays unchanged — you can ignore this email.'],
+    },
+    brand,
+  );
+}
+
+/** One-time passcode. */
+export function buildOtpEmailContent(code: string, purpose: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    {
+      subject: 'Your verification code',
+      intro: [`Your CloudNivo code for ${escapeHtml(purpose)} is below. It expires in 10 minutes and allows 5 attempts.`],
+      code,
+    },
+    brand,
+  );
+}
+
+/** Passwordless magic link. */
+export function buildMagicLinkEmail(url: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    {
+      subject: 'Your sign-in link',
+      intro: ['Click below to sign in — no password needed. The link expires soon and can only be used once.'],
+      action: { label: 'Sign in', url },
+    },
+    brand,
+  );
+}
+
+/** Free-form security notice. */
+export function buildSecurityEmail(text: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    { subject: 'Security notice', intro: [escapeHtml(text)] },
+    brand,
+  );
+}
+
+/**
+ * New-address verification (dormant template: the email-change flow returns
+ * its token directly today; use this if that flow ever mails the link).
+ */
+export function buildEmailChangeEmail(newEmail: string, url: string, brand: BrandContext): WelcomeContent {
+  return buildActionEmail(
+    {
+      subject: 'Confirm your new email address',
+      intro: [`You asked to change your CloudNivo sign-in address to ${escapeHtml(newEmail)}. Confirm it with the button below — the link expires in 15 minutes.`],
+      action: { label: 'Confirm new address', url },
+    },
+    brand,
+  );
+}
+
+/**
+ * Organization invitation (dormant template: invites return a token for
+ * manual sharing today; use this if invites ever mail the link).
+ */
+export function buildInviteEmail(input: { orgName: string; inviter?: string | null; acceptUrl: string; role?: string }, brand: BrandContext): WelcomeContent {
+  const who = input.inviter ? `${escapeHtml(input.inviter)} invited you` : 'You were invited';
+  return buildActionEmail(
+    {
+      subject: `Join ${input.orgName} on CloudNivo`,
+      intro: [`${who} to collaborate${input.role ? ` as ${escapeHtml(input.role)}` : ''} in the <strong>${escapeHtml(input.orgName)}</strong> organization. Accept the invitation to get access to its projects.`],
+      action: { label: 'Accept invitation', url: input.acceptUrl },
+    },
+    brand,
+  );
 }
 
 export interface WelcomeContent {
@@ -142,27 +296,47 @@ export class MemoryEmailService implements EmailService {
     return { delivered: false, queued: true, id };
   }
 
-  async sendVerificationEmail(to: string, verifyUrl: string): Promise<EmailReceipt> {
+  async sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildVerifyEmail(verifyUrl, brand);
+      return this.push({ to, subject: built.subject, text: built.text, html: built.html, kind: 'verify' });
+    }
     const { subject, text } = buildEmail('verify', { url: verifyUrl });
     return this.push({ to, subject, text, kind: 'verify' });
   }
 
-  async sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt> {
+  async sendPasswordResetEmail(to: string, resetUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildResetEmail(resetUrl, brand);
+      return this.push({ to, subject: built.subject, text: built.text, html: built.html, kind: 'reset' });
+    }
     const { subject, text } = buildEmail('reset', { url: resetUrl });
     return this.push({ to, subject, text, kind: 'reset' });
   }
 
-  async sendSecurityNotification(to: string, text: string): Promise<EmailReceipt> {
+  async sendSecurityNotification(to: string, text: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildSecurityEmail(text, brand);
+      return this.push({ to, subject: built.subject, text: built.text, html: built.html, kind: 'security' });
+    }
     const built = buildEmail('security', { text });
     return this.push({ to, subject: built.subject, text: built.text, kind: 'security' });
   }
 
-  async sendMagicLink(to: string, url: string): Promise<EmailReceipt> {
+  async sendMagicLink(to: string, url: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildMagicLinkEmail(url, brand);
+      return this.push({ to, subject: built.subject, text: built.text, html: built.html, kind: 'magic' });
+    }
     const { subject, text } = buildEmail('magic', { url });
     return this.push({ to, subject, text, kind: 'magic' });
   }
 
-  async sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
+  async sendOtpEmail(to: string, code: string, purpose: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) {
+      const built = buildOtpEmailContent(code, purpose, brand);
+      return this.push({ to, subject: built.subject, text: built.text, html: built.html, kind: 'otp' });
+    }
     const { subject, text } = buildEmail('otp', { code, purpose });
     return this.push({ to, subject, text, kind: 'otp' });
   }

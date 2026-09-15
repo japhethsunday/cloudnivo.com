@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildEmail,
+  buildEmailChangeEmail,
+  buildInviteEmail,
+  buildMagicLinkEmail,
+  buildOtpEmailContent,
+  buildResetEmail,
+  buildSecurityEmail,
+  buildVerifyEmail,
   buildWelcomeEmail,
   escapeHtml,
   MemoryEmailService,
 } from './email.js';
 import { ResendEmailService } from './email-providers.js';
+
+const BRAND = { appUrl: 'https://app.example.com', logoUrl: 'https://app.example.com/icon.svg' };
 
 const INPUT = {
   displayName: 'Ada',
@@ -58,6 +68,74 @@ describe('welcome template', () => {
   });
 });
 
+describe('transactional templates', () => {
+  it('verify email keeps subject with branded CTA', () => {
+    const legacy = buildEmail('verify', { url: 'https://x/verify' });
+    expect(legacy.subject).toBe('Verify your email');
+    const branded = buildVerifyEmail('https://x/verify', BRAND);
+    expect(branded.subject).toBe('Verify your email');
+    expect(branded.text).toContain('https://x/verify');
+    expect(branded.html).toContain('href="https://x/verify"');
+    expect(branded.html).toContain('>Verify email</a>');
+  });
+
+  it('reset email keeps subject with branded CTA and caution', () => {
+    const branded = buildResetEmail('https://x/reset', BRAND);
+    expect(branded.subject).toBe('Reset your password');
+    expect(branded.html).toContain('>Reset password</a>');
+    expect(branded.text).toContain('ignore this email');
+  });
+
+  it('otp renders the code without leaking anything else', () => {
+    const branded = buildOtpEmailContent('482910', 'login', BRAND);
+    expect(branded.subject).toBe('Your verification code');
+    expect(branded.html).toContain('482910');
+    expect(branded.text).toContain('10 minutes');
+  });
+
+  it('magic link keeps subject with branded CTA', () => {
+    const branded = buildMagicLinkEmail('https://x/magic', BRAND);
+    expect(branded.subject).toBe('Your sign-in link');
+    expect(branded.html).toContain('>Sign in</a>');
+  });
+
+  it('security notice escapes freeform text', () => {
+    const branded = buildSecurityEmail('Suspicious <script>alert(1)</script> login', BRAND);
+    expect(branded.subject).toBe('Security notice');
+    expect(branded.html).not.toContain('<script>');
+    expect(branded.html).toContain('&lt;script&gt;');
+  });
+
+  it('email-change and invite templates render with escaped user values', () => {
+    const change = buildEmailChangeEmail('n<e>w@x.com', 'https://x/confirm', BRAND);
+    expect(change.subject).toBe('Confirm your new email address');
+    expect(change.html).toContain('n&lt;e&gt;w@x.com');
+    const invite = buildInviteEmail({ orgName: 'Acme <Co>', inviter: 'boss@x.com', acceptUrl: 'https://x/accept', role: 'admin' }, BRAND);
+    expect(invite.subject).toBe('Join Acme <Co> on CloudNivo');
+    expect(invite.html).toContain('Acme &lt;Co&gt;');
+    expect(invite.html).toContain('href="https://x/accept"');
+  });
+
+  it('resend sends branded html; memory records it honestly', async () => {
+    const seen: { body: string }[] = [];
+    const stubFetch = (async (_url: string, init: { body?: string }) => {
+      seen.push({ body: init.body ?? '' });
+      return { ok: true, status: 200, json: async () => ({ id: 're_1' }) };
+    }) as unknown as typeof fetch;
+    const svc = new ResendEmailService({ apiKey: 'k', from: 'f@x.com' }, stubFetch);
+    await svc.sendOtpEmail('a@b.c', '111222', 'login', BRAND);
+    const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>;
+    expect(String(body['html'])).toContain('111222');
+    // Backward compat: no brand → text-only payload, no html key.
+    await svc.sendOtpEmail('a@b.c', '333444', 'login');
+    const plain = JSON.parse(seen[1]?.body ?? '{}') as Record<string, unknown>;
+    expect(plain).not.toHaveProperty('html');
+    expect(String(plain['text'])).toContain('333444');
+    const mem = new MemoryEmailService();
+    await mem.sendMagicLink('a@b.c', 'https://x/magic', BRAND);
+    expect(mem.outbox[0]?.html).toContain('https://x/magic');
+  });
+});
 describe('welcome delivery', () => {
   it('resend posts subject+text+html with the configured sender', async () => {
     const seen: { url: string; body: string; auth: string | null }[] = [];
