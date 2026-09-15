@@ -8,7 +8,8 @@ import { setSelectedProject } from '../../../lib/selection';
 import { RequireAuth } from '../../../components/RequireAuth';
 import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
-import { Badge, Breadcrumbs, CopyButton, StatusDot, statusTone } from '../../../components/ui';
+import { Badge, Breadcrumbs, CopyField, Menu, StatusDot, statusTone } from '../../../components/ui';
+import { IconSettings } from '../../../components/icons';
 
 interface Project {
   id: string;
@@ -37,7 +38,7 @@ const TABS = [
   { href: '/deployments', label: 'Deployments' },
   { href: '/integrations', label: 'Integrations' },
   { href: '/usage', label: 'Usage' },
-  { href: '/settings', label: 'Project Settings' },
+  { href: '/settings', label: 'Settings' },
 ];
 
 export default function ProjectLayout({
@@ -89,6 +90,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
   const base = `/projects/${id}`;
   const status = project.database?.status ?? 'provisioning';
   const health = project.database?.health ?? 'unknown';
+  const healthLabel = health === 'healthy' ? 'Healthy' : health === 'unknown' ? 'Health unknown' : health;
 
   return (
     <section aria-labelledby="ws-title">
@@ -100,28 +102,44 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
             <Badge tone={statusTone(status)}>{status}</Badge>
           </h1>
           <div className="ws-meta">
-            <span className="ws-health" role="status" aria-label={`Health ${health}`}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <StatusDot tone={statusTone(health)} pulse={status === 'provisioning' || status === 'pending'} />
-              {health === 'unknown' ? 'Unknown' : health}
+              {healthLabel}
             </span>
-            <span className="ws-sep" aria-hidden>·</span>
+            <span aria-hidden>·</span>
             <EnvSwitcher projectId={project.id} region={project.region} />
-            <span className="ws-sep" aria-hidden>·</span>
-            <span className="ws-id">
-              <code title={project.id}>{project.id.slice(0, 8)}…</code>
-              <CopyButton text={project.id} label="Copy project ID" iconOnly />
-            </span>
+            <span aria-hidden>·</span>
+            <span>{project.region}</span>
           </div>
-          <ul className="ws-services" aria-label="Enabled services">
-            {['PostgreSQL', 'API', 'Storage', 'Realtime', 'Functions'].map(s => (
-              <li key={s} className="ws-service">
-                <StatusDot tone={status === 'provisioning' ? 'warn' : 'ok'} />
-                {s}
-              </li>
-            ))}
-          </ul>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="ws-actions">
+          <Menu
+            label="Project details"
+            align="right"
+            button={<span className="ws-details-trigger">Details</span>}
+          >
+            <div className="ws-details" role="none">
+              <div className="ws-details-row">
+                <span className="ws-details-k">Project ID</span>
+                <CopyField text={project.id} label="Project ID" />
+              </div>
+              <div className="ws-details-row">
+                <span className="ws-details-k">Region</span>
+                <span>{project.region}</span>
+              </div>
+              <div className="ws-details-row">
+                <span className="ws-details-k">Status</span>
+                <span>{status}</span>
+              </div>
+              <div className="ws-details-row">
+                <span className="ws-details-k">Health</span>
+                <span>{healthLabel}</span>
+              </div>
+            </div>
+          </Menu>
+          <Link className="icon-btn" href={`${base}/settings`} aria-label="Project settings" title="Project settings">
+            <IconSettings size={16} />
+          </Link>
           <Link className="btn btn-primary btn-sm" href={`${base}/database#connection`}>
             Connect
           </Link>
