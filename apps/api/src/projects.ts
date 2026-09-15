@@ -498,14 +498,38 @@ export async function handleProjectRoutes(
       });
     }
 
-    // GET /api/v1/projects/:id
+    // GET /api/v1/projects/:id — with LIVE database state, like the list
+    // endpoint. Serving the stored row alone leaves project headers stuck
+    // on "provisioning" after the database is already running.
     if (rest.length === 0 && req.method === 'GET') {
-      const db = await ctx.registry.getDatabaseByProject(project.id);
+      const stored = await ctx.registry.getDatabaseByProject(project.id);
       const jobs = await ctx.jobs.listByProject(project.id);
+      let database = stored;
+      if (stored) {
+        try {
+          const cred = await ctx.registry.getCredential(project.id);
+          const live = cred
+            ? await ctx.provider.getStatus(stored.databaseId, {
+                host: stored.host,
+                port: stored.port,
+                database: stored.dbName,
+                user: cred.dbUser,
+                password: cred.password,
+              })
+            : null;
+          if (live && live.status !== stored.status) {
+            await ctx.registry.updateDatabaseStatus(project.id, live.status as DatabaseStatus);
+            database = { ...stored, status: live.status };
+          }
+          if (live) database = { ...database, health: live.health ?? 'unavailable' } as typeof stored;
+        } catch {
+          // Provider unreachable: serve the stored row, never fail the page.
+        }
+      }
       sendJson(
         res,
         200,
-        ok({ project, database: db, job: jobs[0] ?? null }, requestId),
+        ok({ project, database, job: jobs[0] ?? null }, requestId),
         baseHeaders,
       );
       return true;

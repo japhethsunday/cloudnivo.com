@@ -400,10 +400,10 @@ code,
 
 .page-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .page-head h1 {
@@ -677,6 +677,7 @@ details > summary::marker {
   border-collapse: collapse;
   font-size: 13.5px;
   letter-spacing: -0.004em;
+  font-variant-numeric: tabular-nums;
 }
 .table th,
 .table td {
@@ -808,10 +809,11 @@ details > summary::marker {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
+  font-size: 13.5px;
 }
 .env-row .grow {
   flex: 1 1 180px;
@@ -882,7 +884,7 @@ details > summary::marker {
 .tabs a:hover {
   text-decoration: none;
   color: var(--text);
-  background: transparent;
+  background: var(--bg-muted);
 }
 .tabs a[aria-current='page'] {
   color: var(--text);
@@ -936,29 +938,29 @@ details > summary::marker {
 .empty,
 .error-box,
 .skeleton {
-  border: 1px dashed var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  padding: 36px 26px;
+  padding: 28px 22px;
   text-align: center;
-  background: var(--bg-elevated);
-}
-.empty {
-  border-style: dashed;
+  background: transparent;
 }
 .empty h3 {
   margin: 0 0 6px;
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .empty p.muted {
   margin-bottom: 16px;
+  font-size: 13.5px;
 }
 .empty .empty-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   background: var(--bg-muted);
   border: 1px solid var(--border);
-  color: var(--text-faint);
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1812,17 +1814,6 @@ details > summary::marker {
   color: var(--text);
   background: var(--bg-muted);
 }
-.empty {
-  padding: 28px 22px;
-}
-.empty h3 {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.empty .empty-icon {
-  width: 40px;
-  height: 40px;
-}
 .ws-meta {
   font-size: 13px;
 }
@@ -1894,6 +1885,10 @@ kbd,
   color: var(--accent);
   margin: 0 0 3px;
 }
+/* Inside cards the eyebrow steps back — accent marks page sections only. */
+.card .section-head .eyebrow {
+  color: var(--text-muted);
+}
 .section-head h2 {
   margin: 0;
   font-size: 17px;
@@ -1909,7 +1904,7 @@ kbd,
 }
 .section-head.split {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -2005,7 +2000,9 @@ kbd,
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
   margin-bottom: 5px;
 }
 .meter .meter-top .v {
@@ -2099,11 +2096,13 @@ kbd,
   gap: 10px;
   align-items: flex-start;
   border: 1px solid var(--border);
-  border-left-width: 4px;
+  border-left-width: 3px;
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
-  padding: 12px 14px;
-  font-size: 14px;
+  box-shadow: var(--shadow-sm);
+  padding: 10px 13px;
+  font-size: 13.5px;
+  letter-spacing: -0.004em;
   margin-bottom: 12px;
 }
 .banner.info {
@@ -2223,7 +2222,7 @@ kbd,
 
 .ws-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -2232,7 +2231,7 @@ kbd,
 .ws-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   margin: 0;
 }
@@ -2254,7 +2253,7 @@ kbd,
 .ws-service {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.004em;
@@ -2262,7 +2261,7 @@ kbd,
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 2px 9px;
   white-space: nowrap;
 }
 
@@ -2288,10 +2287,10 @@ kbd,
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: pop 0.16s ease;
+  animation: pop 0.14s ease;
 }
 .cmdk-input-row {
   display: flex;
@@ -2610,9 +2609,10 @@ kbd,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 28px;
+  padding: 8px 24px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 40;
