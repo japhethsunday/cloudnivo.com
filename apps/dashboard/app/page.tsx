@@ -126,12 +126,12 @@ const AI_CHECKS = [
 const PLATFORM: { icon: React.ReactNode; title: string; body: string }[] = [
   {
     icon: <IconDatabase size={16} />,
-    title: 'DATABASE',
+    title: 'Database',
     body: 'Isolated PostgreSQL per project with live status, schema inspection, guarded SQL, and CSV portability.',
   },
   {
     icon: <IconAuth size={16} />,
-    title: 'AUTHENTICATION',
+    title: 'Authentication',
     body: 'Application users, rotating sessions, project keys, and scoped agent credentials.',
   },
   {
@@ -141,17 +141,17 @@ const PLATFORM: { icon: React.ReactNode; title: string; body: string }[] = [
   },
   {
     icon: <IconStorage size={16} />,
-    title: 'STORAGE',
+    title: 'Storage',
     body: 'Buckets and objects with visibility controls, signed URLs, quotas, and S3-compatible drivers.',
   },
   {
     icon: <IconRealtime size={16} />,
-    title: 'REALTIME',
+    title: 'Realtime',
     body: 'Channels, presence, and Postgres change feeds over project-scoped WebSockets.',
   },
   {
     icon: <IconFunctions size={16} />,
-    title: 'FUNCTIONS',
+    title: 'Functions',
     body: 'Versioned serverless deploys with cron schedules, queues, logs, and rollback.',
   },
   {
@@ -161,12 +161,12 @@ const PLATFORM: { icon: React.ReactNode; title: string; body: string }[] = [
   },
   {
     icon: <IconShield size={16} />,
-    title: 'SECURITY',
+    title: 'Security',
     body: 'Live posture scans with a score, scoped credentials, approval gates, and audit trails.',
   },
   {
     icon: <IconUsage size={16} />,
-    title: 'OBSERVABILITY',
+    title: 'Observability',
     body: 'Request metrics, job history, function logs, and metered usage in one place.',
   },
 ];
@@ -189,8 +189,19 @@ const SEC_ROWS: [string, string][] = [
   ['Activity audited', 'Append-only org-scoped trail across every plane.'],
 ];
 
-const OBS_SERVICES = ['API', 'Database', 'Auth', 'Storage', 'Realtime', 'Functions', 'AI'];
-const OBS_BARS = [34, 52, 40, 64, 48, 78, 58, 88, 70, 92, 66, 80, 54, 72, 44, 60, 38, 50];
+/**
+ * The metric keys the platform actually records, taken from the billing
+ * package's usage map. This section used to render a bar chart of invented
+ * numbers; a marketing page may not show data the product never produced.
+ */
+const OBS_METERS: [string, string[]][] = [
+  ['API', ['api_requests', 'api_bandwidth_bytes', 'api_keys']],
+  ['Database', ['db_storage_bytes', 'jobs']],
+  ['Storage', ['storage_bytes', 'storage_files']],
+  ['Realtime', ['realtime_connections', 'realtime_messages']],
+  ['Functions', ['function_invocations', 'function_gb_seconds']],
+  ['AI', ['ai_requests', 'ai_tokens']],
+];
 
 export default function HomePage(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -429,19 +440,19 @@ export default function HomePage(): React.JSX.Element {
               <Link href="/capabilities">Browse all 100 capabilities →</Link>
             </p>
           </div>
-          <div className={styles.grid3}>
+          <dl className={styles.specList}>
             {PLATFORM.map(p => (
-              <div key={p.title} className={styles.panel}>
-                <h3>
-                  <span className={styles.panelIcon} aria-hidden>
+              <div key={p.title} className={styles.specRow}>
+                <dt>
+                  <span className={styles.specIcon} aria-hidden>
                     {p.icon}
                   </span>
                   {p.title}
-                </h3>
-                <p>{p.body}</p>
+                </dt>
+                <dd>{p.body}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         </section>
 
         <section className={styles.section} aria-labelledby="flow-h">
@@ -530,16 +541,23 @@ export default function HomePage(): React.JSX.Element {
             </p>
           </div>
           <div className={styles.panel}>
-            <h3>Representative traffic shape</h3>
+            <h3>What the platform records</h3>
             <p>
-              {OBS_SERVICES.join(' · ')} — requests, latency, errors, usage, and health per service.
+              Every meter below is a real counter in the billing and metrics APIs — the same values
+              the console and your invoices read.
             </p>
-            <div className={styles.miniBars} aria-hidden="true">
-              {OBS_BARS.map((h, i) => (
-                <i key={i} style={{ height: `${h}%` }} />
+            <dl className={styles.meterList}>
+              {OBS_METERS.map(([service, meters]) => (
+                <div key={service} className={styles.meterRow}>
+                  <dt>{service}</dt>
+                  <dd>
+                    {meters.map(m => (
+                      <code key={m}>{m}</code>
+                    ))}
+                  </dd>
+                </div>
               ))}
-            </div>
-            <p className={styles.figureTag}>Illustrative rendering of the Metrics console</p>
+            </dl>
           </div>
         </section>
 
@@ -568,7 +586,7 @@ export default function HomePage(): React.JSX.Element {
               {
                 name: 'Pro',
                 price: '$20',
-                per: '/ mo',
+                per: 'per month',
                 desc: 'For production side projects and small teams. 14-day trial.',
                 features: [
                   '15 projects',
@@ -581,7 +599,7 @@ export default function HomePage(): React.JSX.Element {
               {
                 name: 'Business',
                 price: '$99',
-                per: '/ mo',
+                per: 'per month',
                 desc: 'For teams with compliance needs and higher scale. 14-day trial.',
                 features: [
                   '50 projects',

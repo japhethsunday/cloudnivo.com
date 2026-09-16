@@ -228,6 +228,12 @@
   margin: 8px 0 4px;
   font-variant-numeric: tabular-nums;
 }
+.price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .price span {
   font-size: 13.5px;
   font-weight: 500;
@@ -536,31 +542,6 @@
   flex: none;
 }
 
-/* ── Observability bars ── */
-
-.miniBars {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 96px;
-  margin-top: 12px;
-}
-.miniBars i {
-  flex: 1;
-  min-width: 6px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent);
-  opacity: 0.8;
-  animation: barIn 500ms ease both;
-}
-.miniBars i:nth-child(3n) {
-  opacity: 0.45;
-}
-.miniBars i:nth-child(7n) {
-  background: var(--warning);
-  opacity: 0.9;
-}
-
 /* ── CTA + footer ── */
 
 .cta {
@@ -642,12 +623,6 @@
   from {
     opacity: 0;
     transform: translateY(14px);
-  }
-}
-@keyframes barIn {
-  from {
-    opacity: 0;
-    transform: scaleY(0.2);
   }
 }
 
@@ -738,8 +713,7 @@
   .rise,
   .rise1,
   .rise2,
-  .rise3,
-  .miniBars i {
+  .rise3 {
     animation: none;
   }
   .flow {
@@ -1002,15 +976,21 @@
 }
 :global([data-theme='dark']) .priceCard.featured {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 16px 48px -16px rgb(91 140 255 / 0.4);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 16px 48px -16px rgb(91 140 255 / 0.4);
 }
 :global([data-theme='dark']) .console {
   border-color: var(--border-strong);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 24px 64px -24px rgb(0 0 0 / 0.7);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 24px 64px -24px rgb(0 0 0 / 0.7);
 }
 :global([data-theme='dark']) .infra {
   border-color: var(--border-strong);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 24px 64px -24px rgb(0 0 0 / 0.7);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 24px 64px -24px rgb(0 0 0 / 0.7);
 }
 :global([data-theme='dark']) .panel,
 :global([data-theme='dark']) .secPanel {
@@ -1028,4 +1008,90 @@
 :global([data-theme='dark']) .ctaInner {
   background: var(--bg-muted);
   border-color: var(--border-strong);
+}
+
+/* ── Platform spec list ────────────────────────────────── */
+/* Replaces nine identical icon-heading-text cards. One structure, hairline
+   rows, a single reading rhythm: the primitives are one system, not nine
+   boxes that happen to sit next to each other. */
+.specList {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.specRow {
+  display: grid;
+  grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
+  gap: 12px 32px;
+  padding: 18px 4px;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.specRow dt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+.specRow dd {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 70ch;
+}
+.specIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--accent-faint);
+  color: var(--accent-ink);
+  flex: none;
+}
+@media (max-width: 720px) {
+  .specRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 16px 4px;
+  }
+}
+
+/* ── Recorded meters ───────────────────────────────────── */
+.meterList {
+  margin: 16px 0 0;
+  border-top: 1px solid var(--border);
+}
+.meterRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 120px) minmax(0, 1fr);
+  gap: 8px 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.meterRow dt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.meterRow dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.meterRow dd code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  white-space: nowrap;
 }
