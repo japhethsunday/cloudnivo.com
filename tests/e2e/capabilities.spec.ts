@@ -119,14 +119,32 @@ test('capabilities live as real workflows in their product areas', async ({
   await expect(page.getByRole('heading', { name: /project vault/i })).toBeVisible();
   await expect(page.getByRole('heading', { name: /database power tools/i })).toBeVisible();
 
-  // Database: table editor, RLS simulator, extensions, backups — real panels.
+  // Database: one subject per view. The panels used to render together down a
+  // single scroll; each is now a deep-linkable `?tab=` section, so the check
+  // is that every section is reachable and renders its own panel.
   await page.goto(`/projects/${projectId}/database`);
-  await expect(
-    page.getByRole('heading', { name: /rows, filtering, editing, pagination/i }),
-  ).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('heading', { name: /policy simulator/i })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /allowlisted extensions/i })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /diff, guarded restore/i })).toBeVisible();
+  const dbTabs = page.getByRole('tablist', { name: /database sections/i });
+  await expect(dbTabs.getByRole('tab', { name: /^connection$/i })).toBeVisible({
+    timeout: 20_000,
+  });
+  // Connection is the landing view: the database's own facts and its secrets.
+  const dbPanel = page.getByRole('tabpanel');
+  await expect(dbPanel.getByRole('heading', { name: /^database$/i })).toBeVisible();
+  await expect(dbPanel.getByRole('heading', { name: /^credentials$/i })).toBeVisible();
+
+  for (const [tab, heading] of [
+    [/^table editor$/i, /^rows$/i],
+    [/^row-level security$/i, /^row-level security$/i],
+    [/^extensions$/i, /^extensions$/i],
+    [/^backups$/i, /^backups$/i],
+  ] as [RegExp, RegExp][]) {
+    await dbTabs.getByRole('tab', { name: tab }).click();
+    await expect(dbPanel.getByRole('heading', { name: heading })).toBeVisible({ timeout: 20_000 });
+  }
+
+  // The section deep-links: a sidebar child lands directly on its own view.
+  await page.goto(`/projects/${projectId}/database?tab=backups`);
+  await expect(page.getByRole('heading', { name: /^backups$/i })).toBeVisible({ timeout: 20_000 });
 
   // Authentication: tabbed workspace with users, sign-in, MFA, sessions, security.
   await page.goto(`/projects/${projectId}/auth`);
@@ -137,11 +155,15 @@ test('capabilities live as real workflows in their product areas', async ({
   await expect(tabs.getByRole('tab', { name: /^sessions$/i })).toBeVisible();
   await expect(tabs.getByRole('tab', { name: /^security$/i })).toBeVisible();
 
-  // Storage: move/copy operations. Realtime: broadcast composer.
+  // Storage. Move and copy used to be a standalone panel of three empty path
+  // inputs; they are now actions on the file they act on, inside each row's
+  // menu, so the page's own subject is the bucket list and its usage.
   await page.goto(`/projects/${projectId}/storage`);
-  await expect(page.getByRole('heading', { name: /move and copy/i })).toBeVisible({
+  await expect(page.getByRole('heading', { name: /^buckets$/i })).toBeVisible({
     timeout: 20_000,
   });
+  await expect(page.getByRole('list', { name: /storage usage/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /create bucket/i })).toBeVisible();
   await page.goto(`/projects/${projectId}/realtime`);
   await expect(page.getByRole('heading', { name: /publish to a channel/i })).toBeVisible({
     timeout: 20_000,
