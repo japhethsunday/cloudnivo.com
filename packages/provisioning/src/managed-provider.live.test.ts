@@ -58,7 +58,7 @@ describe.skipIf(!LIVE_PG_URL)('managed provider on live postgres', () => {
         // any project role could actually open the control database. Catalog
         // visibility is a known, documented exposure (SECURITY-AUDIT.md #10);
         // the real connection boundary is asserted in the suite below.
-        const catalog = (await sql`select datname from pg_database where datname = current_database()`.simple()) as {
+        const catalog = (await sql`select datname from pg_database where datname = current_database()`.simple()) as unknown as {
           datname: string;
         }[];
         expect(catalog[0]?.datname).toBe(created.dbName);
