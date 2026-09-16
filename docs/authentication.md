@@ -70,6 +70,37 @@ owners. Invite lookup/accept never enumerates membership.
   are provisioned from the verified profile (domain policy still applies);
   orgs with `requireMfa` send SSO users through the TOTP step-up.
 
+### Identity-provider presets (Logto, Auth0, Okta, Entra, Google)
+
+There is one SSO implementation — the generic OIDC client above. Presets do not
+add a second authentication system; they fill in what administrators get wrong.
+
+- `GET /api/v1/auth/sso/providers` (public) returns the preset list plus the
+  exact redirect URI to register with the provider. The dashboard's SSO panel
+  (organization settings) drives it.
+- `POST /api/v1/organizations/:id/sso` accepts either a raw `issuer` or
+  `provider` + `tenant`; the issuer is built from the preset template.
+  A tenant that already carries a host (`https://acme.logto.app`) replaces the
+  template host rather than being substituted into it.
+- **Token endpoint authentication is negotiated from discovery.** CloudNivo
+  reads `token_endpoint_auth_methods_supported` and uses HTTP Basic when the
+  provider advertises `client_secret_basic` (the OIDC Discovery default), a
+  posted secret when only `client_secret_post` is offered, and retries once
+  with the other method on a 401/`invalid_client`. This is what makes **Logto**
+  work: Logto registers traditional web apps as `client_secret_basic` and
+  rejects a body-posted secret outright.
+
+**Logto setup** (hosted or self-hosted, current stable release):
+
+1. Create a **Traditional web** application (native/SPA apps are public clients
+   with no secret and cannot complete this flow).
+2. Redirect URI: the `callbackUrl` returned by `/api/v1/auth/sso/providers`.
+3. In CloudNivo, pick the Logto preset and enter the tenant ID or the full
+   endpoint. The issuer resolves to `https://<tenant>.logto.app/oidc` — Logto
+   serves discovery at `<endpoint>/oidc/.well-known/openid-configuration`.
+4. Paste the app ID and app secret. The secret is encrypted server-side on
+   write and is never returned by any read path.
+
 ## Token model
 
 - **Access JWT** (default 15 min, `AUTH_ACCESS_TTL_S`): `{ sub, email,

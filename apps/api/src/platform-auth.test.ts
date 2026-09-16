@@ -728,3 +728,201 @@ describe('sso oidc login', () => {
     expect((await api(base, 'GET', `/api/v1/auth/sso/${orgSlug}/start`, null)).status).toBe(404);
   });
 });
+
+/**
+ * Logto registers traditional web applications with
+ * `token_endpoint_auth_method: client_secret_basic`, and node-oidc-provider —
+ * which Logto is built on — rejects a client that sends its secret in the
+ * form body instead. This provider behaves the same way, so the suite fails
+ * if CloudNivo ever goes back to posting the secret.
+ */
+describe('sso against a logto-shaped provider (client_secret_basic)', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let ownerToken = '';
+  let orgId = '';
+  const orgSlug = 'logtoorg';
+  let idpBase = '';
+  let stopIdp: () => Promise<void> = async () => {};
+  let idTokenFor = (_email: string, _nonce: string): Promise<string> => Promise.resolve('');
+  const seenAuthHeaders: string[] = [];
+  let bodySecretAttempts = 0;
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const signup = await api(base, 'POST', '/api/v1/auth/signup', null, {
+      email: 'owner@logto.test',
+      password: 'correct-horse-99',
+    });
+    ownerToken = data<{ token: string }>(signup.json).token;
+    const org = await api(base, 'POST', '/api/v1/organizations', ownerToken, {
+      name: 'Logto Org',
+      slug: orgSlug,
+    });
+    orgId = data<{ organization: { id: string } }>(org.json).organization.id;
+
+    const { generateKeyPair, exportJWK, SignJWT } = await import('jose');
+    const { privateKey, publicKey } = await generateKeyPair('RS256');
+    const jwk = await exportJWK(publicKey);
+    const codeRegistry = new Map<string, string>();
+    const readBody = (req: IncomingMessage): Promise<string> =>
+      new Promise(resolve => {
+        let text = '';
+        req.on('data', (c: unknown) => {
+          text += String(c);
+        });
+        req.on('end', () => resolve(text));
+      });
+    const srv = createServer((req, res) => {
+      const send = (status: number, body: unknown): void => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(body));
+      };
+      void (async () => {
+        // Logto serves discovery under its /oidc mount point.
+        if (req.url === '/oidc/.well-known/openid-configuration' && req.method === 'GET') {
+          send(200, {
+            issuer: `${idpBase}/oidc`,
+            authorization_endpoint: `${idpBase}/oidc/auth`,
+            token_endpoint: `${idpBase}/oidc/token`,
+            jwks_uri: `${idpBase}/oidc/jwks`,
+            token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
+          });
+          return;
+        }
+        if (req.url === '/oidc/jwks' && req.method === 'GET') {
+          send(200, { keys: [{ ...jwk, kid: 'logto-key', alg: 'RS256', use: 'sig' }] });
+          return;
+        }
+        if (req.url === '/oidc/token' && req.method === 'POST') {
+          const raw = await readBody(req);
+          const params = new URLSearchParams(raw);
+          const auth = req.headers.authorization ?? '';
+          seenAuthHeaders.push(auth);
+          if (params.get('client_secret')) bodySecretAttempts += 1;
+          if (!auth.startsWith('Basic ')) {
+            send(401, { error: 'invalid_client' });
+            return;
+          }
+          const [id, secret] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+          if (decodeURIComponent(id ?? '') !== 'logto-app' || decodeURIComponent(secret ?? '') !== 'logto-secret') {
+            send(401, { error: 'invalid_client' });
+            return;
+          }
+          const idToken = codeRegistry.get(params.get('code') ?? '');
+          if (!idToken) {
+            send(400, { error: 'invalid_grant' });
+            return;
+          }
+          send(200, { id_token: idToken, token_type: 'Bearer' });
+          return;
+        }
+        if (req.url === '/__register' && req.method === 'POST') {
+          const body = JSON.parse(await readBody(req)) as { code?: string; idToken?: string };
+          if (body.code && body.idToken) codeRegistry.set(body.code, body.idToken);
+          send(200, { registered: true });
+          return;
+        }
+        send(404, {});
+      })().catch(() => {
+        try {
+          res.writeHead(500);
+          res.end();
+        } catch {
+          // Already closed.
+        }
+      });
+    });
+    await new Promise<void>(resolve => srv.listen(0, '127.0.0.1', resolve));
+    const addr = srv.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 0;
+    idpBase = `http://127.0.0.1:${port}`;
+    stopIdp = () => new Promise((resolve, reject) => srv.close(e => (e ? reject(e) : resolve())));
+    idTokenFor = async (email: string, nonce: string): Promise<string> =>
+      new SignJWT({ email, email_verified: true, name: 'Logto User', nonce })
+        .setProtectedHeader({ alg: 'RS256', kid: 'logto-key' })
+        .setSubject(`logto-${email}`)
+        .setIssuer(`${idpBase}/oidc`)
+        .setAudience('logto-app')
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(privateKey);
+  });
+
+  afterAll(async () => {
+    await stopIdp();
+    await close();
+  });
+
+  it('publishes provider presets and the callback URL without a session', async () => {
+    const res = await api(base, 'GET', '/api/v1/auth/sso/providers', null);
+    expect(res.status).toBe(200);
+    const body = data<{
+      providers: { id: string; issuerTemplate: string; scopes: string[] }[];
+      callbackUrl: string;
+    }>(res.json);
+    const logto = body.providers.find(p => p.id === 'logto');
+    expect(logto?.issuerTemplate).toBe('https://{tenant}.logto.app/oidc');
+    expect(logto?.scopes).toContain('email');
+    expect(body.callbackUrl).toContain('/api/v1/auth/sso/callback');
+  });
+
+  it('completes the whole login through HTTP Basic client authentication', async () => {
+    const created = await api(base, 'POST', `/api/v1/organizations/${orgId}/sso`, ownerToken, {
+      issuer: `${idpBase}/oidc`,
+      clientId: 'logto-app',
+      clientSecret: 'logto-secret',
+      displayName: 'Logto',
+      defaultRole: 'member',
+    });
+    expect(created.status).toBe(201);
+
+    const start = await api(base, 'GET', `/api/v1/auth/sso/${orgSlug}/start`, null);
+    expect(start.status).toBe(200);
+    const { authorizeUrl } = data<{ authorizeUrl: string }>(start.json);
+    const authorize = new URL(authorizeUrl);
+    const state = authorize.searchParams.get('state') ?? '';
+    const nonce = authorize.searchParams.get('nonce') ?? '';
+    expect(authorize.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(authorize.searchParams.get('scope')).toContain('email');
+
+    const code = 'logto-code-1';
+    await fetch(`${idpBase}/__register`, {
+      method: 'POST',
+      body: JSON.stringify({ code, idToken: await idTokenFor('member@logto.test', nonce) }),
+    });
+
+    const cb = await fetch(
+      `${base}/api/v1/auth/sso/callback?code=${code}&state=${encodeURIComponent(state)}`,
+      { redirect: 'manual' },
+    );
+    expect([200, 302, 303]).toContain(cb.status);
+
+    // The provider only ever saw Basic, and never a secret in the body.
+    expect(seenAuthHeaders.some(h => h.startsWith('Basic '))).toBe(true);
+    expect(bodySecretAttempts).toBe(0);
+  });
+
+  it('creates a connection from a preset without a hand-written issuer', async () => {
+    // The preset builds an issuer; discovery then fails because no Logto
+    // tenant exists here. The point is that the issuer was built, not typed.
+    const res = await api(base, 'POST', `/api/v1/organizations/${orgId}/sso`, ownerToken, {
+      provider: 'logto',
+      tenant: 'cloudnivo-test-tenant',
+      clientId: 'logto-app',
+      clientSecret: 'logto-secret',
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.json)).toContain('SSO_DISCOVERY_FAILED');
+
+    const missing = await api(base, 'POST', `/api/v1/organizations/${orgId}/sso`, ownerToken, {
+      provider: 'logto',
+      tenant: '   ',
+      clientId: 'logto-app',
+      clientSecret: 'logto-secret',
+    });
+    expect(missing.status).toBe(400);
+  });
+});

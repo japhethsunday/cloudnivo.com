@@ -17,6 +17,8 @@ import {
   pkcePair,
   revokeSession,
   signSession,
+  ssoIssuerFor,
+  SSO_PRESETS,
   totpProvisionUri,
   verifyCaptcha,
   verifyOidcIdToken,
@@ -1642,6 +1644,12 @@ export async function handlePlatformAuthRoutes(
     }
 
     // ── SSO connections (OIDC metadata; secrets encrypted, never listed) ──
+    if (url.pathname === '/api/v1/auth/sso/providers' && req.method === 'GET') {
+      // Public: the login page needs the list before anyone has a session,
+      // and it carries no tenant data — only provider setup metadata.
+      return finish(200, ok({ providers: SSO_PRESETS, callbackUrl: ssoCallbackUrl(ctx, req) }, requestId));
+    }
+
     const ssoListMatch = /^\/api\/v1\/organizations\/([^/]+)\/sso\/?$/.exec(url.pathname);
     if (ssoListMatch?.[1] && (req.method === 'GET' || req.method === 'POST')) {
       const token = bearerFromHeader(req.headers.authorization);
@@ -1658,18 +1666,38 @@ export async function handlePlatformAuthRoutes(
         throw new ApiError('FORBIDDEN', 'Only org owners/admins can configure SSO', 403);
       }
       const parsed = parseBody(
-        z.object({
-          issuer: z.string().url().max(500),
-          clientId: z.string().min(1).max(500),
-          clientSecret: z.string().min(1).max(2000),
-          displayName: z.string().min(1).max(120).optional(),
-          defaultRole: z.enum(['member', 'viewer', 'admin']).default('member'),
-        }),
+        z
+          .object({
+            issuer: z.string().url().max(500).optional(),
+            /** Provider preset plus its tenant value, as an alternative to a raw issuer. */
+            provider: z.string().max(40).optional(),
+            tenant: z.string().max(200).optional(),
+            clientId: z.string().min(1).max(500),
+            clientSecret: z.string().min(1).max(2000),
+            displayName: z.string().min(1).max(120).optional(),
+            defaultRole: z.enum(['member', 'viewer', 'admin']).default('member'),
+          })
+          .refine(v => Boolean(v.issuer) || Boolean(v.provider), {
+            message: 'Provide an issuer, or a provider preset with its tenant',
+          }),
         await readJson(),
       );
+      // A preset builds the issuer through the same helper the tests cover,
+      // so the console and the API cannot drift into different URLs.
+      const presetIssuer = parsed.provider
+        ? ssoIssuerFor(parsed.provider, parsed.tenant ?? '')
+        : null;
+      const issuerInput = parsed.issuer ?? presetIssuer;
+      if (!issuerInput) {
+        throw new ApiError(
+          'VALIDATION_ERROR',
+          'Could not build an issuer for that provider — check the tenant value',
+          400,
+        );
+      }
       // Discovery validates the issuer NOW (misconfiguration fails fast,
       // never a broken connection row).
-      const discovery = await discoverOidc(parsed.issuer).catch((err: unknown) => {
+      const discovery = await discoverOidc(issuerInput).catch((err: unknown) => {
         throw new ApiError(
           'SSO_DISCOVERY_FAILED',
           err instanceof Error ? err.message : 'Provider discovery failed',
@@ -1678,7 +1706,7 @@ export async function handlePlatformAuthRoutes(
       });
       const connection = await store.sso.create({
         organizationId: orgId,
-        provider: 'oidc',
+        provider: parsed.provider ?? 'oidc',
         displayName: parsed.displayName ?? new URL(discovery.issuer).hostname ?? 'SSO',
         issuer: discovery.issuer,
         clientId: parsed.clientId,

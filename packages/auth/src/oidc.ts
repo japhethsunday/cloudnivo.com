@@ -15,6 +15,14 @@ export interface OidcDiscovery {
   token_endpoint: string;
   jwks_uri: string;
   userinfo_endpoint?: string;
+  /**
+   * How the provider expects the client to authenticate at the token
+   * endpoint. Providers that register a client as `client_secret_basic`
+   * (Logto's traditional web apps, and anything else built on
+   * node-oidc-provider) reject a secret sent in the form body, so this is
+   * not cosmetic — it decides whether the code exchange works at all.
+   */
+  token_endpoint_auth_methods_supported?: string[];
 }
 
 export interface OidcProfile {
@@ -55,6 +63,7 @@ export async function discoverOidc(issuer: string): Promise<OidcDiscovery> {
   ) {
     throw new OidcError('OIDC_DISCOVERY_FAILED', 'Provider metadata is incomplete');
   }
+  const methods = json['token_endpoint_auth_methods_supported'];
   return {
     issuer: typeof json['issuer'] === 'string' ? (json['issuer'] as string) : normalized,
     authorization_endpoint: json['authorization_endpoint'] as string,
@@ -64,6 +73,9 @@ export async function discoverOidc(issuer: string): Promise<OidcDiscovery> {
       typeof json['userinfo_endpoint'] === 'string'
         ? (json['userinfo_endpoint'] as string)
         : undefined,
+    token_endpoint_auth_methods_supported: Array.isArray(methods)
+      ? methods.filter((m): m is string => typeof m === 'string')
+      : undefined,
   };
 }
 
@@ -94,6 +106,53 @@ export function buildAuthorizeUrl(input: {
   return url.toString();
 }
 
+export type TokenAuthMethod = 'client_secret_basic' | 'client_secret_post';
+
+/**
+ * RFC 6749 §2.3.1 makes HTTP Basic the method every server must support, and
+ * OIDC Discovery says an omitted `token_endpoint_auth_methods_supported`
+ * means `client_secret_basic`. Honour what the provider advertises, and only
+ * fall back to the form body when Basic is not on its list.
+ */
+export function tokenAuthMethodFor(discovery: OidcDiscovery): TokenAuthMethod {
+  const supported = discovery.token_endpoint_auth_methods_supported;
+  if (!supported || supported.length === 0) return 'client_secret_basic';
+  if (supported.includes('client_secret_basic')) return 'client_secret_basic';
+  if (supported.includes('client_secret_post')) return 'client_secret_post';
+  return 'client_secret_basic';
+}
+
+function tokenRequest(
+  input: {
+    discovery: OidcDiscovery;
+    clientId: string;
+    clientSecret: string;
+    code: string;
+    redirectUri: string;
+    codeVerifier: string;
+  },
+  method: TokenAuthMethod,
+): { headers: Record<string, string>; body: string } {
+  const form: Record<string, string> = {
+    grant_type: 'authorization_code',
+    client_id: input.clientId,
+    code: input.code,
+    redirect_uri: input.redirectUri,
+    code_verifier: input.codeVerifier,
+  };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  if (method === 'client_secret_basic') {
+    // The credential pair is form-encoded before base64, per RFC 6749 §2.3.1.
+    const pair = `${encodeURIComponent(input.clientId)}:${encodeURIComponent(input.clientSecret)}`;
+    headers['Authorization'] = `Basic ${Buffer.from(pair).toString('base64')}`;
+  } else {
+    form['client_secret'] = input.clientSecret;
+  }
+  return { headers, body: new URLSearchParams(form).toString() };
+}
+
 export async function exchangeOidcCode(input: {
   discovery: OidcDiscovery;
   clientId: string;
@@ -102,23 +161,30 @@ export async function exchangeOidcCode(input: {
   redirectUri: string;
   codeVerifier: string;
 }): Promise<{ idToken: string; accessToken: string | null }> {
-  let res: Response;
-  try {
-    res = await fetch(input.discovery.token_endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: input.clientId,
-        client_secret: input.clientSecret,
-        code: input.code,
-        redirect_uri: input.redirectUri,
-        code_verifier: input.codeVerifier,
-      }).toString(),
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch {
-    throw new OidcError('OIDC_UNREACHABLE', 'Identity provider is unreachable');
+  const primary = tokenAuthMethodFor(input.discovery);
+  const fallback: TokenAuthMethod =
+    primary === 'client_secret_basic' ? 'client_secret_post' : 'client_secret_basic';
+
+  const post = async (method: TokenAuthMethod): Promise<Response> => {
+    const { headers, body } = tokenRequest(input, method);
+    try {
+      return await fetch(input.discovery.token_endpoint, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      throw new OidcError('OIDC_UNREACHABLE', 'Identity provider is unreachable');
+    }
+  };
+
+  let res = await post(primary);
+  // A provider that mis-advertises its method answers 401/invalid_client.
+  // One retry with the other method costs a round trip and saves an
+  // integration that would otherwise fail with an opaque error.
+  if (res.status === 401 || res.status === 400) {
+    res = await post(fallback);
   }
   if (!res.ok) throw new OidcError('OIDC_CODE_FAILED', 'Authorization code rejected by provider');
   const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;

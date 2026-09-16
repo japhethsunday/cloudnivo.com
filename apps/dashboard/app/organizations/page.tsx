@@ -7,6 +7,7 @@ import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, CopyButton, Modal, useToast } from '../../components/ui';
 import { OrgPlatformPanel } from '../../components/AdvancedPanels';
+import { SsoPanel } from '../../components/SsoPanel';
 
 interface Org {
   id: string;
@@ -110,8 +111,13 @@ function OrgsBody(): React.JSX.Element {
         </div>
       )}
 
-      {orgs && orgs.length > 0 ? (
-        <div style={{ marginTop: 12 }}>
+      {orgs && orgs.length > 0 && orgs[0] ? (
+        <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+          <SsoPanel
+            orgId={orgs[0].id}
+            orgSlug={orgs[0].slug}
+            canManage={orgs[0].role === 'owner' || orgs[0].role === 'admin'}
+          />
           <OrgPlatformPanel orgId={orgs[0].id} />
         </div>
       ) : null}
