@@ -8,7 +8,7 @@ import { setSelectedProject } from '../../../lib/selection';
 import { RequireAuth } from '../../../components/RequireAuth';
 import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
-import { Badge, Breadcrumbs, CopyField, Menu, StatusDot, statusTone } from '../../../components/ui';
+import { Badge, Breadcrumbs, CopyField, Menu, statusTone } from '../../../components/ui';
 import { IconChevronDown, IconSettings } from '../../../components/icons';
 
 interface Project {
@@ -118,13 +118,9 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
             <Badge tone={statusTone(status)}>{status}</Badge>
           </h1>
           <div className="ws-meta">
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <StatusDot
-                tone={statusTone(health)}
-                pulse={status === 'provisioning' || status === 'pending'}
-              />
-              {healthLabel}
-            </span>
+            {/* The strip states health in the state's own colour; the dot it
+                used to carry said the same thing twice. */}
+            <span className={`state-word state-${statusTone(health)}`}>{healthLabel}</span>
             <span aria-hidden>·</span>
             <EnvSwitcher projectId={project.id} region={project.region} />
           </div>

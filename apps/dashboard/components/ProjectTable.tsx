@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { timeAgo } from '../lib/format';
 import { IconArrowRight } from './icons';
-import { Badge, StatusDot, statusTone } from './ui';
+import { statusTone } from './ui';
 
 export interface ProjectRow {
   id: string;
@@ -48,7 +48,7 @@ export function ProjectTable({ projects }: { projects: ProjectRow[] }): React.JS
             const health = p.database?.health ?? 'unknown';
             const stamped = p.updatedAt ?? p.createdAt;
             return (
-              <tr key={p.id}>
+              <tr key={p.id} className={`state-row state-${statusTone(health)}`}>
                 <td>
                   <Link href={`/projects/${p.id}`} className="row-link">
                     {p.name}
@@ -58,20 +58,19 @@ export function ProjectTable({ projects }: { projects: ProjectRow[] }): React.JS
                     {p.orgName ? ` · ${p.orgName}` : ''}
                   </div>
                 </td>
+                {/* The row already carries its condition on its own edge, so
+                    state is a word in the state's colour, not a capsule and a
+                    repeated dot. */}
                 <td>
-                  <Badge tone={statusTone(status)}>{status}</Badge>
+                  <span className={`state-word state-${statusTone(status)}`}>{status}</span>
                 </td>
                 <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <StatusDot
-                      tone={statusTone(health)}
-                      pulse={status === 'provisioning' || status === 'pending'}
-                    />
-                    {health === 'unknown' ? '—' : health}
+                  <span className={`state-word state-${statusTone(health)}`}>
+                    {health === 'unknown' ? 'unknown' : health}
                   </span>
                 </td>
-                <td className="muted hide-sm">{p.region}</td>
-                <td className="muted hide-sm">{stamped ? timeAgo(stamped) : '—'}</td>
+                <td className="reading hide-sm">{p.region}</td>
+                <td className="reading hide-sm">{stamped ? timeAgo(stamped) : '—'}</td>
                 <td style={{ width: 36 }}>
                   <Link
                     href={`/projects/${p.id}`}

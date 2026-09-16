@@ -12,10 +12,10 @@
   /* The instrument ground: near-navy, never black. Panels are one step up
      from it, insets one step down, so depth reads as material rather than
      as a drop shadow. */
-  --bg: #0a1018;
-  --bg-muted: #0d1420;
-  --bg-elevated: #111927;
-  --bg-inset: #070c13;
+  --bg: #0e1930;
+  --bg-muted: #0b1527;
+  --bg-elevated: #0c1729;
+  --bg-inset: #081120;
   --bg-overlay: rgb(3 7 13 / 0.72);
   --border: #1c2738;
   --border-strong: #2f3e56;
@@ -62,16 +62,16 @@
    cut by hairlines, geometry and density are identical, only the ground and
    the inks invert. */
 [data-theme='light'] {
-  --bg: #f6f8fb;
-  --bg-muted: #eef2f7;
-  --bg-elevated: #ffffff;
-  --bg-inset: #e8edf4;
+  --bg: #eef2f8;
+  --bg-muted: #e7edf5;
+  --bg-elevated: #f3f6fb;
+  --bg-inset: #e2e9f2;
   --bg-overlay: rgb(15 23 42 / 0.45);
   --border: #dbe3ee;
   --border-strong: #b9c6d8;
   --text: #0c1624;
-  --text-muted: #55606f;
-  --text-faint: #687382;
+  --text-muted: #4c5766;
+  --text-faint: #5d6776;
 
   --accent: #1f5fd0;
   --accent-hover: #174fb4;
@@ -839,12 +839,14 @@ details > summary::marker {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   font-weight: 500;
   line-height: 1.5;
-  letter-spacing: -0.004em;
-  padding: 2px 9px;
-  border-radius: 999px;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: var(--bg-muted);
   color: var(--text-muted);
@@ -3134,7 +3136,8 @@ kbd,
   flex: none;
   margin-top: 1px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -3451,4 +3454,115 @@ summary code,
    screenful for content that is not there. */
 .card > .empty {
   padding: 24px 16px;
+}
+
+/* ── State rows ────────────────────────────────────────── */
+/* The edge is the status. The row declares its own condition rather than
+   hosting a dot that repeats it — the dot was the device this world set out
+   to replace. */
+.health-row.state-row {
+  border-left-width: 3px;
+}
+.health-row.state-ok {
+  border-left-color: var(--success);
+}
+.health-row.state-warn {
+  border-left-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+}
+.health-row.state-bad {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+}
+.health-row.state-muted {
+  border-left-color: var(--border-strong);
+}
+/* Work in progress reads as motion on the edge, not as a blinking dot. */
+.health-row.state-working {
+  border-left-color: var(--accent);
+  animation: edge-pulse 2.4s ease-in-out infinite;
+}
+@keyframes edge-pulse {
+  0%,
+  100% {
+    border-left-color: var(--accent);
+  }
+  50% {
+    border-left-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .health-row.state-working {
+    animation: none;
+  }
+}
+
+/* Table rows take the same state grammar as the board's rows. */
+.table tbody tr.state-ok {
+  border-left-color: var(--success);
+}
+.table tbody tr.state-warn {
+  border-left-color: var(--warning);
+}
+.table tbody tr.state-bad {
+  border-left-color: var(--danger);
+}
+.table tbody tr.state-muted {
+  border-left-color: var(--border-strong);
+}
+.table .state-word {
+  min-width: 0;
+  text-align: left;
+}
+/* Readings — regions, timestamps, counts — are measured values, so they are
+   set like measured values. */
+.table .reading {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Page head ─────────────────────────────────────────── */
+/* A resource page opens as a board section, not as a document: the title
+   sits on one line with its description beside it, at instrument scale. */
+.page-head {
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+.page-head h1 {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+.page-head .sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  max-width: 78ch;
+}
+
+/* ── One strip ─────────────────────────────────────────── */
+/* FIRST VIEWPORT: the strip carries identity, live state and the primary
+   action, and stays visible while the board scrolls under it. */
+.ws-head,
+.tabs-row {
+  position: sticky;
+  z-index: 30;
+  background: var(--bg-elevated);
+}
+.ws-head {
+  top: 44px;
+}
+.tabs-row {
+  top: 108px;
+}
+@media (max-width: 900px) {
+  .ws-head,
+  .tabs-row {
+    position: static;
+  }
+}
+
+.ws-meta .state-word {
+  min-width: 0;
+  text-align: left;
 }

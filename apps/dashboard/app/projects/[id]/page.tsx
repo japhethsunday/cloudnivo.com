@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { formatBytes, timeAgo } from '../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../components/States';
-import { Badge, StatusDot, statusTone } from '../../../components/ui';
+import { Badge, statusTone } from '../../../components/ui';
 
 interface Job {
   id: string;
@@ -178,11 +178,12 @@ export default function ProjectOverviewPage({
           </div>
           <ul className="health-list">
             {systems.map(sys => (
-              <li className="health-row" key={sys.name}>
-                <StatusDot
-                  tone={sys.tone}
-                  pulse={sys.name === 'Database' && dbStatus === 'provisioning'}
-                />
+              <li
+                className={`health-row state-row state-${sys.tone}${
+                  sys.name === 'Database' && dbStatus === 'provisioning' ? ' state-working' : ''
+                }`}
+                key={sys.name}
+              >
                 <span className="grow">
                   <span className="name">{sys.name}</span>
                   <div className="detail">{sys.reading}</div>
