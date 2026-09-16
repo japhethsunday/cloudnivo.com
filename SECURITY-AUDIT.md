@@ -109,6 +109,16 @@ databases, `postgres` and the control database all refused with
 `FATAL: permission denied for database`, for both newly created and
 pre-existing roles (`provision.harden checked=7 hardened=6`).
 
+**Why it went unnoticed.** `managed-provider.live.test.ts` claimed to assert
+"the project role cannot reach the control database", but the assertion read a
+*shared catalog* from inside the project's own database — something Postgres
+allows to PUBLIC — so it passed while the boundary was wide open. It also only
+ever ran with `LIVE_PG_URL` set, which CI never set. Both are fixed: the false
+assertion now states what it actually tests, a real connection-boundary suite
+was added, and CI runs these tests against the Postgres it already boots.
+The new suite fails with `expected 'connected' to match /permission denied/i`
+against the pre-fix provisioner.
+
 ## 3. Rate-limit / brute-force bypass — HIGH
 
 **Component:** every client-IP derivation in `apps/api/src` (14 call sites).
@@ -312,7 +322,8 @@ production dependency requires an upgrade today.
 - [ ] `BACKUP_ENCRYPTION_KEY` set wherever scheduled backups run
 - [ ] `BILLING_WEBHOOK_SECRET` set if any billing webhook is enabled
 - [x] Database and Redis services are private (no public TCP proxy) — verified 2026-09-16
-- [ ] `provision.harden` appears in API boot logs after deploying this change
+- [ ] `provision.harden` in API boot logs reports `controlDbClosed: true`; any
+      database named under `skipped` is a maintenance database with no tenant data
 - [ ] Production deploys remain manual-dispatch with required reviewers
 
 ## Recommended future hardening

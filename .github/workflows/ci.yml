@@ -110,6 +110,15 @@ jobs:
           set -euo pipefail
           DATABASE_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
             npm run db:migrate --workspace=packages/database
+      - name: Tenant isolation against a real Postgres cluster
+        run: |
+          set -euo pipefail
+          # The managed provisioner's isolation guarantee (one project role must
+          # not open another project's database, or the control database) can
+          # only be proven against a real cluster. Without LIVE_PG_URL these
+          # tests skip, which is how a broken CONNECT grant went unnoticed.
+          LIVE_PG_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
+            npx vitest run packages/provisioning/src/managed-provider.live.test.ts
       - name: Backup + verify control database
         run: |
           set -euo pipefail

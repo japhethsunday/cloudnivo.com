@@ -201,7 +201,16 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
   if (ctx.provider instanceof ManagedPostgresProvider) {
     void ctx.provider
       .hardenExistingDatabases()
-      .then(r => ctx.logger.info('provision.harden', r))
+      .then(r => {
+        // A control database still open to PUBLIC is the finding this repairs,
+        // so it is a warning, not a line in an info log nobody reads.
+        if (!r.controlDbClosed) {
+          ctx.logger.warn('provision.harden_control_db_open', {
+            note: 'Control database still grants CONNECT to PUBLIC: every project role can open it. Check the admin role can REVOKE on it.',
+          });
+        }
+        ctx.logger.info('provision.harden', r);
+      })
       .catch(err =>
         ctx.logger.warn('provision.harden_failed', {
           error: err instanceof Error ? err.message.slice(0, 160) : 'unknown',

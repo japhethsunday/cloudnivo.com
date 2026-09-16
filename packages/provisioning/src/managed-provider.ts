@@ -180,13 +180,23 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
    * the database that stores platform users, sessions and SSO secrets.
    * Idempotent, and the admin role keeps its own access explicitly.
    */
-  private async lockDownControlDb(): Promise<void> {
+  private async lockDownControlDb(): Promise<boolean> {
     await this.adminQuery(
       `GRANT CONNECT ON DATABASE "${this.controlDb}" TO CURRENT_USER`,
     ).catch(() => undefined);
-    await this.adminQuery(`REVOKE CONNECT ON DATABASE "${this.controlDb}" FROM PUBLIC`).catch(
-      () => undefined,
-    );
+    const revoked = await this.adminQuery(
+      `REVOKE CONNECT ON DATABASE "${this.controlDb}" FROM PUBLIC`,
+    )
+      .then(() => true)
+      .catch(() => false);
+    // Report the real state rather than the attempt: a silent failure here
+    // leaves every project role able to open the control database.
+    const rows = await this.adminQuery<{ open: boolean }>(
+      `SELECT has_database_privilege('public', $1, 'CONNECT') AS open`,
+      [this.controlDb],
+    ).catch(() => null);
+    const open = rows?.[0]?.open;
+    return revoked && open === false;
   }
 
   /**
@@ -196,8 +206,13 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
    * grants Postgres adds by default and re-grants the database to its own
    * owner, so a correctly locked database is left exactly as it is.
    */
-  async hardenExistingDatabases(): Promise<{ checked: number; hardened: number }> {
-    await this.lockDownControlDb().catch(() => undefined);
+  async hardenExistingDatabases(): Promise<{
+    checked: number;
+    hardened: number;
+    controlDbClosed: boolean;
+    skipped: string[];
+  }> {
+    const controlDbClosed = await this.lockDownControlDb().catch(() => false);
     const rows = await this.adminQuery<{ datname: string; owner: string }>(
       `SELECT d.datname AS datname, pg_get_userbyid(d.datdba) AS owner
          FROM pg_database d
@@ -207,17 +222,26 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
       [this.controlDb],
     ).catch(() => []);
     let hardened = 0;
+    const skipped: string[] = [];
     for (const row of rows) {
       // Only databases this provisioner owns follow the managed handle shape.
-      if (!/^[a-z][a-z0-9_]*$/.test(row.datname) || !/^[a-z][a-z0-9_]*$/.test(row.owner)) continue;
-      if (!row.datname.startsWith('cn_')) continue;
+      // Anything else (the platform's own maintenance databases) is named so
+      // an operator can see what was left open instead of guessing.
+      if (
+        !/^[a-z][a-z0-9_]*$/.test(row.datname) ||
+        !/^[a-z][a-z0-9_]*$/.test(row.owner) ||
+        !row.datname.startsWith('cn_')
+      ) {
+        if (skipped.length < 20) skipped.push(row.datname);
+        continue;
+      }
       await this.lockDownDatabase(row.datname, row.owner)
         .then(() => {
           hardened += 1;
         })
         .catch(() => undefined);
     }
-    return { checked: rows.length, hardened };
+    return { checked: rows.length, hardened, controlDbClosed, skipped };
   }
 
   async createDatabase(req: ProvisionRequest): Promise<ProvisionedDatabase> {
