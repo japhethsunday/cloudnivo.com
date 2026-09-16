@@ -8,7 +8,9 @@ import { useToast } from './ui';
 /* ── Database branches ─────────────────────────────────────────── */
 export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const toast = useToast();
-  const [branches, setBranches] = useState<{ id: string; name: string; status: string }[] | null>(null);
+  const [branches, setBranches] = useState<{ id: string; name: string; status: string }[] | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,8 +51,14 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
   }
 
   async function reset(id: string): Promise<void> {
-    if (!window.confirm('Reset this branch to a fresh copy of main? Data in the branch is replaced.')) return;
-    const r = await apiFetch(`/api/v1/projects/${projectId}/database/branches/${id}/reset`, { method: 'POST', body: {} });
+    if (
+      !window.confirm('Reset this branch to a fresh copy of main? Data in the branch is replaced.')
+    )
+      return;
+    const r = await apiFetch(`/api/v1/projects/${projectId}/database/branches/${id}/reset`, {
+      method: 'POST',
+      body: {},
+    });
     if (!r.ok) setError(r.error);
     else {
       toast('Branch reset', 'ok');
@@ -60,7 +68,9 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
 
   async function remove(id: string): Promise<void> {
     if (!window.confirm('Delete this branch database? This cannot be undone.')) return;
-    const r = await apiFetch(`/api/v1/projects/${projectId}/database/branches/${id}`, { method: 'DELETE' });
+    const r = await apiFetch(`/api/v1/projects/${projectId}/database/branches/${id}`, {
+      method: 'DELETE',
+    });
     if (!r.ok) setError(r.error);
     else {
       toast('Branch deleted', 'ok');
@@ -75,9 +85,14 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
         <h2>Database branches</h2>
         <p>Full isolated copies of the project database for previews and experiments.</p>
       </div>
-      {error ? <ErrorState title="Branches unavailable" message={error} retry={() => void load()} /> : null}
+      {error ? (
+        <ErrorState title="Branches unavailable" message={error} retry={() => void load()} />
+      ) : null}
       {(branches ?? []).length === 0 ? (
-        <EmptyState title="No branches yet" hint="Branch main to test migrations or preview features safely." />
+        <EmptyState
+          title="No branches yet"
+          hint="Branch main to test migrations or preview features safely."
+        />
       ) : (
         <ul className="health-list">
           {(branches ?? []).map(b => (
@@ -93,7 +108,11 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
               <button type="button" className="btn btn-sm" onClick={() => void reset(b.id)}>
                 Reset
               </button>
-              <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(b.id)}>
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                onClick={() => void remove(b.id)}
+              >
                 Delete
               </button>
             </li>
@@ -146,10 +165,13 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (!name.trim() || !value) return;
-    const r = await apiFetch(`/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name.trim())}`, {
-      method: 'PUT',
-      body: { value },
-    });
+    const r = await apiFetch(
+      `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name.trim())}`,
+      {
+        method: 'PUT',
+        body: { value },
+      },
+    );
     if (!r.ok) {
       setError(r.error);
       return;
@@ -170,15 +192,21 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
       return;
     }
     toast('Reveal logged to the audit trail', 'info');
-    window.prompt(`Value of ${secret} (reveal audited):`, String((r.data as { value?: unknown }).value ?? ''));
+    window.prompt(
+      `Value of ${secret} (reveal audited):`,
+      String((r.data as { value?: unknown }).value ?? ''),
+    );
     void load();
   }
 
   async function remove(secret: string): Promise<void> {
     if (!window.confirm(`Delete vault secret ${secret}?`)) return;
-    const r = await apiFetch(`/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(secret)}`, {
-      method: 'DELETE',
-    });
+    const r = await apiFetch(
+      `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(secret)}`,
+      {
+        method: 'DELETE',
+      },
+    );
     if (!r.ok) setError(r.error);
     else {
       toast('Secret deleted', 'ok');
@@ -192,11 +220,16 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
         <h2>Project vault</h2>
         <p>AES-256-GCM envelopes. Names list freely — values reveal once and audit.</p>
       </div>
-      {error ? <ErrorState title="Vault unavailable" message={error} retry={() => void load()} /> : null}
+      {error ? (
+        <ErrorState title="Vault unavailable" message={error} retry={() => void load()} />
+      ) : null}
       {secrets === null ? (
         <LoadingSkeleton label="Loading vault" rows={2} />
       ) : secrets.length === 0 ? (
-        <EmptyState title="Vault is empty" hint="Store API keys and third-party secrets outside function env." />
+        <EmptyState
+          title="Vault is empty"
+          hint="Store API keys and third-party secrets outside function env."
+        />
       ) : (
         <ul className="health-list">
           {secrets.map(s => (
@@ -210,7 +243,11 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
               <button type="button" className="btn btn-sm" onClick={() => void reveal(s.name)}>
                 Reveal
               </button>
-              <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(s.name)}>
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                onClick={() => void remove(s.name)}
+              >
                 Delete
               </button>
             </li>
@@ -218,8 +255,20 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
         </ul>
       )}
       <form onSubmit={save} style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="STRIPE_KEY" aria-label="Secret name" style={{ flex: '1 1 140px' }} />
-        <input value={value} onChange={e => setValue(e.target.value)} placeholder="value" aria-label="Secret value" style={{ flex: '2 1 180px' }} />
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="STRIPE_KEY"
+          aria-label="Secret name"
+          style={{ flex: '1 1 140px' }}
+        />
+        <input
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder="value"
+          aria-label="Secret value"
+          style={{ flex: '2 1 180px' }}
+        />
         <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim() || !value}>
           Store
         </button>
@@ -231,7 +280,9 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
 /* ── Database power tools ──────────────────────────────────────── */
 export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const [advisors, setAdvisors] = useState<unknown>(null);
-  const [extensions, setExtensions] = useState<{ installed?: string[]; allowed?: string[] } | null>(null);
+  const [extensions, setExtensions] = useState<{ installed?: string[]; allowed?: string[] } | null>(
+    null,
+  );
   const [types, setTypes] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -252,7 +303,8 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
       return;
     }
     if (kind === 'advisors') setAdvisors(r.data);
-    if (kind === 'extensions') setExtensions(r.data as { installed?: string[]; allowed?: string[] });
+    if (kind === 'extensions')
+      setExtensions(r.data as { installed?: string[]; allowed?: string[] });
     if (kind === 'types') setTypes(JSON.stringify(r.data, null, 2));
   }
 
@@ -263,13 +315,28 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
         <p>Advisors, extensions and generated types — live against this project’s database.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void run('advisors')}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy !== null}
+          onClick={() => void run('advisors')}
+        >
           {busy === 'advisors' ? 'Scanning…' : 'Run advisors'}
         </button>
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void run('extensions')}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy !== null}
+          onClick={() => void run('extensions')}
+        >
           {busy === 'extensions' ? 'Loading…' : 'List extensions'}
         </button>
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void run('types')}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy !== null}
+          onClick={() => void run('types')}
+        >
           {busy === 'types' ? 'Generating…' : 'Generate types'}
         </button>
       </div>
@@ -296,7 +363,17 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
 /* ── Spend budgets (billing) ───────────────────────────────────── */
 export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
   const toast = useToast();
-  const [budgets, setBudgets] = useState<{ id: string; name: string; limitCents: number; action: string; breached?: boolean; percent?: number }[] | null>(null);
+  const [budgets, setBudgets] = useState<
+    | {
+        id: string;
+        name: string;
+        limitCents: number;
+        action: string;
+        breached?: boolean;
+        percent?: number;
+      }[]
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [limit, setLimit] = useState('5000');
@@ -304,9 +381,16 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
 
   const load = useCallback(async () => {
     if (!orgId) return;
-    const r = await apiFetch<{ spendCents: number; period: string; evaluations: { budget: { id: string; name: string; limitCents: number; action: string }; spendCents: number; breached: boolean; percent: number }[] }>(
-      `/api/v1/organizations/${orgId}/billing/budgets`,
-    );
+    const r = await apiFetch<{
+      spendCents: number;
+      period: string;
+      evaluations: {
+        budget: { id: string; name: string; limitCents: number; action: string };
+        spendCents: number;
+        breached: boolean;
+        percent: number;
+      }[];
+    }>(`/api/v1/organizations/${orgId}/billing/budgets`);
     if (!r.ok) {
       if (r.status === 404) setBudgets([]);
       else setError(r.error);
@@ -342,7 +426,9 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
   }
 
   async function remove(id: string): Promise<void> {
-    const r = await apiFetch(`/api/v1/organizations/${orgId}/billing/budgets/${id}`, { method: 'DELETE' });
+    const r = await apiFetch(`/api/v1/organizations/${orgId}/billing/budgets/${id}`, {
+      method: 'DELETE',
+    });
     if (!r.ok) setError(r.error);
     else void load();
   }
@@ -354,11 +440,16 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
         <h2>Spend budgets</h2>
         <p>Monthly caps that alert — or block paid writes with 402 when breached.</p>
       </div>
-      {error ? <ErrorState title="Budgets unavailable" message={error} retry={() => void load()} /> : null}
+      {error ? (
+        <ErrorState title="Budgets unavailable" message={error} retry={() => void load()} />
+      ) : null}
       {budgets === null ? (
         <LoadingSkeleton label="Loading budgets" rows={2} />
       ) : budgets.length === 0 ? (
-        <EmptyState title="No budgets yet" hint="Create one to cap monthly spend for this organization." />
+        <EmptyState
+          title="No budgets yet"
+          hint="Create one to cap monthly spend for this organization."
+        />
       ) : (
         <ul className="health-list">
           {budgets.map(b => (
@@ -371,22 +462,49 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
                   {b.breached ? ' · breached' : ''}
                 </div>
               </span>
-              <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(b.id)}>
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                onClick={() => void remove(b.id)}
+              >
                 Delete
               </button>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={create} style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Monthly cap" aria-label="Budget name" style={{ flex: '2 1 140px' }} />
-        <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="5000" inputMode="numeric" aria-label="Limit in cents" style={{ flex: '1 1 100px' }} />
-        <select value={action} onChange={e => setAction(e.target.value)} aria-label="Budget action">
-          <option value="alert">alert</option>
-          <option value="block">block</option>
-        </select>
+      {/* Labelled fields: the name input used to carry "Monthly cap" as its
+          placeholder, which named the wrong thing, and the limit gave no unit
+          for the number it wanted. */}
+      <form onSubmit={create} className="form-row">
+        <div className="field" style={{ flex: '2 1 160px' }}>
+          <label htmlFor="budget-name">Budget name</label>
+          <input
+            id="budget-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Monthly cap"
+          />
+        </div>
+        <div className="field" style={{ flex: '1 1 120px' }}>
+          <label htmlFor="budget-limit">Limit (cents)</label>
+          <input
+            id="budget-limit"
+            value={limit}
+            onChange={e => setLimit(e.target.value)}
+            placeholder="5000"
+            inputMode="numeric"
+          />
+        </div>
+        <div className="field" style={{ flex: '1 1 160px' }}>
+          <label htmlFor="budget-action">When breached</label>
+          <select id="budget-action" value={action} onChange={e => setAction(e.target.value)}>
+            <option value="alert">Alert only</option>
+            <option value="block">Block paid writes</option>
+          </select>
+        </div>
         <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim()}>
-          Create
+          Create budget
         </button>
       </form>
     </div>
@@ -396,22 +514,48 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
 /* ── Org platform: domains, drains, status ─────────────────────── */
 export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Element {
   const toast = useToast();
-  const [domains, setDomains] = useState<{ id: string; hostname: string; verified: boolean; purpose: string; status?: string; dnsRecord?: string }[] | null>(null);
-  const [drains, setDrains] = useState<{ id: string; url: string; events: string[]; enabled: boolean }[] | null>(null);
-  const [status, setStatus] = useState<{ status: string; incidents: { id: string; title: string; state: string }[] } | null>(null);
+  const [domains, setDomains] = useState<
+    | {
+        id: string;
+        hostname: string;
+        verified: boolean;
+        purpose: string;
+        status?: string;
+        dnsRecord?: string;
+      }[]
+    | null
+  >(null);
+  const [drains, setDrains] = useState<
+    { id: string; url: string; events: string[]; enabled: boolean }[] | null
+  >(null);
+  const [status, setStatus] = useState<{
+    status: string;
+    incidents: { id: string; title: string; state: string }[];
+  } | null>(null);
   const [hostname, setHostname] = useState('');
   const [drainUrl, setDrainUrl] = useState('');
 
   const load = useCallback(async () => {
     if (!orgId) return;
     const [d, dr, s] = await Promise.all([
-      apiFetch<{ domains: { id: string; domain?: string; hostname?: string; verified?: boolean; verifiedAt?: string | null; status?: string; purpose: string; dnsRecord?: string }[] }>(
-        `/api/v1/organizations/${orgId}/domains`,
-      ),
+      apiFetch<{
+        domains: {
+          id: string;
+          domain?: string;
+          hostname?: string;
+          verified?: boolean;
+          verifiedAt?: string | null;
+          status?: string;
+          purpose: string;
+          dnsRecord?: string;
+        }[];
+      }>(`/api/v1/organizations/${orgId}/domains`),
       apiFetch<{ drains: { id: string; url: string; events: string[]; enabled: boolean }[] }>(
         `/api/v1/organizations/${orgId}/drains`,
       ),
-      apiFetch<{ status: string; incidents: { id: string; title: string; state: string }[] }>('/api/v1/status'),
+      apiFetch<{ status: string; incidents: { id: string; title: string; state: string }[] }>(
+        '/api/v1/status',
+      ),
     ]);
     if (d.ok && d.data) {
       // Backend exposes `domain` + `status`/`verifiedAt`; normalize for display.
@@ -428,7 +572,15 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
     } else setDomains(d.status === 404 ? [] : null);
     if (dr.ok && dr.data) setDrains(dr.data.drains);
     else setDrains(dr.status === 404 ? [] : null);
-    if (s.ok && s.data) setStatus({ status: String((s.data as { status?: unknown }).status ?? 'ok'), incidents: ((s.data as { incidents?: unknown }).incidents ?? []) as { id: string; title: string; state: string }[] });
+    if (s.ok && s.data)
+      setStatus({
+        status: String((s.data as { status?: unknown }).status ?? 'ok'),
+        incidents: ((s.data as { incidents?: unknown }).incidents ?? []) as {
+          id: string;
+          title: string;
+          state: string;
+        }[],
+      });
   }, [orgId]);
 
   useEffect(() => {
@@ -452,7 +604,10 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
   }
 
   async function verifyDomain(id: string): Promise<void> {
-    const r = await apiFetch(`/api/v1/organizations/${orgId}/domains/${id}/verify`, { method: 'POST', body: {} });
+    const r = await apiFetch(`/api/v1/organizations/${orgId}/domains/${id}/verify`, {
+      method: 'POST',
+      body: {},
+    });
     if (!r.ok) toast(r.error ?? 'Verification failed — check DNS TXT', 'bad');
     else {
       toast('Domain verified', 'ok');
@@ -487,7 +642,10 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
         {domains === null ? (
           <LoadingSkeleton label="Loading domains" rows={2} />
         ) : domains.length === 0 ? (
-          <EmptyState title="No custom domains" hint="Attach a hostname, then verify ownership over DNS TXT." />
+          <EmptyState
+            title="No custom domains"
+            hint="Attach a hostname, then verify ownership over DNS TXT."
+          />
         ) : (
           <ul className="health-list">
             {domains.map(d => (
@@ -500,13 +658,18 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
                     {d.purpose} · {d.verified ? 'verified' : 'pending DNS verification'}
                     {!d.verified && d.dnsRecord ? (
                       <>
-                        {' · TXT '}<code>{d.dnsRecord}</code>
+                        {' · TXT '}
+                        <code>{d.dnsRecord}</code>
                       </>
                     ) : null}
                   </div>
                 </span>
                 {!d.verified ? (
-                  <button type="button" className="btn btn-sm" onClick={() => void verifyDomain(d.id)}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => void verifyDomain(d.id)}
+                  >
                     Verify
                   </button>
                 ) : null}
@@ -515,7 +678,13 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
           </ul>
         )}
         <form onSubmit={addDomain} style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <input value={hostname} onChange={e => setHostname(e.target.value)} placeholder="app.example.com" aria-label="Custom hostname" style={{ flex: 1 }} />
+          <input
+            value={hostname}
+            onChange={e => setHostname(e.target.value)}
+            placeholder="app.example.com"
+            aria-label="Custom hostname"
+            style={{ flex: 1 }}
+          />
           <button type="submit" className="btn btn-primary btn-sm" disabled={!hostname.trim()}>
             Add
           </button>
@@ -530,7 +699,10 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
         {drains === null ? (
           <LoadingSkeleton label="Loading drains" rows={2} />
         ) : drains.length === 0 ? (
-          <EmptyState title="No log drains" hint="Ship signed event batches to an SSRF-guarded URL." />
+          <EmptyState
+            title="No log drains"
+            hint="Ship signed event batches to an SSRF-guarded URL."
+          />
         ) : (
           <ul className="health-list">
             {drains.map(d => (
@@ -548,7 +720,13 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
           </ul>
         )}
         <form onSubmit={addDrain} style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <input value={drainUrl} onChange={e => setDrainUrl(e.target.value)} placeholder="https://ops.example.com/hook" aria-label="Drain URL" style={{ flex: 1 }} />
+          <input
+            value={drainUrl}
+            onChange={e => setDrainUrl(e.target.value)}
+            placeholder="https://ops.example.com/hook"
+            aria-label="Drain URL"
+            style={{ flex: 1 }}
+          />
           <button type="submit" className="btn btn-primary btn-sm" disabled={!drainUrl.trim()}>
             Add
           </button>
@@ -559,8 +737,8 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
         <div className="section-head">
           <h2>Platform status</h2>
           <p>
-            Public status{status ? `: ${status.status}` : ''} · {status?.incidents?.length ?? 0} tracked
-            incidents.
+            Public status{status ? `: ${status.status}` : ''} · {status?.incidents?.length ?? 0}{' '}
+            tracked incidents.
           </p>
         </div>
         {(status?.incidents ?? []).length === 0 ? (

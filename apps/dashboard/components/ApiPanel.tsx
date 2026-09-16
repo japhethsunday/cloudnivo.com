@@ -279,7 +279,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
             <option value="public">public (read-only)</option>
             <option value="service">service (read + write)</option>
           </select>
-          <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+          <button type="submit" className="btn btn-primary">
             Issue key
           </button>
         </form>

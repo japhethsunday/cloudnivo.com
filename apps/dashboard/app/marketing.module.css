@@ -93,14 +93,6 @@
   gap: 48px;
   align-items: center;
 }
-.eyebrow {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin: 0 0 14px;
-}
 .hero h1 {
   font-size: 44px;
   line-height: 1.06;
@@ -458,13 +450,13 @@
   margin: 0;
 }
 .code .k {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .code .s {
-  color: var(--success);
+  color: var(--success-ink);
 }
 .code .c {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 /* ── Console preview frame (reuses app chrome) ───────── */

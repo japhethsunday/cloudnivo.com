@@ -73,7 +73,11 @@ const QUOTA_METERS: { limitKey: string; metric: string; label: string }[] = [
   { limitKey: 'apiRequestsPerMonth', metric: 'api_requests', label: 'API requests' },
   { limitKey: 'bandwidthMbPerMonth', metric: 'api_bandwidth_bytes', label: 'Bandwidth' },
   { limitKey: 'storageMb', metric: 'storage_bytes', label: 'Storage' },
-  { limitKey: 'functionInvocationsPerMonth', metric: 'function_invocations', label: 'Function invocations' },
+  {
+    limitKey: 'functionInvocationsPerMonth',
+    metric: 'function_invocations',
+    label: 'Function invocations',
+  },
   { limitKey: 'aiTokensPerMonth', metric: 'ai_tokens', label: 'AI tokens' },
   { limitKey: 'realtimeMessagesPerMonth', metric: 'realtime_messages', label: 'Realtime messages' },
 ];
@@ -85,7 +89,11 @@ function quotaTotal(slices: UsageSlice[], metric: string): number {
 }
 
 /** Normalize a quota limit into the same unit as its usage metric. */
-function quotaLimit(limitKey: string, metric: string, raw: number): { value: number; display: string } {
+function quotaLimit(
+  limitKey: string,
+  metric: string,
+  raw: number,
+): { value: number; display: string } {
   if (raw < 0) return { value: -1, display: 'Unlimited' };
   if (MB_METRICS.has(metric)) {
     const bytes = raw * 1024 * 1024;
@@ -159,14 +167,20 @@ function BillingBody(): React.JSX.Element {
     void load();
   }, [load]);
 
-  const projectName = useCallback((id: string) => projects.find(p => p.id === id)?.name ?? id.slice(0, 8), [projects]);
+  const projectName = useCallback(
+    (id: string) => projects.find(p => p.id === id)?.name ?? id.slice(0, 8),
+    [projects],
+  );
 
   const meters = useMemo(() => {
     if (!plan || !usage) return [];
     return QUOTA_METERS.map(m => {
       const raw = plan.limits[m.limitKey];
       const used = quotaTotal(usage.slices, m.metric);
-      const { value: limit, display } = typeof raw === 'number' ? quotaLimit(m.limitKey, m.metric, raw) : { value: -1, display: '—' };
+      const { value: limit, display } =
+        typeof raw === 'number'
+          ? quotaLimit(m.limitKey, m.metric, raw)
+          : { value: -1, display: '—' };
       const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
       return { ...m, used, limit, display, pct };
     });
@@ -190,7 +204,12 @@ function BillingBody(): React.JSX.Element {
   }
 
   async function cancelSubscription(): Promise<void> {
-    if (!window.confirm('Cancel the subscription for this organization? Limits fall back to the free plan.')) return;
+    if (
+      !window.confirm(
+        'Cancel the subscription for this organization? Limits fall back to the free plan.',
+      )
+    )
+      return;
     setBusy(true);
     const r = await apiFetch(`/api/v1/organizations/${orgId}/billing/subscription`, {
       method: 'POST',
@@ -207,10 +226,13 @@ function BillingBody(): React.JSX.Element {
 
   async function openPortal(): Promise<void> {
     setBusy(true);
-    const r = await apiFetch<{ portal: { url?: string } }>(`/api/v1/organizations/${orgId}/billing/portal`, {
-      method: 'POST',
-      body: {},
-    });
+    const r = await apiFetch<{ portal: { url?: string } }>(
+      `/api/v1/organizations/${orgId}/billing/portal`,
+      {
+        method: 'POST',
+        body: {},
+      },
+    );
     setBusy(false);
     if (!r.ok || !r.data) {
       toast(r.error ?? 'Portal unavailable', 'bad');
@@ -227,10 +249,16 @@ function BillingBody(): React.JSX.Element {
       <div className="page-head">
         <div>
           <h1 id="billing-title">Billing</h1>
-          <p className="sub muted">Plans, quotas, usage, invoices, and payments{org ? ` · ${org.name}` : ''}.</p>
+          <p className="sub muted">
+            Plans, quotas, usage, invoices, and payments{org ? ` · ${org.name}` : ''}.
+          </p>
         </div>
         {orgs.length > 1 ? (
-          <select value={orgId} onChange={e => setOrgId(e.target.value)} aria-label="Billing organization">
+          <select
+            value={orgId}
+            onChange={e => setOrgId(e.target.value)}
+            aria-label="Billing organization"
+          >
             {orgs.map(o => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -240,7 +268,9 @@ function BillingBody(): React.JSX.Element {
         ) : null}
       </div>
 
-      {error ? <ErrorState title="Couldn't load billing" message={error} retry={() => void load()} /> : null}
+      {error ? (
+        <ErrorState title="Couldn't load billing" message={error} retry={() => void load()} />
+      ) : null}
 
       {orgs.length === 0 ? (
         <EmptyState
@@ -262,16 +292,22 @@ function BillingBody(): React.JSX.Element {
               <div className="section-head">
                 <h2>
                   {plan.plan.name} plan{' '}
-                  <Badge tone={statusTone(plan.subscriptionStatus)}>{plan.subscriptionStatus}</Badge>
+                  <Badge tone={statusTone(plan.subscriptionStatus)}>
+                    {plan.subscriptionStatus}
+                  </Badge>
                 </h2>
                 <p>
-                  {money(plan.plan.priceCents, plan.plan.currency)} per month · period {usage?.period ?? '…'}
+                  {money(plan.plan.priceCents, plan.plan.currency)} per month · period{' '}
+                  {usage?.period ?? '…'}
                   {typeof usage?.creditBalanceCents === 'number' && usage.creditBalanceCents > 0
                     ? ` · ${(usage.creditBalanceCents / 100).toFixed(2)} credit`
                     : ''}
                 </p>
               </div>
-              <form onSubmit={e => void changePlan(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <form
+                onSubmit={e => void changePlan(e)}
+                style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
+              >
                 <select
                   value={targetPlan}
                   onChange={e => setTargetPlan(e.target.value)}
@@ -292,17 +328,29 @@ function BillingBody(): React.JSX.Element {
                   {busy ? 'Working…' : 'Change plan'}
                 </button>
               </form>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void openPortal()}>
-                  Manage payment
-                </button>
-                <button type="button" className="btn btn-sm btn-danger" disabled={busy} onClick={() => void cancelSubscription()}>
-                  Cancel subscription
-                </button>
-              </div>
+              {(plan.plan.priceCents ?? 0) > 0 ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={busy}
+                    onClick={() => void openPortal()}
+                  >
+                    Manage payment
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger"
+                    disabled={busy}
+                    onClick={() => void cancelSubscription()}
+                  >
+                    Cancel subscription
+                  </button>
+                </div>
+              ) : null}
               <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>
-                Plan changes and cancellation require the owner or admin role. No charge is collected outside a
-                verified provider webhook.
+                Plan changes and cancellation require the owner or admin role. No charge is
+                collected outside a verified provider webhook.
               </p>
             </div>
 
@@ -318,8 +366,18 @@ function BillingBody(): React.JSX.Element {
                       {formatMetric(m.metric, m.used)} / {m.display}
                     </span>
                   </div>
-                  <div className="bar" role="progressbar" aria-valuenow={Math.round(m.pct)} aria-valuemin={0} aria-valuemax={100} aria-label={m.label}>
-                    <div className={`fill${m.pct >= 100 ? ' bad' : m.pct >= 75 ? ' warn' : ' ok'}`} style={{ width: `${m.limit > 0 ? m.pct : 0}%` }} />
+                  <div
+                    className="bar"
+                    role="progressbar"
+                    aria-valuenow={Math.round(m.pct)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={m.label}
+                  >
+                    <div
+                      className={`fill${m.pct >= 100 ? ' bad' : m.pct >= 75 ? ' warn' : ' ok'}`}
+                      style={{ width: `${m.limit > 0 ? m.pct : 0}%` }}
+                    />
                   </div>
                 </div>
               ))}
@@ -329,7 +387,10 @@ function BillingBody(): React.JSX.Element {
           <div className="card">
             <div className="section-head">
               <h2>Metered activity</h2>
-              <p>Every row is measured by the backend — counters sum within the period, gauges take the peak.</p>
+              <p>
+                Every row is measured by the backend — counters sum within the period, gauges take
+                the peak.
+              </p>
             </div>
             {!usage || usage.slices.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>
@@ -359,7 +420,10 @@ function BillingBody(): React.JSX.Element {
                               ? 'org-level'
                               : s.byProject
                                   .slice(0, 3)
-                                  .map(b => `${projectName(b.projectId)}: ${formatMetric(s.metric, b.total)}`)
+                                  .map(
+                                    b =>
+                                      `${projectName(b.projectId)}: ${formatMetric(s.metric, b.total)}`,
+                                  )
                                   .join(' · ')}
                           </td>
                         </tr>

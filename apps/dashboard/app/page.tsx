@@ -39,7 +39,14 @@ const SHOWCASE: {
     icon: <IconDatabase size={15} />,
     title: 'PostgreSQL with guardrails',
     body: 'Isolated databases per project, live schema inspection, a guarded SQL editor, and CSV import/export against the same engine as the API.',
-    code: [[{ t: '-- guarded, allow-listed identifiers' }], [{ k: 'SELECT', t: ' * ' }, { k: 'FROM', t: ' users ' }, { k: 'LIMIT', t: ' 20;' }]],
+    code: [
+      [{ t: '-- guarded, allow-listed identifiers' }],
+      [
+        { k: 'SELECT', t: ' * ' },
+        { k: 'FROM', t: ' users ' },
+        { k: 'LIMIT', t: ' 20;' },
+      ],
+    ],
   },
   {
     id: 'api',
@@ -47,7 +54,10 @@ const SHOWCASE: {
     icon: <IconAPI size={15} />,
     title: 'REST generated from your tables',
     body: 'Every table gets filterable, sortable, paginated endpoints with project keys and live OpenAPI — same envelope everywhere.',
-    code: [[{ c: '$ ' }, { t: 'curl -H "apikey: cn_…" ' }], [{ t: '  "https://api/api/v1/projects/abc/users?limit=20"' }]],
+    code: [
+      [{ c: '$ ' }, { t: 'curl -H "apikey: cn_…" ' }],
+      [{ t: '  "https://api/api/v1/projects/abc/users?limit=20"' }],
+    ],
   },
   {
     id: 'auth',
@@ -85,7 +95,9 @@ const SHOWCASE: {
     icon: <IconFunctions size={15} />,
     title: 'Serverless with versions',
     body: 'Deploy from source or the CLI, roll back to any version, invoke on schedules, and read per-execution logs.',
-    code: [[{ c: '$ ' }, { t: 'cloudnivo agent deploy --project abc --function api --source ./h.js' }]],
+    code: [
+      [{ c: '$ ' }, { t: 'cloudnivo agent deploy --project abc --function api --source ./h.js' }],
+    ],
   },
   {
     id: 'ai',
@@ -93,7 +105,10 @@ const SHOWCASE: {
     icon: <IconAIBuilder size={15} />,
     title: 'Describe, review, approve',
     body: 'Plans are validated structured data with destructive confirmations — nothing executes without your approval.',
-    code: [[{ c: '$ ' }, { t: 'cloudnivo ai plan --project abc --prompt "..."' }], [{ t: 'plan pl_8f2 [pending] · 14 changes' }]],
+    code: [
+      [{ c: '$ ' }, { t: 'cloudnivo ai plan --project abc --prompt "..."' }],
+      [{ t: 'plan pl_8f2 [pending] · 14 changes' }],
+    ],
   },
 ];
 
@@ -109,15 +124,51 @@ const AI_CHECKS = [
 ];
 
 const PLATFORM: { icon: React.ReactNode; title: string; body: string }[] = [
-  { icon: <IconDatabase size={16} />, title: 'DATABASE', body: 'Isolated PostgreSQL per project with live status, schema inspection, guarded SQL, and CSV portability.' },
-  { icon: <IconAuth size={16} />, title: 'AUTHENTICATION', body: 'Application users, rotating sessions, project keys, and scoped agent credentials.' },
-  { icon: <IconAPI size={16} />, title: 'API', body: 'Auto-generated REST over your tables with filtering, pagination, keys, and live OpenAPI docs.' },
-  { icon: <IconStorage size={16} />, title: 'STORAGE', body: 'Buckets and objects with visibility controls, signed URLs, quotas, and S3-compatible drivers.' },
-  { icon: <IconRealtime size={16} />, title: 'REALTIME', body: 'Channels, presence, and Postgres change feeds over project-scoped WebSockets.' },
-  { icon: <IconFunctions size={16} />, title: 'FUNCTIONS', body: 'Versioned serverless deploys with cron schedules, queues, logs, and rollback.' },
-  { icon: <IconAIBuilder size={16} />, title: 'AI', body: 'Plan → review → approve → apply backend generation, plus a deterministic failure debugger.' },
-  { icon: <IconShield size={16} />, title: 'SECURITY', body: 'Live posture scans with a score, scoped credentials, approval gates, and audit trails.' },
-  { icon: <IconUsage size={16} />, title: 'OBSERVABILITY', body: 'Request metrics, job history, function logs, and metered usage in one place.' },
+  {
+    icon: <IconDatabase size={16} />,
+    title: 'DATABASE',
+    body: 'Isolated PostgreSQL per project with live status, schema inspection, guarded SQL, and CSV portability.',
+  },
+  {
+    icon: <IconAuth size={16} />,
+    title: 'AUTHENTICATION',
+    body: 'Application users, rotating sessions, project keys, and scoped agent credentials.',
+  },
+  {
+    icon: <IconAPI size={16} />,
+    title: 'API',
+    body: 'Auto-generated REST over your tables with filtering, pagination, keys, and live OpenAPI docs.',
+  },
+  {
+    icon: <IconStorage size={16} />,
+    title: 'STORAGE',
+    body: 'Buckets and objects with visibility controls, signed URLs, quotas, and S3-compatible drivers.',
+  },
+  {
+    icon: <IconRealtime size={16} />,
+    title: 'REALTIME',
+    body: 'Channels, presence, and Postgres change feeds over project-scoped WebSockets.',
+  },
+  {
+    icon: <IconFunctions size={16} />,
+    title: 'FUNCTIONS',
+    body: 'Versioned serverless deploys with cron schedules, queues, logs, and rollback.',
+  },
+  {
+    icon: <IconAIBuilder size={16} />,
+    title: 'AI',
+    body: 'Plan → review → approve → apply backend generation, plus a deterministic failure debugger.',
+  },
+  {
+    icon: <IconShield size={16} />,
+    title: 'SECURITY',
+    body: 'Live posture scans with a score, scoped credentials, approval gates, and audit trails.',
+  },
+  {
+    icon: <IconUsage size={16} />,
+    title: 'OBSERVABILITY',
+    body: 'Request metrics, job history, function logs, and metered usage in one place.',
+  },
 ];
 
 const WORKFLOW = [
@@ -144,14 +195,15 @@ const OBS_BARS = [34, 52, 40, 64, 48, 78, 58, 88, 70, 92, 66, 80, 54, 72, 44, 60
 export default function HomePage(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [show, setShow] = useState(SHOWCASE[0] === undefined ? 'database' : SHOWCASE[0].id);
-  const active = SHOWCASE.find(s => s.id === show) ?? SHOWCASE[0] ?? {
-    id: 'database',
-    label: 'Database',
-    icon: null,
-    title: 'Database',
-    body: '',
-    code: [],
-  };
+  const active = SHOWCASE.find(s => s.id === show) ??
+    SHOWCASE[0] ?? {
+      id: 'database',
+      label: 'Database',
+      icon: null,
+      title: 'Database',
+      body: '',
+      code: [],
+    };
 
   return (
     <div className={`${styles.page} ${styles.mkt}`}>
@@ -218,7 +270,6 @@ export default function HomePage(): React.JSX.Element {
       <main>
         <section className={styles.hero}>
           <div>
-            <p className={`${styles.eyebrow} ${styles.rise}`}>The AI-native backend platform</p>
             <h1 className={styles.rise1}>Build, deploy and scale your backend with CloudNivo.</h1>
             <p className={`${styles.lede} ${styles.rise2}`}>
               One control plane for PostgreSQL, authentication, APIs, storage, realtime, and
@@ -252,9 +303,11 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} id="platform" aria-labelledby="showcase-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Product tour</p>
             <h2 id="showcase-h">One platform, every primitive</h2>
-            <p>Each surface below mirrors a real console in the dashboard — same concepts, same envelope.</p>
+            <p>
+              Each surface below mirrors a real console in the dashboard — same concepts, same
+              envelope.
+            </p>
           </div>
           <div className={styles.showTabs} role="tablist" aria-label="Product areas">
             {SHOWCASE.map(s => (
@@ -295,7 +348,12 @@ export default function HomePage(): React.JSX.Element {
                 {active.code.map((line, i) => (
                   <span key={i}>
                     {line.map((tok, j) => (
-                      <span key={j} className={tok.k ? styles.k : tok.s ? styles.s : tok.c ? styles.c : undefined}>
+                      <span
+                        key={j}
+                        className={
+                          tok.k ? styles.k : tok.s ? styles.s : tok.c ? styles.c : undefined
+                        }
+                      >
                         {tok.t}
                       </span>
                     ))}
@@ -309,9 +367,11 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} id="ai" aria-labelledby="ai-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>AI-native</p>
             <h2 id="ai-h">Describe it. Review it. Ship it.</h2>
-            <p>CloudNivo is more than hosted tables — the AI Builder, Debugger, and Agent Access turn intent into reviewed infrastructure.</p>
+            <p>
+              CloudNivo is more than hosted tables — the AI Builder, Debugger, and Agent Access turn
+              intent into reviewed infrastructure.
+            </p>
           </div>
           <div className={styles.grid2}>
             <div className={styles.panel}>
@@ -330,8 +390,15 @@ export default function HomePage(): React.JSX.Element {
                 ))}
               </ul>
               <p className={styles.pipeline}>
-                Review <span className={styles.arrow} aria-hidden>→</span> Approve{' '}
-                <span className={styles.arrow} aria-hidden>→</span> Deploy
+                Review{' '}
+                <span className={styles.arrow} aria-hidden>
+                  →
+                </span>{' '}
+                Approve{' '}
+                <span className={styles.arrow} aria-hidden>
+                  →
+                </span>{' '}
+                Deploy
               </p>
             </div>
             <div className={styles.panel}>
@@ -341,9 +408,14 @@ export default function HomePage(): React.JSX.Element {
                 </span>
                 AI Builder, Debugger &amp; Agents
               </h3>
-              <p>Plans are validated structured data with destructive confirmations. The Debugger traces real jobs and logs to probable causes. Agents get scoped, expiring tokens with approval gates — never passwords.</p>
+              <p>
+                Plans are validated structured data with destructive confirmations. The Debugger
+                traces real jobs and logs to probable causes. Agents get scoped, expiring tokens
+                with approval gates — never passwords.
+              </p>
               <pre className={styles.code}>
-                <span className={styles.c}>$ </span>cloudnivo ai plan --project abc --prompt "..."{'\n'}plan pl_8f2 [pending] · 14 changes
+                <span className={styles.c}>$ </span>cloudnivo ai plan --project abc --prompt "..."
+                {'\n'}plan pl_8f2 [pending] · 14 changes
               </pre>
             </div>
           </div>
@@ -351,7 +423,6 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} aria-labelledby="caps-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Platform · 100 capabilities</p>
             <h2 id="caps-h">Everything a backend needs</h2>
             <p>
               Every capability below is implemented in the product — open the console and use it.{' '}
@@ -375,7 +446,6 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} aria-labelledby="flow-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Lifecycle</p>
             <h2 id="flow-h">From idea to scale</h2>
             <p>CloudNivo carries the backend lifecycle so application code stays the focus.</p>
           </div>
@@ -392,7 +462,6 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} id="developers" aria-labelledby="dx-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Developers</p>
             <h2 id="dx-h">Built for how you work</h2>
             <p>CLI, SDK, raw API, dashboard, and agent tokens — one envelope, five surfaces.</p>
           </div>
@@ -416,10 +485,14 @@ export default function HomePage(): React.JSX.Element {
                 </span>
                 Agent access
               </h3>
-              <p>Issue <code>cn_agent_…</code> tokens with granular scopes, expiries, and approval gates for destructive work. Same header, safer agents.</p>
+              <p>
+                Issue <code>cn_agent_…</code> tokens with granular scopes, expiries, and approval
+                gates for destructive work. Same header, safer agents.
+              </p>
               <pre className={styles.code}>
                 <span className={styles.c}>$ </span>export CLOUDNIVO_AGENT_TOKEN=cn_agent_…{'\n'}
-                <span className={styles.c}>$ </span>cloudnivo agent whoami  <span className={styles.c}># name · scopes · expiry</span>
+                <span className={styles.c}>$ </span>cloudnivo agent whoami{' '}
+                <span className={styles.c}># name · scopes · expiry</span>
               </pre>
             </div>
           </div>
@@ -427,9 +500,11 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} id="security" aria-labelledby="sec-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Security</p>
             <h2 id="sec-h">Protection is a feature</h2>
-            <p>How CloudNivo is engineered — the live Security Center in the console scores your workspace against these same principles.</p>
+            <p>
+              How CloudNivo is engineered — the live Security Center in the console scores your
+              workspace against these same principles.
+            </p>
           </div>
           <div className={styles.secPanel} aria-label="CloudNivo security principles">
             {SEC_ROWS.map(([t, d]) => (
@@ -448,9 +523,11 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} aria-labelledby="obs-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Observability</p>
             <h2 id="obs-h">Know what your backend is doing</h2>
-            <p>Requests, latency, errors, usage, and health across API, database, auth, storage, realtime, functions, and AI — the console renders this live.</p>
+            <p>
+              Requests, latency, errors, usage, and health across API, database, auth, storage,
+              realtime, functions, and AI — the console renders this live.
+            </p>
           </div>
           <div className={styles.panel}>
             <h3>Representative traffic shape</h3>
@@ -468,9 +545,10 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.section} id="pricing" aria-labelledby="price-h">
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Pricing</p>
             <h2 id="price-h">Start free, grow on meters</h2>
-            <p>Real plans with metered quotas — exact limits and usage live in billing. No surprises.</p>
+            <p>
+              Real plans with metered quotas — exact limits and usage live in billing. No surprises.
+            </p>
           </div>
           <div className={styles.grid4}>
             {[
@@ -479,7 +557,12 @@ export default function HomePage(): React.JSX.Element {
                 price: '$0',
                 per: 'forever',
                 desc: 'For prototypes and evaluation. Real limits, no payment required.',
-                features: ['3 projects', '100K API requests / mo', '1 GB storage', '3 team members'],
+                features: [
+                  '3 projects',
+                  '100K API requests / mo',
+                  '1 GB storage',
+                  '3 team members',
+                ],
                 featured: false,
               },
               {
@@ -487,7 +570,12 @@ export default function HomePage(): React.JSX.Element {
                 price: '$20',
                 per: '/ mo',
                 desc: 'For production side projects and small teams. 14-day trial.',
-                features: ['15 projects', '5M API requests / mo', '25 GB storage', '10 team members'],
+                features: [
+                  '15 projects',
+                  '5M API requests / mo',
+                  '25 GB storage',
+                  '10 team members',
+                ],
                 featured: true,
               },
               {
@@ -495,7 +583,12 @@ export default function HomePage(): React.JSX.Element {
                 price: '$99',
                 per: '/ mo',
                 desc: 'For teams with compliance needs and higher scale. 14-day trial.',
-                features: ['50 projects', '50M API requests / mo', '256 GB storage', '50 team members'],
+                features: [
+                  '50 projects',
+                  '50M API requests / mo',
+                  '256 GB storage',
+                  '50 team members',
+                ],
                 featured: false,
               },
               {
@@ -507,7 +600,10 @@ export default function HomePage(): React.JSX.Element {
                 featured: false,
               },
             ].map(p => (
-              <div key={p.name} className={`${styles.panel} ${styles.priceCard}${p.featured ? ` ${styles.featured}` : ''}`}>
+              <div
+                key={p.name}
+                className={`${styles.panel} ${styles.priceCard}${p.featured ? ` ${styles.featured}` : ''}`}
+              >
                 {p.featured ? <span className={styles.priceFlag}>Most popular</span> : null}
                 <h3>{p.name}</h3>
                 <div className={styles.price}>
@@ -535,9 +631,11 @@ export default function HomePage(): React.JSX.Element {
 
         <section className={styles.cta} aria-labelledby="cta-h">
           <div className={styles.ctaInner}>
-            <p className={styles.eyebrow}>Get started</p>
             <h2 id="cta-h">Your backend. One platform.</h2>
-            <p>Build faster with infrastructure designed for modern applications and AI-powered development.</p>
+            <p>
+              Build faster with infrastructure designed for modern applications and AI-powered
+              development.
+            </p>
             <div className={styles.ctaRow} style={{ justifyContent: 'center' }}>
               <Link className="btn btn-primary" href="/signup">
                 Start building
@@ -552,7 +650,12 @@ export default function HomePage(): React.JSX.Element {
 
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
-          <Link className={styles.brand} href="/" aria-label="CloudNivo home" style={{ fontSize: 15 }}>
+          <Link
+            className={styles.brand}
+            href="/"
+            aria-label="CloudNivo home"
+            style={{ fontSize: 15 }}
+          >
             <span className="brand-mark" style={{ width: 22, height: 22 }}>
               <LogoMark size={13} />
             </span>

@@ -329,6 +329,15 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
         {error ? <ErrorState message={error} /> : null}
       </div>
 
+      {!activeBucket ? (
+        <div className="card" id="objects">
+          <h2>Files</h2>
+          <EmptyState
+            title="Select a bucket"
+            hint="Choose a bucket above to browse, upload and sign its objects."
+          />
+        </div>
+      ) : null}
       {activeBucket ? (
         <div className="card" id="objects">
           <h2>
@@ -445,6 +454,15 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
         </div>
       ) : null}
 
+      {!activeBucket ? (
+        <div className="card" id="policies">
+          <h2>Bucket settings &amp; policies</h2>
+          <EmptyState
+            title="Select a bucket"
+            hint="Visibility, owner isolation and path policies are configured per bucket."
+          />
+        </div>
+      ) : null}
       {activeBucket ? (
         <div className="card" id="policies">
           <h2>Bucket settings & policies</h2>
