@@ -10,7 +10,6 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingTable } from '../../components/States';
 import { Badge } from '../../components/ui';
-import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -516,7 +515,6 @@ function SecurityBody(): React.JSX.Element {
               </div>
             </>
           )}
-          <SectionCapabilities category="Security" />
         </>
       )}
     </section>

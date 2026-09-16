@@ -2,7 +2,6 @@
 
 import { use } from 'react';
 import { AutomationPanel } from '../../../../components/AutomationPanel';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectAutomationsPage({
   params,
@@ -20,7 +19,6 @@ export default function ProjectAutomationsPage({
         </p>
       </div>
       <AutomationPanel projectId={id} />
-      <SectionCapabilities category="Automation" projectId={id} />
     </div>
   );
 }

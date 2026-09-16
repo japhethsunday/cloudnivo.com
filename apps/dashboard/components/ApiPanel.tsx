@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { apiBase, apiFetch } from '../lib/api';
+import { apiBase, apiFetch, apiFetchRaw } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
 interface ApiKey {
@@ -22,7 +22,13 @@ interface IssuedKey {
   raw: string;
 }
 
-function RequestTester({ projectId, tables }: { projectId: string; tables: string[] }): React.JSX.Element {
+function RequestTester({
+  projectId,
+  tables,
+}: {
+  projectId: string;
+  tables: string[];
+}): React.JSX.Element {
   const [table, setTable] = useState('');
   const [limit, setLimit] = useState('20');
   const [order, setOrder] = useState('');
@@ -43,7 +49,9 @@ function RequestTester({ projectId, tables }: { projectId: string; tables: strin
     if (limit.trim()) q.set('limit', limit.trim());
     if (order.trim()) q.set('order', order.trim());
     const started = Date.now();
-    const r = await apiFetch<unknown>(`/api/v1/projects/${projectId}/${encodeURIComponent(table)}?${q.toString()}`);
+    const r = await apiFetch<unknown>(
+      `/api/v1/projects/${projectId}/${encodeURIComponent(table)}?${q.toString()}`,
+    );
     setBusy(false);
     if (!r.ok) {
       setOut(null);
@@ -56,28 +64,55 @@ function RequestTester({ projectId, tables }: { projectId: string; tables: strin
   return (
     <div className="card" id="request">
       <div className="section-head">
-        <h2 style={{ marginTop: 0 }}>Try it — live request</h2>
-        <p>Run a real read against your API with your session. Filtering, ordering and pagination included.</p>
+        <h2>Try it — live request</h2>
+        <p>
+          Run a real read against your API with your session. Filtering, ordering and pagination
+          included.
+        </p>
       </div>
       {tables.length === 0 ? (
-        <EmptyState title="No tables yet" hint="Create a table first — then test the endpoint it generates." />
+        <EmptyState
+          title="No tables yet"
+          hint="Create a table first — then test the endpoint it generates."
+        />
       ) : (
         <form onSubmit={e => void run(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select value={table} onChange={e => setTable(e.target.value)} aria-label="Table">
             {tables.map(t => (
-              <option key={t} value={t}>GET /{t}</option>
+              <option key={t} value={t}>
+                GET /{t}
+              </option>
             ))}
           </select>
-          <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="limit" aria-label="Limit" inputMode="numeric" style={{ width: 90 }} />
-          <input value={order} onChange={e => setOrder(e.target.value)} placeholder="order, e.g. created_at.desc" aria-label="Order" style={{ flex: '2 1 180px' }} />
-          <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !table}>{busy ? 'Sending…' : 'Send'}</button>
+          <input
+            value={limit}
+            onChange={e => setLimit(e.target.value)}
+            placeholder="limit"
+            aria-label="Limit"
+            inputMode="numeric"
+            style={{ width: 90 }}
+          />
+          <input
+            value={order}
+            onChange={e => setOrder(e.target.value)}
+            placeholder="order, e.g. created_at.desc"
+            aria-label="Order"
+            style={{ flex: '2 1 180px' }}
+          />
+          <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !table}>
+            {busy ? 'Sending…' : 'Send'}
+          </button>
         </form>
       )}
       {error ? <ErrorState message={error} /> : null}
       {out ? (
         <div style={{ marginTop: 8 }}>
-          <p className="muted" style={{ fontSize: 12 }}>HTTP {out.status} · {out.ms} ms</p>
-          <pre className="codeblock" style={{ maxHeight: 320 }}>{JSON.stringify(out.body, null, 2)}</pre>
+          <p className="muted" style={{ fontSize: 12 }}>
+            HTTP {out.status} · {out.ms} ms
+          </p>
+          <pre className="codeblock" style={{ maxHeight: 320 }}>
+            {JSON.stringify(out.body, null, 2)}
+          </pre>
         </div>
       ) : null}
     </div>
@@ -92,6 +127,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [doc, setDoc] = useState<Record<string, unknown> | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
   const [name, setName] = useState('client');
   const [role, setRole] = useState('public');
   const [issued, setIssued] = useState<IssuedKey | null>(null);
@@ -106,8 +142,21 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
     if (!k.ok) setError(k.error);
     else setKeys(k.data?.keys ?? []);
     if (s.ok && s.data) setTables(s.data.tables.map(t => t.name));
-    const d = await apiFetch<Record<string, unknown>>(`/api/v1/projects/${projectId}/openapi.json`);
-    if (d.ok && d.data) setDoc(d.data);
+    // openapi.json is served as a raw OpenAPI document, not inside the
+    // platform `{ data }` envelope: reading it through apiFetch always came
+    // back undefined, so this card sat on a loading skeleton forever.
+    try {
+      const res = await apiFetchRaw(`/api/v1/projects/${projectId}/openapi.json`);
+      if (res.ok) {
+        const json = (await res.json()) as Record<string, unknown>;
+        setDoc(json && typeof json === 'object' ? json : null);
+        setDocError(null);
+      } else {
+        setDocError(`Could not load the OpenAPI document (HTTP ${res.status}).`);
+      }
+    } catch {
+      setDocError('Could not load the OpenAPI document.');
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -149,7 +198,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>API base URL</h2>
+        <h2>API base URL</h2>
         <p>
           <code style={{ wordBreak: 'break-all' }}>{`${base}/api/v1/projects/${projectId}`}</code>
         </p>
@@ -160,7 +209,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
       </div>
 
       <div className="card" id="keys" style={{ scrollMarginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>API keys</h2>
+        <h2>API keys</h2>
         {issued ? (
           <div className="error-box" role="alert">
             <strong>Copy this secret now — it is never shown again.</strong>
@@ -230,7 +279,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
             <option value="public">public (read-only)</option>
             <option value="service">service (read + write)</option>
           </select>
-          <button type="submit" className="btn btn-primary">
+          <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
             Issue key
           </button>
         </form>
@@ -238,7 +287,7 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
       </div>
 
       <div className="card" id="endpoints">
-        <h2 style={{ marginTop: 0 }}>Endpoints</h2>
+        <h2>Endpoints</h2>
         {tables.length === 0 ? (
           <EmptyState
             title="No tables discovered"
@@ -270,9 +319,11 @@ export function ApiPanel({ projectId }: { projectId: string }): React.JSX.Elemen
       <RequestTester projectId={projectId} tables={tables} />
 
       <div className="card" id="openapi">
-        <h2 style={{ marginTop: 0 }}>OpenAPI documentation</h2>
+        <h2>OpenAPI documentation</h2>
         <p className="muted">Generated live from your database schema — never stale.</p>
-        {!doc ? (
+        {docError ? (
+          <ErrorState message={docError} retry={() => void load()} />
+        ) : !doc ? (
           <LoadingSkeleton label="Loading OpenAPI" />
         ) : (
           <details>

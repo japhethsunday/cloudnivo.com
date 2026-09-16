@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
 import { Badge } from '../../../../components/ui';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface Slice {
   service: string;
@@ -91,7 +90,7 @@ export default function ProjectUsagePage({
       </div>
 
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>This project&apos;s metered usage</h2>
+        <h2>This project&apos;s metered usage</h2>
         {mine.length === 0 ? (
           <EmptyState title="No usage recorded yet" hint="API calls, storage, and function runs appear here." />
         ) : (
@@ -124,9 +123,8 @@ export default function ProjectUsagePage({
         )}
       </div>
 
-      <SectionCapabilities category="Billing" projectId={id} />
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Organization invoices</h2>
+        <h2>Organization invoices</h2>
         {invoices.length === 0 ? (
           <EmptyState title="No invoices" hint="Invoices generate from real metered usage." />
         ) : (

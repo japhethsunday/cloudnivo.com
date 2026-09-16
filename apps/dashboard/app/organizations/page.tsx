@@ -6,7 +6,6 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, CopyButton, Modal, useToast } from '../../components/ui';
-import { SectionCapabilities } from '../../components/SectionCapabilities';
 import { OrgPlatformPanel } from '../../components/AdvancedPanels';
 
 interface Org {
@@ -114,7 +113,6 @@ function OrgsBody(): React.JSX.Element {
       {orgs && orgs.length > 0 ? (
         <div style={{ marginTop: 12 }}>
           <OrgPlatformPanel orgId={orgs[0].id} />
-          <SectionCapabilities category="Environments" />
         </div>
       ) : null}
 

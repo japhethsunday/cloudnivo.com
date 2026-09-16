@@ -106,7 +106,7 @@ export default function ProjectIntegrationsPage({
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>GitHub</h2>
+          <h2>GitHub</h2>
           <p className="muted" style={{ fontSize: 13 }}>
             Subscribe a repository&apos;s pipeline to signed <code>function.deployed</code> events.
             Deliveries go to your own receiver URL (CI endpoint or deploy hook) with HMAC
@@ -120,7 +120,7 @@ export default function ProjectIntegrationsPage({
           {ghStatus ? <p role="status" style={{ fontSize: 13 }}>{ghStatus}</p> : null}
         </div>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Outbound webhooks · {webhooks.length}</h2>
+          <h2>Outbound webhooks · {webhooks.length}</h2>
           {webhooks.length === 0 ? (
             <EmptyState title="No webhooks" hint="Create one in Automations — deliveries, replay and rotation live there." />
           ) : (
@@ -138,7 +138,7 @@ export default function ProjectIntegrationsPage({
           )}
         </div>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Custom domains{orgId ? '' : ''}</h2>
+          <h2>Custom domains{orgId ? '' : ''}</h2>
           {!domains ? (
             <p className="muted" style={{ fontSize: 13 }}>Domains are organization-scoped; attach and verify over DNS TXT in Organizations.</p>
           ) : domains.length === 0 ? (
@@ -156,7 +156,7 @@ export default function ProjectIntegrationsPage({
           <p style={{ fontSize: 13 }}><a href="/organizations">Open Organizations →</a></p>
         </div>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Log drains</h2>
+          <h2>Log drains</h2>
           {!drains ? (
             <p className="muted" style={{ fontSize: 13 }}>Signed HTTPS drains ship audit, billing, auth and error events.</p>
           ) : drains.length === 0 ? (

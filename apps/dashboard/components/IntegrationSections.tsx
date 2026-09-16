@@ -30,7 +30,7 @@ export function StorageOps({ projectId }: { projectId: string }): React.JSX.Elem
   return (
     <div className="card" id="storage-ops">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Move and copy{bucket ? ` in ${bucket}` : ''}</h2>
+        <h2>Move and copy{bucket ? ` in ${bucket}` : ''}</h2>
         <p>Server-side operations — bytes never round-trip through the browser.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -106,7 +106,7 @@ export function RealtimeComposer({ projectId }: { projectId: string }): React.JS
   return (
     <div className="card" id="broadcast">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Publish to a channel</h2>
+        <h2>Publish to a channel</h2>
         <p>Real bytes over <code>project:{'{id}'}:{'{topic}'}</code> — subscribe, publish, receive.</p>
       </div>
       <form onSubmit={e => void publish(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

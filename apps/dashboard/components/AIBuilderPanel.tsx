@@ -284,7 +284,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           </div>
           <div className="card">
             <div className="section-head">
-              <p className="step-mark">Step 1 · Describe</p>
               <h2>Describe the backend you need</h2>
               <p>Tables, roles, storage, realtime, functions — one paragraph is enough to start.</p>
             </div>
@@ -366,7 +365,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           <div className="card">
             <div className="section-head split">
               <div>
-                <p className="step-mark">Step 2 · Plan</p>
                 <h2>Generated architecture</h2>
                 <p>{detail.summary}</p>
               </div>
@@ -389,7 +387,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
 
           <div className="card">
             <div className="section-head">
-              <p className="step-mark">Step 3 · Review</p>
               <h2>Changes &amp; validation</h2>
               <p>Every change the plan wants to make, with structural validation up front.</p>
             </div>
@@ -475,7 +472,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           {detail.status === 'pending' ? (
             <div className="card">
               <div className="section-head">
-                <p className="step-mark">Step 4 · Approve</p>
                 <h2>Approval</h2>
                 <p>Nothing executes until you approve. Rejection discards the plan.</p>
               </div>
@@ -508,7 +504,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           {detail.status === 'approved' ? (
             <div className="card">
               <div className="section-head">
-                <p className="step-mark">Step 5 · Apply</p>
                 <h2>Deployment</h2>
                 <p>The approved plan applies against live services, step by step.</p>
               </div>

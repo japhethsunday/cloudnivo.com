@@ -35,7 +35,9 @@
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.05);
   --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 8px 24px -8px rgb(16 24 40 / 0.1);
   --shadow-lg: 0 24px 60px -16px rgb(16 24 40 / 0.22);
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   --sidebar-width: 264px;
   color-scheme: light;
@@ -75,10 +77,16 @@
 
 [data-theme='dark'] .btn-primary {
   color: #071224;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(126 166 255 / 0.25), 0 4px 16px -4px rgb(91 140 255 / 0.45);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 0 0 1px rgb(126 166 255 / 0.25),
+    0 4px 16px -4px rgb(91 140 255 / 0.45);
 }
 [data-theme='dark'] .btn-primary:hover {
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(126 166 255 / 0.35), 0 6px 20px -4px rgb(91 140 255 / 0.55);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 0 0 1px rgb(126 166 255 / 0.35),
+    0 6px 20px -4px rgb(91 140 255 / 0.55);
 }
 [data-theme='dark'] .nav a[aria-current='page'] {
   background: var(--bg-elevated);
@@ -437,11 +445,31 @@ code,
   border-radius: var(--radius);
   padding: 16px;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+/* One card-heading definition instead of 78 inline copies of it. Page-level
+   headings (.section-head outside a card) keep the larger step. */
+.card h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin: 18px 0 8px;
+}
+.card .section-head h2 {
+  font-size: 15px;
 }
 .card h2:first-child,
-.card h3:first-child {
+.card h3:first-child,
+.card > .section-head:first-child h2 {
   margin-top: 0;
+}
+.card h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  margin: 16px 0 6px;
 }
 
 .stat-grid {
@@ -536,12 +564,16 @@ code,
   border-color: var(--accent);
   color: var(--accent-contrast);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.12);
+  box-shadow:
+    0 1px 2px rgb(16 24 40 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
 }
 .btn-primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  box-shadow: 0 1px 2px rgb(16 24 40 / 0.16), 0 2px 8px -2px rgb(46 111 232 / 0.4);
+  box-shadow:
+    0 1px 2px rgb(16 24 40 / 0.16),
+    0 2px 8px -2px rgb(46 111 232 / 0.4);
 }
 .btn-primary:focus-visible {
   outline-color: var(--accent);
@@ -991,8 +1023,18 @@ details > summary::marker {
   letter-spacing: -0.01em;
 }
 .empty p.muted {
-  margin-bottom: 16px;
+  margin-bottom: 0;
   font-size: 13.5px;
+}
+/* The gap belongs between the hint and an action, not under the last line:
+   a trailing margin left a band of dead space in every actionless card. */
+.empty p.muted:not(:last-child) {
+  margin-bottom: 16px;
+}
+/* Inside a card the empty state sits in a box that already has padding. */
+.card > .empty,
+.card > .skeleton {
+  padding: 20px 16px;
 }
 .empty .empty-icon {
   width: 40px;
@@ -1107,13 +1149,15 @@ details > summary::marker {
     position: relative;
     overflow: hidden;
     padding: clamp(32px, 5vw, 64px);
-    background: radial-gradient(1200px 600px at 12% -10%, #1d4ed8 0%, transparent 55%),
+    background:
+      radial-gradient(1200px 600px at 12% -10%, #1d4ed8 0%, transparent 55%),
       radial-gradient(900px 500px at 90% 110%, #2563eb 0%, transparent 50%),
       linear-gradient(160deg, #0b1220 0%, #0e1a33 55%, #10203f 100%);
     color: #e6edf7;
   }
   [data-theme='dark'] .auth-hero {
-    background: radial-gradient(1200px 600px at 12% -10%, #2b5bd7 0%, transparent 55%),
+    background:
+      radial-gradient(1200px 600px at 12% -10%, #2b5bd7 0%, transparent 55%),
       radial-gradient(900px 500px at 90% 110%, #356ee8 0%, transparent 50%),
       linear-gradient(160deg, #0b1220 0%, #0e1a33 55%, #10203f 100%);
   }
@@ -1922,17 +1966,7 @@ kbd,
 .section-head {
   margin: 0 0 12px;
 }
-/* Wizard step marker. Not a decorative kicker: the number is the sequence
-   position in a flow the user walks through, and it is the only label of
-   its kind left in the console. */
-.step-mark {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin: 0 0 3px;
-}
+
 .section-head h2 {
   margin: 0;
   font-size: 17px;
@@ -2830,7 +2864,6 @@ kbd,
   margin-top: 1px;
 }
 
-
 /* ── Inline key/value pairs ────────────────────────────── */
 /* Two-column facts that read as data, not as prose. Used where a panel used
    to print a comma-joined sentence or a raw JSON blob. */
@@ -2881,7 +2914,6 @@ kbd,
   align-items: center;
 }
 
-
 /* ── In-page jump list ─────────────────────────────────── */
 /* For long single-page sections (the database console) whose panels are all
    rendered at once. Deliberately not styled as tabs or buttons: nothing here
@@ -2930,4 +2962,134 @@ kbd,
 [id='endpoints'],
 [id='openapi'] {
   scroll-margin-top: 72px;
+}
+
+/* ── Security posture ──────────────────────────────────── */
+.posture {
+  display: grid;
+  gap: 12px;
+}
+.posture-score {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.posture-score-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+}
+.posture-score-value strong {
+  font-size: 40px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.posture-score-value span {
+  font-size: 14px;
+  color: var(--text-faint);
+}
+.posture-legend {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+.posture-legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.posture-legend-n {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 1ch;
+}
+.posture-legend-k {
+  color: var(--text-muted);
+}
+/* Capitalize the severity word only — not the "−10 each" that follows it. */
+.posture-sev {
+  text-transform: capitalize;
+  color: var(--text);
+}
+.posture-legend .sev-none .posture-legend-n {
+  color: var(--text-faint);
+}
+.posture-legend .sev-high .posture-legend-n {
+  color: var(--danger);
+}
+.posture-legend .sev-medium .posture-legend-n {
+  color: var(--warning);
+}
+.posture-legend .sev-low .posture-legend-n {
+  color: var(--info);
+}
+
+.finding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.finding-body {
+  flex: 1;
+  min-width: 0;
+}
+.finding-title {
+  margin: 0;
+  font-weight: 550;
+  letter-spacing: -0.008em;
+}
+.finding-detail {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 70ch;
+}
+.sev-tag {
+  flex: none;
+  margin-top: 1px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  border: 1px solid transparent;
+}
+.sev-tag.sev-high {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.sev-tag.sev-medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.sev-tag.sev-low {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+/* Inline code is a token: breaking it across lines mid-word ("{ dat" /
+   "a, meta }") reads as corruption. Wrap at the token boundary instead. */
+p code,
+li code,
+td code,
+summary code,
+.detail code,
+.muted code {
+  white-space: nowrap;
 }

@@ -21,7 +21,6 @@ import {
 } from '../../../../lib/environments';
 import { ErrorState, EmptyState, LoadingSkeleton } from '../../../../components/States';
 import { Modal, StatusDot, useToast } from '../../../../components/ui';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 import { BranchesPanel, DbToolsPanel, VaultPanel } from '../../../../components/AdvancedPanels';
 
 interface Project {
@@ -81,7 +80,7 @@ export default function ProjectSettingsPage({
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>General</h2>
+          <h2>General</h2>
         </div>
         <dl className="fact-grid">
           <dt>Name</dt>
@@ -111,10 +110,9 @@ export default function ProjectSettingsPage({
 
       <DbToolsPanel projectId={project.id} />
 
-      <SectionCapabilities category="Environments" projectId={project.id} />
 
       <div className="card" style={{ borderColor: 'var(--danger)' }}>
-        <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+        <h2>Danger zone</h2>
         <p className="muted">
           Deleting a project removes its database, storage objects, functions, and keys. This cannot be undone.
         </p>
@@ -214,7 +212,7 @@ function EnvironmentsCard({ projectId }: { projectId: string }): React.JSX.Eleme
   return (
     <div className="card" id="environments">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Environments</h2>
+        <h2>Environments</h2>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
         Environments pin this project to a database branch (or main). The header switcher shows the

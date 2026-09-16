@@ -103,7 +103,7 @@ function CapabilitiesBody(): React.JSX.Element {
           <div key={cat} className="card" style={{ marginBottom: 12 }}>
             <div className="section-head split">
               <div>
-                <h2 style={{ fontSize: 15 }}>
+                <h2>
                   {cat} · {items.length}
                 </h2>
               </div>

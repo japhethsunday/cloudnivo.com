@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { formatMetric, prettifyKey, timeAgo } from '../../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface ServiceSummary {
   service: string;
@@ -121,7 +120,7 @@ export default function ProjectMetricsPage({
 
           <div className="card">
             <div className="section-head">
-              <h2 style={{ fontSize: 15 }}>Throughput</h2>
+              <h2>Throughput</h2>
               <p>Requests per 5-minute bucket. Taller bars are busier windows — never targets.</p>
             </div>
             {metrics.timeline.length === 0 ? (
@@ -145,7 +144,7 @@ export default function ProjectMetricsPage({
           <div className="ov-grid">
             <div className="card">
               <div className="section-head">
-                <h2 style={{ fontSize: 15 }}>By service</h2>
+                <h2>By service</h2>
               </div>
               {metrics.byService.length === 0 ? (
                 <EmptyState title="No service traffic" hint="Calls to this project appear here broken down by service." />
@@ -176,7 +175,7 @@ export default function ProjectMetricsPage({
             </div>
             <div className="card">
               <div className="section-head">
-                <h2 style={{ fontSize: 15 }}>Top routes</h2>
+                <h2>Top routes</h2>
               </div>
               {metrics.topRoutes.length === 0 ? (
                 <EmptyState title="No routes yet" hint="The most-called endpoints land here." />
@@ -211,7 +210,6 @@ export default function ProjectMetricsPage({
           <p className="muted" style={{ fontSize: 12, margin: 0 }}>
             {metrics.note}
           </p>
-          <SectionCapabilities category="Observability" projectId={id} />
         </div>
       ) : null}
     </div>

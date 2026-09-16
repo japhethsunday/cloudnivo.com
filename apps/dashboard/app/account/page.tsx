@@ -112,7 +112,7 @@ function AccountBody(): React.JSX.Element {
           {active === 'security' ? <SecuritySection expiry={expiry} /> : null}
           {active === 'agents' ? (
             <div className="card">
-              <h2 style={{ marginTop: 0 }}>Agent access</h2>
+              <h2>Agent access</h2>
               <p className="muted" style={{ marginTop: 0 }}>
                 Dedicated <code>cn_agent_…</code> credentials for AI coding agents — scoped to
                 organizations and projects, with expiry, instant revocation, and an optional
@@ -228,7 +228,7 @@ function SecuritySection({ expiry }: { expiry: string | null }): React.JSX.Eleme
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Change password</h2>
+        <h2>Change password</h2>
         <form onSubmit={submit}>
           <div className="field">
             <label htmlFor="pw-current">Current password</label>
@@ -266,7 +266,7 @@ function SecuritySection({ expiry }: { expiry: string | null }): React.JSX.Eleme
         </form>
       </div>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Active session</h2>
+        <h2>Active session</h2>
         <table className="table">
           <tbody>
             <tr>
@@ -391,7 +391,7 @@ function SessionsSection(): React.JSX.Element {
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Machine credentials</h2>
+          <h2>Machine credentials</h2>
           <p>Long-lived access for agents and CI lives under Agent access — scoped, expiring, revocable.</p>
         </div>
         <Link className="btn" href="/agents">
@@ -474,7 +474,7 @@ function ApiAccessSection({
   const total = keyCounts.reduce((n, k) => n + k.count, 0);
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>API access</h2>
+      <h2>API access</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         CloudNivo keys are scoped to a single project — there are no account-wide secrets to leak.
         Create and revoke them on each project&apos;s API page.

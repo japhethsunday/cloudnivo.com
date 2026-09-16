@@ -95,7 +95,7 @@ export default function ProjectOverviewPage({
         <div className="card" style={{ borderColor: 'var(--danger)' }} role="alert">
           <div className="section-head split">
             <div>
-              <h2 style={{ margin: 0 }}>{failed} failed operation{failed === 1 ? '' : 's'}</h2>
+              <h2>{failed} failed operation{failed === 1 ? '' : 's'}</h2>
               <p style={{ margin: '4px 0 0' }}>
                 {jobs.filter(j => j.status === 'failed').slice(0, 3).map(j => j.kind).join(', ')}
               </p>

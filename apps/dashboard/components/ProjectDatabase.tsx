@@ -162,7 +162,7 @@ export function ProjectDatabase({
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Database</h2>
+        <h2>Database</h2>
         <p>
           <span role="status" aria-label={`Database ${db.status}, ${health}`}>
             <StatusDot tone={health === 'healthy' ? statusTone(db.status) : statusTone(health)} />{' '}
@@ -245,7 +245,7 @@ export function ProjectDatabase({
       </div>
 
       <div className="card" id="connection">
-        <h2 style={{ marginTop: 0 }}>Connection information</h2>
+        <h2>Connection information</h2>
         {!conn ? (
           <>
             <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
@@ -279,7 +279,7 @@ export function ProjectDatabase({
       </div>
 
       <div className="card" id="schemas">
-        <h2 style={{ marginTop: 0 }}>Tables</h2>
+        <h2>Tables</h2>
         {!schema ? (
           <>
             <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>

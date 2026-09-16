@@ -6,7 +6,6 @@ import { apiFetch } from '../../../../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../../components/States';
 import { Badge, statusTone } from '../../../../components/ui';
 import { IconSearch } from '../../../../components/icons';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 interface Job {
   id: string;
@@ -112,7 +111,7 @@ export default function ProjectLogsPage({
       <div className="card">
         <div className="section-head split">
           <div>
-            <h2 style={{ fontSize: 15 }}>Infrastructure jobs</h2>
+            <h2>Infrastructure jobs</h2>
           </div>
           <span className="muted" style={{ fontSize: 13 }} aria-live="polite">
             {shownJobs.length} of {jobs.length}
@@ -191,7 +190,7 @@ export default function ProjectLogsPage({
       </div>
 
       <div className="card">
-        <h2 style={{ marginTop: 0, fontSize: 15 }}>Function logs</h2>
+        <h2>Function logs</h2>
         {functions.length === 0 ? (
           <EmptyState title="No functions yet" hint="Deploy a function to stream execution logs here." />
         ) : (
@@ -287,7 +286,6 @@ export default function ProjectLogsPage({
           </>
         )}
       </div>
-      <SectionCapabilities category="Observability" projectId={id} />
     </div>
   );
 }

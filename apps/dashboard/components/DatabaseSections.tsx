@@ -165,7 +165,7 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   return (
     <div className="card" id="table-editor">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Rows, filtering, editing, pagination</h2>
+        <h2>Rows, filtering, editing, pagination</h2>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <select
@@ -381,7 +381,7 @@ export function RoutinesPanel({ projectId }: { projectId: string }): React.JSX.E
     <div className="card" id="routines">
       <div className="section-head split">
         <div>
-          <h2 style={{ fontSize: 15 }}>Functions, triggers, views</h2>
+          <h2>Functions, triggers, views</h2>
         </div>
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>
           {busy ? 'Loading…' : 'Load routines'}
@@ -572,7 +572,7 @@ export function ExtensionsPanel({ projectId }: { projectId: string }): React.JSX
   return (
     <div className="card" id="extensions">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Allowlisted extensions</h2>
+        <h2>Allowlisted extensions</h2>
       </div>
       {error ? <ErrorState message={error} /> : null}
       {data ? (
@@ -623,7 +623,7 @@ export function RlsSimulator({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="rls">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Policy simulator</h2>
+        <h2>Policy simulator</h2>
         <p>
           Tests row-level-security policies against this project&apos;s database as a real caller.
         </p>
@@ -691,7 +691,7 @@ export function ReplicasPanel({ projectId }: { projectId: string }): React.JSX.E
     <div className="card" id="replicas">
       <div className="section-head split">
         <div>
-          <h2 style={{ fontSize: 15 }}>Replication status</h2>
+          <h2>Replication status</h2>
         </div>
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>
           Refresh
@@ -756,7 +756,7 @@ export function BackupsPanel({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="backups">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Diff, guarded restore, retention workflow</h2>
+        <h2>Diff, guarded restore, retention workflow</h2>
         <p>Preview base-vs-compare migrations with drops flagged; restores run transactionally.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>

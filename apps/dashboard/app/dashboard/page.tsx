@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { getSelectedOrg } from '../../lib/selection';
-import { formatMetric, prettifyKey, timeAgo } from '../../lib/format';
+import { formatMetric, prettifyKey, timeAgo, usageLabel } from '../../lib/format';
 import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
@@ -117,7 +117,9 @@ function DashboardBody(): React.JSX.Element {
       <div className="page-head">
         <div>
           <h1 id="dashboard-title">Good day{user?.displayName ? `, ${user.displayName}` : ''}</h1>
-          <p className="sub muted">Live command center for your organizations, projects, and infrastructure.</p>
+          <p className="sub muted">
+            Live command center for your organizations, projects, and infrastructure.
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link className="btn" href="/projects">
@@ -129,7 +131,9 @@ function DashboardBody(): React.JSX.Element {
         </div>
       </div>
 
-      {error ? <ErrorState title="Couldn't load workspace" message={error} retry={() => void load()} /> : null}
+      {error ? (
+        <ErrorState title="Couldn't load workspace" message={error} retry={() => void load()} />
+      ) : null}
 
       {!projects ? (
         <LoadingSkeleton label="Loading dashboard" rows={4} />
@@ -146,25 +150,30 @@ function DashboardBody(): React.JSX.Element {
             <div className="stat" role="listitem">
               <div className="k">Organizations</div>
               <div className="v">{orgs.length}</div>
-              <div className="s">{orgs.length === 1 ? '1 membership' : `${orgs.length} memberships`}</div>
+              <div className="s">
+                {orgs.length === 1 ? '1 membership' : `${orgs.length} memberships`}
+              </div>
             </div>
             <div className="stat" role="listitem">
               <div className="k">Control plane</div>
               <div className="v" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <StatusDot tone={health?.status === 'ready' ? 'ok' : 'warn'} pulse={health?.status !== 'ready'} />
+                <StatusDot
+                  tone={health?.status === 'ready' ? 'ok' : 'warn'}
+                  pulse={health?.status !== 'ready'}
+                />
                 <span style={{ fontSize: 18 }}>{health ? health.status : '…'}</span>
               </div>
-              <div className="s">{upCount} of {components.length} components reporting</div>
+              <div className="s">
+                {upCount} of {components.length} components reporting
+              </div>
             </div>
             <div className="stat" role="listitem">
               <div className="k">Recent activity</div>
               <div className="v">{activity === null ? '…' : activity.length}</div>
               <div className="s">
-                {activity && activity.length > 0 ? (
-                  <Link href="/activity">View feed →</Link>
-                ) : (
-                  'jobs appear as infrastructure runs'
-                )}
+                {activity && activity.length > 0
+                  ? 'infrastructure jobs in this window'
+                  : 'jobs appear as infrastructure runs'}
               </div>
             </div>
           </div>
@@ -172,14 +181,19 @@ function DashboardBody(): React.JSX.Element {
           {projects.length === 0 ? (
             <EmptyState
               icon="projects"
-              title={orgs.length === 0 ? 'Create your first organization' : 'Create your first project'}
+              title={
+                orgs.length === 0 ? 'Create your first organization' : 'Create your first project'
+              }
               hint={
                 orgs.length === 0
                   ? 'Organizations own projects and billing. It takes ten seconds.'
                   : 'Create an isolated CloudNivo backend with PostgreSQL, APIs, authentication, storage, realtime and serverless functions.'
               }
               action={
-                <Link className="btn btn-primary" href={orgs.length === 0 ? '/organizations' : '/projects/new'}>
+                <Link
+                  className="btn btn-primary"
+                  href={orgs.length === 0 ? '/organizations' : '/projects/new'}
+                >
                   {orgs.length === 0 ? 'Create organization' : 'Create project'}
                 </Link>
               }
@@ -191,24 +205,9 @@ function DashboardBody(): React.JSX.Element {
             />
           ) : (
             <>
-              <div className="card" style={{ marginBottom: 12 }}>
-            <div className="section-head split">
-              <div>
-                <h2 style={{ margin: 0 }}>Open a product area</h2>
-                <p style={{ margin: '4px 0 0' }}>
-                  Database, authentication, storage, realtime, functions, automations, AI,
-                  observability and billing — pick a project to work in its real console.
-                </p>
-              </div>
-              <Link className="btn btn-primary" href="/projects">
-                Open projects →
-              </Link>
-            </div>
-          </div>
-
-          <div className="ov-grid" style={{ marginBottom: 12 }}>
+              <div className="ov-grid" style={{ marginBottom: 12 }}>
                 <div className="card">
-                  <h2 style={{ marginTop: 0 }}>Infrastructure health</h2>
+                  <h2>Infrastructure health</h2>
                   {components.length === 0 ? (
                     <p className="muted" style={{ margin: '4px 0 0' }}>
                       {health ? 'No component breakdown reported.' : 'Probing control plane…'}
@@ -243,12 +242,22 @@ function DashboardBody(): React.JSX.Element {
                 </div>
 
                 <div className="card">
-                  <h2 style={{ marginTop: 0 }}>
-                    Usage{usageOrg ? <span className="muted" style={{ fontWeight: 500 }}> · {usageOrg.name}</span> : ''}
+                  <h2>
+                    Usage
+                    {usageOrg ? (
+                      <span className="muted" style={{ fontWeight: 500 }}>
+                        {' '}
+                        · {usageOrg.name}
+                      </span>
+                    ) : (
+                      ''
+                    )}
                   </h2>
                   {!usage ? (
                     <p className="muted" style={{ margin: '4px 0 0' }}>
-                      {usageOrg ? 'Loading current-period meters…' : 'Join an organization to see usage.'}
+                      {usageOrg
+                        ? 'Loading current-period meters…'
+                        : 'Join an organization to see usage.'}
                     </p>
                   ) : usageTop.length === 0 ? (
                     <p className="muted" style={{ margin: '4px 0 0' }}>
@@ -259,8 +268,7 @@ function DashboardBody(): React.JSX.Element {
                       {usageTop.map(s => (
                         <li key={`${s.service}:${s.metric}`} className="health-row">
                           <span className="grow">
-                            <span className="name">{prettifyKey(s.metric)}</span>
-                            <div className="detail">{prettifyKey(s.service)}</div>
+                            <span className="name">{usageLabel(s.service, s.metric)}</span>
                           </span>
                           <span className="value">{formatMetric(s.metric, s.total)}</span>
                         </li>
@@ -277,7 +285,9 @@ function DashboardBody(): React.JSX.Element {
                 <div>
                   <h2>Your projects</h2>
                 </div>
-                {projects.length > 6 ? <Link href="/projects">View all {projects.length} →</Link> : null}
+                {projects.length > 6 ? (
+                  <Link href="/projects">View all {projects.length} →</Link>
+                ) : null}
               </div>
               <div style={{ marginBottom: 16 }}>
                 <ProjectTable
@@ -308,7 +318,8 @@ function DashboardBody(): React.JSX.Element {
                         <Badge tone={statusTone(a.status)}>{a.status}</Badge>
                         <span className="grow">
                           <span className="title">
-                            <code>{a.kind}</code> · <Link href={`/projects/${a.projectId}`}>{a.projectName}</Link>
+                            {a.kind} ·{' '}
+                            <Link href={`/projects/${a.projectId}`}>{a.projectName}</Link>
                           </span>
                           <span className="meta">
                             <span>{timeAgo(a.updatedAt)}</span>

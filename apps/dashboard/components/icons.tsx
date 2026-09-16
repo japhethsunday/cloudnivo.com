@@ -457,4 +457,5 @@ export const ICON_MAP: Record<string, React.ComponentType<IconProps>> = {
   key: IconAgents,
   automation: IconWorkflows,
   metrics: IconUsage,
+  security: IconShield,
 };

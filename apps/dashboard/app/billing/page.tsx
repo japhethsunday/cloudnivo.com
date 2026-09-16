@@ -9,7 +9,6 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, statusTone, useToast } from '../../components/ui';
-import { SectionCapabilities } from '../../components/SectionCapabilities';
 import { BudgetsPanel } from '../../components/AdvancedPanels';
 
 interface PlanInfo {
@@ -442,7 +441,6 @@ function BillingBody(): React.JSX.Element {
             </div>
           </div>
           <BudgetsPanel orgId={orgId} />
-          <SectionCapabilities category="Billing" />
         </div>
       )}
     </section>

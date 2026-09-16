@@ -78,7 +78,7 @@ export default function ProjectDeploymentsPage({
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Recent function deployments · {deployments.length}</h2>
+          <h2>Recent function deployments · {deployments.length}</h2>
           {deployments.length === 0 ? (
             <EmptyState title="No deployments yet" hint="Deploy from Functions — every deploy becomes a version you can roll back." />
           ) : (
@@ -95,7 +95,7 @@ export default function ProjectDeploymentsPage({
           )}
         </div>
         <div className="card">
-          <h2 style={{ fontSize: 15, marginTop: 0 }}>Lifecycle jobs · {deployJobs.length}</h2>
+          <h2>Lifecycle jobs · {deployJobs.length}</h2>
           {deployJobs.length === 0 ? (
             <EmptyState title="No lifecycle jobs" hint="Provisioning, branch, restore and import jobs appear here." />
           ) : (

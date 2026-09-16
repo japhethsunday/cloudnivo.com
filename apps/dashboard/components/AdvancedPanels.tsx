@@ -72,7 +72,7 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
   return (
     <div className="card" id="branches">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Database branches</h2>
+        <h2>Database branches</h2>
         <p>Full isolated copies of the project database for previews and experiments.</p>
       </div>
       {error ? <ErrorState title="Branches unavailable" message={error} retry={() => void load()} /> : null}
@@ -189,7 +189,7 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
   return (
     <div className="card" id="vault">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Project vault</h2>
+        <h2>Project vault</h2>
         <p>AES-256-GCM envelopes. Names list freely — values reveal once and audit.</p>
       </div>
       {error ? <ErrorState title="Vault unavailable" message={error} retry={() => void load()} /> : null}
@@ -259,7 +259,7 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="db-tools">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Database power tools</h2>
+        <h2>Database power tools</h2>
         <p>Advisors, extensions and generated types — live against this project’s database.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -481,7 +481,7 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card" id="domains">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Custom domains</h2>
+          <h2>Custom domains</h2>
           <p>DNS-verified hostnames for api, storage, functions or app surfaces.</p>
         </div>
         {domains === null ? (
@@ -524,7 +524,7 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
 
       <div className="card" id="drains">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Log drains</h2>
+          <h2>Log drains</h2>
           <p>Signed exports of audit, billing, auth and error events to your HTTPS endpoint.</p>
         </div>
         {drains === null ? (
@@ -557,7 +557,7 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
 
       <div className="card" id="platform-status">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Platform status</h2>
+          <h2>Platform status</h2>
           <p>
             Public status{status ? `: ${status.status}` : ''} · {status?.incidents?.length ?? 0} tracked
             incidents.

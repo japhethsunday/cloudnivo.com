@@ -19,7 +19,6 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, Modal, StatusDot, statusTone, useToast } from '../../components/ui';
-import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 interface ProjectLite {
   id: string;
@@ -198,7 +197,7 @@ function AgentsBody(): React.JSX.Element {
         <>
           {approvals.length > 0 ? (
             <div className="card" style={{ marginBottom: 12 }}>
-              <h2 style={{ marginTop: 0 }}>
+              <h2>
                 Approval inbox <Badge tone="warn">{approvals.length} pending</Badge>
               </h2>
               <div className="table-wrap" style={{ border: 0 }}>
@@ -240,7 +239,7 @@ function AgentsBody(): React.JSX.Element {
           ) : null}
 
           <div className="card" style={{ marginBottom: 12 }}>
-            <h2 style={{ marginTop: 0 }}>Agent tokens</h2>
+            <h2>Agent tokens</h2>
             {tokens.length === 0 ? (
               <EmptyState
                 title="No agent tokens yet"
@@ -365,7 +364,6 @@ function AgentsBody(): React.JSX.Element {
               </div>
             )}
           </div>
-          <SectionCapabilities category="Developer Tools" />
         </>
       )}
 

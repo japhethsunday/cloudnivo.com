@@ -2,7 +2,6 @@
 
 import { use } from 'react';
 import { ApiPanel } from '../../../../components/ApiPanel';
-import { SectionCapabilities } from '../../../../components/SectionCapabilities';
 
 export default function ProjectApiPage({
   params,
@@ -20,7 +19,6 @@ export default function ProjectApiPage({
         </p>
       </div>
       <ApiPanel projectId={id} />
-      <SectionCapabilities category="API" projectId={id} />
     </div>
   );
 }

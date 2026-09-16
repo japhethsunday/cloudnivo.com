@@ -229,7 +229,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Usage</h2>
+        <h2>Usage</h2>
         {!usage ? (
           <LoadingSkeleton label="Loading usage" />
         ) : (
@@ -259,7 +259,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
       </div>
 
       <div className="card" id="buckets">
-        <h2 style={{ marginTop: 0 }}>Buckets</h2>
+        <h2>Buckets</h2>
         {!buckets ? (
           <LoadingSkeleton label="Loading buckets" />
         ) : buckets.length === 0 ? (
@@ -331,7 +331,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
 
       {activeBucket ? (
         <div className="card" id="objects">
-          <h2 style={{ marginTop: 0 }}>
+          <h2>
             Files — {activeBucket.name}{' '}
             <span className="muted">
               /{prefix} ({total})
@@ -447,7 +447,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
 
       {activeBucket ? (
         <div className="card" id="policies">
-          <h2 style={{ marginTop: 0 }}>Bucket settings & policies</h2>
+          <h2>Bucket settings & policies</h2>
           <p className="muted">
             Visibility controls anonymous downloads. Owner isolation restricts customer users to
             their <code>{'<userId>/'}</code> folder (admins and service keys bypass). Platform

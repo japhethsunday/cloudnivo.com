@@ -170,7 +170,7 @@ function AuthOverview({
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>How sign-in works here</h2>
+          <h2>How sign-in works here</h2>
         </div>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
           Each project has its own isolated user directory. Access tokens are short-lived and
@@ -187,7 +187,7 @@ function AuthOverview({
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Recently joined</h2>
+          <h2>Recently joined</h2>
         </div>
         {recent.length === 0 ? (
           <EmptyState title="No users yet" hint="Users appear here after signing up through your app, or create a test user in Sign-in methods." />
@@ -423,7 +423,7 @@ function SignInMethods({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>{delivery.name}</h2>
+          <h2>{delivery.name}</h2>
           <p>{delivery.note}</p>
         </div>
         {emailStatus?.queued !== null && emailStatus?.queued !== undefined ? (
@@ -433,7 +433,7 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Accounts, verification, recovery</h2>
+          <h2>Accounts, verification, recovery</h2>
           <p>Passwords require 8+ characters. Verification links and password resets arrive by email.</p>
         </div>
         <form onSubmit={e => void createUser(e)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -452,7 +452,7 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Email codes + magic links</h2>
+          <h2>Email codes + magic links</h2>
           <p>Codes expire after 10 minutes and allow 5 attempts. Requests are rate-limited per address.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -469,7 +469,7 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>SMS verification + phone sign-in</h2>
+          <h2>SMS verification + phone sign-in</h2>
           <p>Codes are delivered through the configured SMS gateway.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -482,7 +482,7 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Anonymous accounts</h2>
+          <h2>Anonymous accounts</h2>
           <p>Start a guest session with no credentials; it converts to a full account when the user signs up.</p>
         </div>
         <button type="button" className="btn btn-sm" disabled={tester.busy !== null} onClick={() => void tester.call('anonymous', {}, { method: 'POST' })}>Create guest account</button>
@@ -510,7 +510,7 @@ function MfaSection({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Authenticator apps (TOTP) + recovery codes</h2>
+          <h2>Authenticator apps (TOTP) + recovery codes</h2>
           <p>Users enroll from their own signed-in session. Each enrollment returns backup codes for account recovery.</p>
         </div>
         {enrolled.length === 0 ? (
@@ -597,7 +597,7 @@ function TestSignIn({
       <div className="card">
         <div className="section-head split">
           <div>
-            <h2 style={{ fontSize: 15 }}>Signed in as <code>{account.email}</code></h2>
+            <h2>Signed in as <code>{account.email}</code></h2>
           </div>
           <button type="button" className="btn btn-sm" onClick={() => setAccount(null)}>Sign out test session</button>
         </div>
@@ -609,7 +609,7 @@ function TestSignIn({
   return (
     <div className="card">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Sign in as a user to test</h2>
+        <h2>Sign in as a user to test</h2>
         <p>{context}</p>
       </div>
       {!mfaTicket ? (
@@ -644,7 +644,7 @@ function MfaTester({ base, account }: { base: string; account: TestAccount }): R
   return (
     <div className="card">
       <div className="section-head">
-        <h2 style={{ fontSize: 15 }}>Enroll · confirm · disable</h2>
+        <h2>Enroll · confirm · disable</h2>
         <p>Scan the provisioning URI with an authenticator app, then confirm with a live code.</p>
       </div>
       {enroll?.uri ? (
@@ -732,7 +732,7 @@ function SessionsSection({
         <div className="card">
           <div className="section-head split">
             <div>
-              <h2 style={{ fontSize: 15 }}>{sessions === null ? 'Sessions' : `Sessions · ${sessions.length}`}</h2>
+              <h2>{sessions === null ? 'Sessions' : `Sessions · ${sessions.length}`}</h2>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>Refresh</button>
@@ -813,13 +813,13 @@ function AuthSecurity({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>{unverified === 0 ? 'All accounts verified' : `${unverified} account(s) unverified`}</h2>
+          <h2>{unverified === 0 ? 'All accounts verified' : `${unverified} account(s) unverified`}</h2>
           <p>Gate sensitive actions on verification status in your app. Resend verification from Sign-in methods.</p>
         </div>
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Allowed origins</h2>
+          <h2>Allowed origins</h2>
           <p>Which websites may call this project&apos;s auth from a browser. Empty inherits the global policy. Wildcards are rejected.</p>
         </div>
         <form onSubmit={e => void save(e)}>
@@ -834,7 +834,7 @@ function AuthSecurity({
       </div>
       <div className="card">
         <div className="section-head">
-          <h2 style={{ fontSize: 15 }}>Short-lived access, rotating refresh</h2>
+          <h2>Short-lived access, rotating refresh</h2>
         </div>
         <p className="muted" style={{ fontSize: 13, margin: 0 }}>
           Access tokens expire after 15 minutes; refresh tokens rotate on every use and last 30

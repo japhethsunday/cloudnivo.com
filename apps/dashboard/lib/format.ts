@@ -34,7 +34,12 @@ export function formatCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
 }
 
-const BYTE_METRICS = new Set(['api_bandwidth_bytes', 'db_storage_bytes', 'storage_bytes', 'function_gb_seconds']);
+const BYTE_METRICS = new Set([
+  'api_bandwidth_bytes',
+  'db_storage_bytes',
+  'storage_bytes',
+  'function_gb_seconds',
+]);
 
 export function formatMetric(metric: string, total: number): string {
   if (BYTE_METRICS.has(metric)) {
@@ -49,4 +54,16 @@ export function prettifyKey(key: string): string {
     .split(/[_-]+/)
     .map(w => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : w))
     .join(' ');
+}
+
+/**
+ * Label for a usage slice. The metric key usually already carries its
+ * service ("api.api_requests"), so printing the service underneath it
+ * repeated the same word twice in the same row.
+ */
+export function usageLabel(service: string, metric: string): string {
+  const m = prettifyKey(metric);
+  const svc = prettifyKey(service);
+  if (m.toLowerCase().startsWith(svc.toLowerCase())) return m;
+  return `${svc} · ${m}`;
 }

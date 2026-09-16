@@ -8,7 +8,6 @@ import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../components/States';
 import { Badge, statusTone } from '../../components/ui';
 import { IconInfo } from '../../components/icons';
-import { SectionCapabilities } from '../../components/SectionCapabilities';
 
 interface Project {
   id: string;
@@ -196,7 +195,7 @@ function ActivityBody(): React.JSX.Element {
                     <Badge tone={statusTone(a.status)}>{a.status}</Badge>
                     <span className="grow">
                       <span className="title">
-                        <code>{a.kind}</code> · <Link href={`/projects/${a.projectId}`}>{a.projectName}</Link>
+                        {a.kind} · <Link href={`/projects/${a.projectId}`}>{a.projectName}</Link>
                         {orgName(a.projectId) ? <span className="muted"> · {orgName(a.projectId)}</span> : null}
                       </span>
                       <span className="meta">
@@ -209,7 +208,6 @@ function ActivityBody(): React.JSX.Element {
               </ul>
             </div>
           )}
-          <SectionCapabilities category="Observability" />
         </>
       )}
     </section>

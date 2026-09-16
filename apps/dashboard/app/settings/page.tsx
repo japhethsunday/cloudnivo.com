@@ -88,7 +88,7 @@ function GeneralTab(): React.JSX.Element {
 
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>General</h2>
+      <h2>General</h2>
       <table className="table">
         <tbody>
           <tr>
@@ -125,7 +125,7 @@ function AppearanceTab(): React.JSX.Element {
   const { theme, setTheme } = useTheme();
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>Appearance</h2>
+      <h2>Appearance</h2>
       <div className="field" style={{ maxWidth: 280 }}>
         <label htmlFor="theme-select">Theme</label>
         <select
@@ -169,7 +169,7 @@ function DeveloperTab(): React.JSX.Element {
 
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>Developer</h2>
+      <h2>Developer</h2>
       <table className="table">
         <tbody>
           <tr>
@@ -223,7 +223,7 @@ function ApiTab(): React.JSX.Element {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Control-plane API</h2>
+        <h2>Control-plane API</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           The same versioned envelope the dashboard uses. Authenticate with a session JWT or a scoped
           agent token — never a password.
@@ -234,7 +234,7 @@ function ApiTab(): React.JSX.Element {
         </div>
       </div>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Status &amp; contract</h2>
+        <h2>Status &amp; contract</h2>
         <dl className="fact-grid">
           <dt>Health</dt>
           <dd>{health ? <Badge tone={health === 'ready' ? 'ok' : 'warn'}>{health}</Badge> : '…'}</dd>
@@ -259,7 +259,7 @@ function NotificationsTab(): React.JSX.Element {
   const { user } = useSession();
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>Notifications</h2>
+      <h2>Notifications</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         Security notices go to <strong>{user?.email ?? 'your account email'}</strong>. Operational
         signals live in the product — there are no event toggles to misconfigure.
@@ -328,7 +328,7 @@ function SecurityTab(): React.JSX.Element {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Session</h2>
+        <h2>Session</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           Short-lived signed token in this browser only.
           {expiry ? ` Expires ${new Date(expiry).toLocaleString()}.` : ''}
@@ -338,7 +338,7 @@ function SecurityTab(): React.JSX.Element {
         </p>
       </div>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Change password</h2>
+        <h2>Change password</h2>
         <form onSubmit={submit}>
           <div className="field">
             <label htmlFor="set-pw-current">Current password</label>
