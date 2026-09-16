@@ -81,7 +81,14 @@ export default function ProjectOverviewPage({
     void load();
   }, [load]);
 
-  if (error && !jobs) return <ErrorState title="Couldn't load project overview" message={error} retry={() => void load()} />;
+  if (error && !jobs)
+    return (
+      <ErrorState
+        title="Couldn't load project overview"
+        message={error}
+        retry={() => void load()}
+      />
+    );
   if (!jobs || !counts) return <LoadingSkeleton label="Loading overview" rows={5} />;
 
   const recent = jobs.slice(0, 5);
@@ -89,130 +96,136 @@ export default function ProjectOverviewPage({
   const dbStatus = project?.database?.status ?? 'provisioning';
   const dbHealth = project?.database?.health ?? 'unknown';
 
+  const systems: {
+    name: string;
+    tone: 'ok' | 'warn' | 'bad' | 'muted';
+    state: string;
+    reading: string;
+    href: string;
+  }[] = [
+    {
+      name: 'Database',
+      tone: statusTone(dbHealth),
+      state: dbStatus,
+      reading: `PostgreSQL · health ${dbHealth}`,
+      href: `/projects/${id}/database`,
+    },
+    {
+      name: 'API',
+      tone: counts.tables > 0 ? 'ok' : 'muted',
+      state: counts.tables > 0 ? 'serving' : 'idle',
+      reading: `${counts.tables} table${counts.tables === 1 ? '' : 's'} · ${counts.keys} key${counts.keys === 1 ? '' : 's'}`,
+      href: `/projects/${id}/api`,
+    },
+    {
+      name: 'Storage',
+      tone: counts.buckets > 0 ? 'ok' : 'muted',
+      state: counts.buckets > 0 ? 'in use' : 'empty',
+      reading: `${counts.buckets} bucket${counts.buckets === 1 ? '' : 's'} · ${counts.files} file${counts.files === 1 ? '' : 's'} · ${formatBytes(counts.bytes)}`,
+      href: `/projects/${id}/storage`,
+    },
+    {
+      name: 'Realtime',
+      tone: counts.channels > 0 ? 'ok' : 'muted',
+      state: counts.channels > 0 ? 'connected' : 'quiet',
+      reading: `${counts.channels} active channel${counts.channels === 1 ? '' : 's'}`,
+      href: `/projects/${id}/realtime`,
+    },
+    {
+      name: 'Functions',
+      tone: counts.functions > 0 ? 'ok' : 'muted',
+      state: counts.functions > 0 ? 'deployed' : 'none',
+      reading: `${counts.functions} function${counts.functions === 1 ? '' : 's'} deployed`,
+      href: `/projects/${id}/functions`,
+    },
+    {
+      name: 'Jobs',
+      tone: failed > 0 ? 'bad' : 'ok',
+      state: failed > 0 ? `${failed} failed` : 'clear',
+      reading: `${jobs.length} total this project`,
+      href: `/projects/${id}/logs`,
+    },
+  ];
+
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="board">
       {failed > 0 ? (
-        <div className="card" style={{ borderColor: 'var(--danger)' }} role="alert">
+        <div className="card alarm" role="alert">
           <div className="section-head split">
             <div>
-              <h2>{failed} failed operation{failed === 1 ? '' : 's'}</h2>
+              <h2>
+                {failed} failed operation{failed === 1 ? '' : 's'}
+              </h2>
               <p style={{ margin: '4px 0 0' }}>
-                {jobs.filter(j => j.status === 'failed').slice(0, 3).map(j => j.kind).join(', ')}
+                {jobs
+                  .filter(j => j.status === 'failed')
+                  .slice(0, 3)
+                  .map(j => j.kind)
+                  .join(', ')}
               </p>
             </div>
-            <Link className="btn btn-sm" href={`/projects/${id}/logs`}>Investigate →</Link>
+            <Link className="btn btn-sm" href={`/projects/${id}/logs`}>
+              Investigate →
+            </Link>
           </div>
         </div>
       ) : null}
-      <div className="card">
-        <div className="section-head">
-          <h2>Infrastructure health</h2>
-        </div>
-        <ul className="health-list">
-          <li className="health-row">
-            <StatusDot tone={statusTone(dbHealth)} pulse={dbStatus === 'provisioning'} />
-            <span className="grow">
-              <span className="name">Database</span>
-              <div className="detail">
-                PostgreSQL · {dbStatus}
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/database`}>
-              Open →
-            </Link>
-          </li>
-          <li className="health-row">
-            <StatusDot tone={counts.tables > 0 ? 'ok' : 'muted'} />
-            <span className="grow">
-              <span className="name">API</span>
-              <div className="detail">
-                {counts.tables} table{counts.tables === 1 ? '' : 's'} exposed · {counts.keys} key
-                {counts.keys === 1 ? '' : 's'}
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/api`}>
-              Open →
-            </Link>
-          </li>
-          <li className="health-row">
-            <StatusDot tone={counts.buckets > 0 ? 'ok' : 'muted'} />
-            <span className="grow">
-              <span className="name">Storage</span>
-              <div className="detail">
-                {counts.buckets} bucket{counts.buckets === 1 ? '' : 's'} · {counts.files} file
-                {counts.files === 1 ? '' : 's'} · {formatBytes(counts.bytes)}
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/storage`}>
-              Open →
-            </Link>
-          </li>
-          <li className="health-row">
-            <StatusDot tone={counts.channels > 0 ? 'ok' : 'muted'} />
-            <span className="grow">
-              <span className="name">Realtime</span>
-              <div className="detail">
-                {counts.channels} active channel{counts.channels === 1 ? '' : 's'}
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/realtime`}>
-              Open →
-            </Link>
-          </li>
-          <li className="health-row">
-            <StatusDot tone={counts.functions > 0 ? 'ok' : 'muted'} />
-            <span className="grow">
-              <span className="name">Functions</span>
-              <div className="detail">
-                {counts.functions} function{counts.functions === 1 ? '' : 's'} deployed
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/functions`}>
-              Open →
-            </Link>
-          </li>
-          <li className="health-row">
-            <StatusDot tone={failed > 0 ? 'bad' : 'ok'} />
-            <span className="grow">
-              <span className="name">Jobs</span>
-              <div className="detail">
-                {jobs.length} total{failed > 0 ? ` · ${failed} failed` : ' · none failed'}
-              </div>
-            </span>
-            <Link className="value" href={`/projects/${id}/logs`}>
-              View logs →
-            </Link>
-          </li>
-        </ul>
-      </div>
 
-      <div className="card">
-        <div className="section-head split">
-          <div>
-            <h2>Recent activity</h2>
+      <div className="board-main">
+        <div className="card">
+          <div className="section-head">
+            <h2>System state</h2>
           </div>
-          <Link href={`/projects/${id}/logs`}>All logs →</Link>
-        </div>
-        {recent.length === 0 ? (
-          <EmptyState title="No jobs yet" hint="Provisioning, deploys, and lifecycle operations appear here." />
-        ) : (
-          <ul className="feed">
-            {recent.map(j => (
-              <li key={j.id} className="feed-item">
-                <Badge tone={statusTone(j.status)}>{j.status}</Badge>
+          <ul className="health-list">
+            {systems.map(sys => (
+              <li className="health-row" key={sys.name}>
+                <StatusDot
+                  tone={sys.tone}
+                  pulse={sys.name === 'Database' && dbStatus === 'provisioning'}
+                />
                 <span className="grow">
-                  {/* The job kind is a real API value, shown as text: boxed in
-                      <code> next to a status badge it read as debug output. */}
-                  <span className="title">{j.kind}</span>
-                  <span className="meta">
-                    <span>{timeAgo(j.updatedAt)}</span>
-                    {j.lastError ? <span>{j.lastError.slice(0, 120)}</span> : null}
-                  </span>
+                  <span className="name">{sys.name}</span>
+                  <div className="detail">{sys.reading}</div>
                 </span>
+                <span className={`state-word state-${sys.tone}`}>{sys.state}</span>
+                <Link className="value" href={sys.href} aria-label={`Open ${sys.name}`}>
+                  Open →
+                </Link>
               </li>
             ))}
           </ul>
-        )}
+        </div>
+        <div className="card">
+          <div className="section-head split">
+            <div>
+              <h2>Activity</h2>
+            </div>
+            <Link href={`/projects/${id}/logs`}>All logs →</Link>
+          </div>
+          {recent.length === 0 ? (
+            <EmptyState
+              title="No jobs yet"
+              hint="Provisioning, deploys, and lifecycle operations appear here."
+            />
+          ) : (
+            <ul className="feed">
+              {recent.map(j => (
+                <li key={j.id} className="feed-item">
+                  <Badge tone={statusTone(j.status)}>{j.status}</Badge>
+                  <span className="grow">
+                    {/* The job kind is a real API value, shown as text: boxed in
+                      <code> next to a status badge it read as debug output. */}
+                    <span className="title">{j.kind}</span>
+                    <span className="meta">
+                      <span>{timeAgo(j.updatedAt)}</span>
+                      {j.lastError ? <span>{j.lastError.slice(0, 120)}</span> : null}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

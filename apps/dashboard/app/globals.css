@@ -1,93 +1,102 @@
 /* ─────────────────────────────────────────────────────────────
-   CloudNivo design system
-   Professional control-plane aesthetic: refined neutrals, a crisp
-   sky-blue accent, generous spacing, subtle depth, reduced motion.
+   CloudNivo — operations status board
+   The console is an instrument, not a document. Dark is the designed
+   scene; light is derived from it. Panels are cut from the ground by
+   hairlines, never floated on shadow, and state owns whole regions
+   rather than a single coloured dot. CloudNivo blue is action and
+   identity only — it is never a status colour.
    All class names are stable — components reference them directly.
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  --bg: #ffffff;
-  --bg-muted: #f8fafc;
-  --bg-elevated: #ffffff;
-  --bg-inset: #f1f5f9;
-  --bg-overlay: rgb(15 23 42 / 0.5);
-  --border: #e6ebf2;
-  --border-strong: #cbd8e6;
-  --text: #101828;
-  /* Body-text greys, both measured against --bg and --bg-muted: the old
-     faint (#98a2b3) came out at 2.6:1, which fails WCAG AA for the slugs,
-     placeholders and labels that actually use it. */
-  --text-muted: #5b6472;
-  --text-faint: #6b7280;
-  --accent: #2e6fe8;
-  --accent-hover: #2560d4;
-  --accent-contrast: #ffffff;
-  --accent-soft: #e3edfd;
-  --accent-faint: #f1f6fe;
-  /* Status hues stay for fills, dots and borders. Text drawn on a *-soft
-     surface uses the matching ink, which is dark enough to read there. */
-  --success: #0e9f6e;
-  --success-ink: #057a55;
-  --warning-ink: #b54708;
-  --danger-ink: #b42318;
-  --info-ink: #0b5d9e;
-  --accent-ink: #1d4ed8;
-  --success-soft: #e0f5ec;
-  --warning: #b54708;
-  --warning-soft: #fdf3e1;
-  --danger: #d92d20;
-  --danger-soft: #fde8e8;
-  --info: #1073c3;
-  --info-soft: #e0f2fe;
-  --radius: 7px;
-  --radius-sm: 6px;
-  --radius-lg: 10px;
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.05);
-  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 8px 24px -8px rgb(16 24 40 / 0.1);
-  --shadow-lg: 0 24px 60px -16px rgb(16 24 40 / 0.22);
+  /* The instrument ground: near-navy, never black. Panels are one step up
+     from it, insets one step down, so depth reads as material rather than
+     as a drop shadow. */
+  --bg: #0a1018;
+  --bg-muted: #0d1420;
+  --bg-elevated: #111927;
+  --bg-inset: #070c13;
+  --bg-overlay: rgb(3 7 13 / 0.72);
+  --border: #1c2738;
+  --border-strong: #2f3e56;
+  --text: #e9eef7;
+  --text-muted: #9aa8bd;
+  --text-faint: #7d8ba3;
+
+  --accent: #4d8dff;
+  --accent-hover: #6fa3ff;
+  --accent-contrast: #05101f;
+  --accent-soft: #15254a;
+  --accent-faint: #101b33;
+  --accent-ink: #a6c6ff;
+
+  --success: #35c88a;
+  --success-soft: #0c2b21;
+  --success-ink: #4ed6a0;
+  --warning: #f2b544;
+  --warning-soft: #33260d;
+  --warning-ink: #f8c766;
+  --danger: #fa7268;
+  --danger-soft: #38191a;
+  --danger-ink: #ff8f86;
+  --info: #45a5f5;
+  --info-soft: #0d2639;
+  --info-ink: #6fbcff;
+
+  /* Instrument geometry: square-ish, on a 4px grid. */
+  --radius: 4px;
+  --radius-sm: 3px;
+  --radius-lg: 6px;
+  --shadow-sm: none;
+  --shadow-md: 0 8px 28px -12px rgb(0 0 0 / 0.7);
+  --shadow-lg: 0 20px 56px -18px rgb(0 0 0 / 0.78);
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
     sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
-  --sidebar-width: 264px;
-  color-scheme: light;
+  --sidebar-width: 236px;
+  color-scheme: dark;
 }
 
-[data-theme='dark'] {
-  --bg: #0a111f;
-  --bg-muted: #0d1526;
-  --bg-elevated: #101a2e;
-  --bg-inset: #070d18;
-  --bg-overlay: rgb(2 6 17 / 0.7);
-  --border: #1a2540;
-  --border-strong: #2b3d61;
-  --text: #e8eef8;
-  --text-muted: #a3b2c9;
-  --text-faint: #7c8fa9;
-  --accent: #5b8cff;
-  --accent-hover: #7ea6ff;
+/* Light is the derived scene: the same instrument in daylight. Panels stay
+   cut by hairlines, geometry and density are identical, only the ground and
+   the inks invert. */
+[data-theme='light'] {
+  --bg: #f6f8fb;
+  --bg-muted: #eef2f7;
+  --bg-elevated: #ffffff;
+  --bg-inset: #e8edf4;
+  --bg-overlay: rgb(15 23 42 / 0.45);
+  --border: #dbe3ee;
+  --border-strong: #b9c6d8;
+  --text: #0c1624;
+  --text-muted: #55606f;
+  --text-faint: #687382;
+
+  --accent: #1f5fd0;
+  --accent-hover: #174fb4;
   --accent-contrast: #ffffff;
-  --accent-soft: #1b2c55;
-  --accent-faint: #142242;
-  --success: #3ecf8e;
-  --success-soft: #0f2f24;
-  --warning: #f5b345;
-  --warning-soft: #37290f;
-  --danger: #f97066;
-  --danger-soft: #3c1a1a;
-  --info: #3aa1f2;
-  --info-soft: #0e293e;
-  /* Dark surfaces are dark enough that the hue itself reads; only the
-     accent needed lifting off --accent-soft to clear 4.5:1. */
-  --success-ink: #3ecf8e;
-  --warning-ink: #f5b345;
-  --danger-ink: #f97066;
-  --info-ink: #3aa1f2;
-  --accent-ink: #9cbcff;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -12px rgb(0 0 0 / 0.55);
-  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.35), 0 24px 60px -16px rgb(0 0 0 / 0.6);
-  color-scheme: dark;
+  --accent-soft: #dde9fc;
+  --accent-faint: #eef4fe;
+  --accent-ink: #1544a8;
+
+  --success: #12885f;
+  --success-soft: #dcf2e8;
+  --success-ink: #05684a;
+  --warning: #a65a09;
+  --warning-soft: #fbeedb;
+  --warning-ink: #8a4a06;
+  --danger: #c02f26;
+  --danger-soft: #fce3e1;
+  --danger-ink: #9c231c;
+  --info: #0e6bb0;
+  --info-soft: #dcefff;
+  --info-ink: #0a5288;
+
+  --shadow-sm: none;
+  --shadow-md: 0 8px 24px -14px rgb(12 22 36 / 0.3);
+  --shadow-lg: 0 18px 48px -20px rgb(12 22 36 / 0.34);
+  color-scheme: light;
 }
 
 /* ── Dark theme refinements: confident controls, quiet depth ── */
@@ -365,7 +374,7 @@ code,
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
   padding: 10px 10px 4px;
 }
 .nav a {
@@ -462,14 +471,26 @@ code,
 }
 
 .card {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color 0.14s ease,
-    box-shadow 0.14s ease;
+  padding: 14px 16px 16px;
+  box-shadow: none;
+  transition: border-color 0.14s ease;
+}
+/* A panel names its channel along the top edge, the way an instrument
+   labels a gauge: a hairline, not a shadow, separates it from its ground. */
+.card > .section-head:first-child,
+.card > h2:first-child {
+  margin: -14px -16px 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-muted);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.card > .section-head:first-child.split {
+  align-items: center;
 }
 /* One card-heading definition instead of 78 inline copies of it. Page-level
    headings (.section-head outside a card) keep the larger step. */
@@ -737,9 +758,16 @@ details > summary::marker {
 .table th,
 .table td {
   text-align: left;
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+}
+.table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 .table thead th {
   font-size: 11px;
@@ -2024,10 +2052,30 @@ kbd,
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 2px;
+  padding: 10px 12px 10px 10px;
+  margin: 0 -16px;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   font-size: 13.5px;
-  transition: background-color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    border-color 0.1s ease;
+}
+/* The row carries its subject's state as a band down its own edge. A status
+   dot alone makes the reader hunt; a coloured edge is read before the text. */
+.health-row:has(.dot.ok) {
+  border-left-color: var(--success);
+}
+.health-row:has(.dot.warn) {
+  border-left-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
+}
+.health-row:has(.dot.bad) {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.health-row:has(.dot.muted) {
+  border-left-color: var(--border-strong);
 }
 .health-row:last-child {
   border-bottom: none;
@@ -3129,4 +3177,164 @@ summary code,
 }
 .form-row .field {
   margin-bottom: 0;
+}
+
+/* ── Board layout ──────────────────────────────────────── */
+/* The workspace is a board: the system-state panel leads at full weight and
+   the activity column runs beside it, so the first viewport answers "what is
+   the state of this project" before anything else competes. */
+.board {
+  display: grid;
+  gap: 12px;
+}
+.board-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .board-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* An alarming panel wears the alarm: the whole edge, not a border tint. */
+.card.alarm {
+  border-color: var(--danger);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--bg-elevated));
+}
+.card.alarm > .section-head:first-child {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-bottom-color: var(--danger);
+}
+
+/* ── Panel channel labels ──────────────────────────────── */
+/* Uppercase belongs to panel chrome naming a channel — never above a
+   heading as decoration. */
+.card > .section-head:first-child h2,
+.card > h2:first-child {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── State words ───────────────────────────────────────── */
+/* The board says the state in words, in the state's own colour, at a fixed
+   column position so a scan down the panel reads as one list. */
+.state-word {
+  flex: none;
+  min-width: 96px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: var(--text-muted);
+}
+.state-word.state-ok {
+  color: var(--success-ink);
+}
+.state-word.state-warn {
+  color: var(--warning-ink);
+}
+.state-word.state-bad {
+  color: var(--danger-ink);
+}
+.state-word.state-muted {
+  color: var(--text-faint);
+}
+@media (max-width: 640px) {
+  .state-word {
+    min-width: 0;
+  }
+}
+
+/* ── Status strip ──────────────────────────────────────── */
+/* The project header is the board's strip, not a document title: one dense
+   band carrying identity, live state and the primary action, with the
+   section rail sitting directly under it. */
+.ws-head {
+  align-items: flex-start;
+  gap: 12px 16px;
+  margin-bottom: 0;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.ws-title {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  gap: 10px;
+}
+.ws-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
+  color: var(--text-faint);
+}
+.ws-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The rail joins the strip as one instrument, not two stacked bars. */
+.tabs-row {
+  margin-bottom: 12px;
+  padding: 0 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.tabs a,
+.tabs-row .tabs-more {
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.crumbs {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+/* ── Shell strip ───────────────────────────────────────── */
+/* The app strip stays low-profile so the board owns the screen. */
+.topbar {
+  padding: 6px 16px;
+  background: var(--bg-muted);
+}
+.topbar .switcher-btn {
+  padding: 5px 9px;
+}
+.main {
+  padding-top: 16px;
+}
+
+/* Readings are set in tabular figures wherever the board shows a number. */
+.stat .v,
+.health-row .detail,
+.meter-top,
+.kv-inline dd {
+  font-variant-numeric: tabular-nums;
+}
+.health-row .detail {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.005em;
+  color: var(--text-faint);
+}
+.health-row .name {
+  font-weight: 550;
+  letter-spacing: -0.008em;
+}
+.health-row .value {
+  flex: none;
+  min-width: 72px;
+  text-align: right;
+  font-size: 12.5px;
 }

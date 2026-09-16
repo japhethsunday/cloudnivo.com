@@ -5,12 +5,14 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 type Theme = 'light' | 'dark' | 'system';
 
 const ThemeCtx = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({
-  theme: 'system',
+  theme: 'dark',
   setTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [theme, setTheme] = useState<Theme>('system');
+  // Dark is the console's designed scene, not a preference branch: the
+  // instrument palette is authored dark-first and light is derived from it.
+  const [theme, setTheme] = useState<Theme>('dark');
 
   useEffect(() => {
     const saved = window.localStorage.getItem('cloudnivo-theme') as Theme | null;
