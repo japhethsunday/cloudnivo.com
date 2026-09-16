@@ -224,7 +224,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           <div className="card">
             <div className="section-head split">
               <div>
-                <p className="eyebrow">Debugger</p>
                 <h2>Diagnose a failure</h2>
                 <p>Deterministic analysis over real jobs, function error logs, and failed plans — no guessing.</p>
               </div>
@@ -285,7 +284,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           </div>
           <div className="card">
             <div className="section-head">
-              <p className="eyebrow">Step 1 · Describe</p>
+              <p className="step-mark">Step 1 · Describe</p>
               <h2>Describe the backend you need</h2>
               <p>Tables, roles, storage, realtime, functions — one paragraph is enough to start.</p>
             </div>
@@ -312,7 +311,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           <div className="card">
             <div className="section-head split">
               <div>
-                <p className="eyebrow">History</p>
                 <h2>Previous plans</h2>
               </div>
               <span className="muted" style={{ fontSize: 13 }}>
@@ -368,7 +366,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           <div className="card">
             <div className="section-head split">
               <div>
-                <p className="eyebrow">Step 2 · Plan</p>
+                <p className="step-mark">Step 2 · Plan</p>
                 <h2>Generated architecture</h2>
                 <p>{detail.summary}</p>
               </div>
@@ -391,7 +389,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
 
           <div className="card">
             <div className="section-head">
-              <p className="eyebrow">Step 3 · Review</p>
+              <p className="step-mark">Step 3 · Review</p>
               <h2>Changes &amp; validation</h2>
               <p>Every change the plan wants to make, with structural validation up front.</p>
             </div>
@@ -461,7 +459,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
 
           <div className="card">
             <div className="section-head">
-              <p className="eyebrow">Diff</p>
               <h2>Migration preview</h2>
             </div>
             {detail.migrationSql.length > 0 ? (
@@ -478,7 +475,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           {detail.status === 'pending' ? (
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Step 4 · Approve</p>
+                <p className="step-mark">Step 4 · Approve</p>
                 <h2>Approval</h2>
                 <p>Nothing executes until you approve. Rejection discards the plan.</p>
               </div>
@@ -511,7 +508,7 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           {detail.status === 'approved' ? (
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Step 5 · Apply</p>
+                <p className="step-mark">Step 5 · Apply</p>
                 <h2>Deployment</h2>
                 <p>The approved plan applies against live services, step by step.</p>
               </div>
@@ -529,7 +526,6 @@ export function AIBuilderPanel({ projectId }: { projectId: string }): React.JSX.
           {detail.steps.length > 0 ? (
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Result</p>
                 <h2>Execution result</h2>
               </div>
               <div className="table-wrap" style={{ border: 0 }}>

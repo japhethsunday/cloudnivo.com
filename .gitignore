@@ -48,3 +48,4 @@ tests/load/results.json
 
 # Local Claude Code settings (machine-specific permissions)
 .claude/settings.local.json
+*.local.mjs

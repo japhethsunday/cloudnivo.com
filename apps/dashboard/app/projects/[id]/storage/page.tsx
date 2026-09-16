@@ -13,7 +13,6 @@ export default function ProjectStoragePage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Storage</p>
         <h2>Storage</h2>
         <p>
           Buckets, files, upload/download, move/copy, policies and signed URLs. Bytes persist

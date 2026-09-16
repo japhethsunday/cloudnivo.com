@@ -13,7 +13,6 @@ export default function ProjectFunctionsPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
         <h2>Functions</h2>
         <p>
           Serverless functions run your backend code in isolated runtimes — scoped to this project,

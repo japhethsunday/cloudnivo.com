@@ -194,7 +194,6 @@ function DashboardBody(): React.JSX.Element {
               <div className="card" style={{ marginBottom: 12 }}>
             <div className="section-head split">
               <div>
-                <p className="eyebrow">Product areas</p>
                 <h2 style={{ margin: 0 }}>Open a product area</h2>
                 <p style={{ margin: '4px 0 0' }}>
                   Database, authentication, storage, realtime, functions, automations, AI,
@@ -276,7 +275,6 @@ function DashboardBody(): React.JSX.Element {
 
               <div className="section-head split">
                 <div>
-                  <p className="eyebrow">Workspace</p>
                   <h2>Your projects</h2>
                 </div>
                 {projects.length > 6 ? <Link href="/projects">View all {projects.length} →</Link> : null}
@@ -293,7 +291,6 @@ function DashboardBody(): React.JSX.Element {
               <div className="card">
                 <div className="section-head split">
                   <div>
-                    <p className="eyebrow">Workspace</p>
                     <h2>Recent activity</h2>
                   </div>
                   <Link href="/activity">Full feed →</Link>

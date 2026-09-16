@@ -72,7 +72,6 @@ export function BranchesPanel({ projectId }: { projectId: string }): React.JSX.E
   return (
     <div className="card" id="branches">
       <div className="section-head">
-        <p className="eyebrow">Environments</p>
         <h2 style={{ fontSize: 15 }}>Database branches</h2>
         <p>Full isolated copies of the project database for previews and experiments.</p>
       </div>
@@ -190,7 +189,6 @@ export function VaultPanel({ projectId }: { projectId: string }): React.JSX.Elem
   return (
     <div className="card" id="vault">
       <div className="section-head">
-        <p className="eyebrow">Environments</p>
         <h2 style={{ fontSize: 15 }}>Project vault</h2>
         <p>AES-256-GCM envelopes. Names list freely — values reveal once and audit.</p>
       </div>
@@ -261,7 +259,6 @@ export function DbToolsPanel({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="db-tools">
       <div className="section-head">
-        <p className="eyebrow">Environments</p>
         <h2 style={{ fontSize: 15 }}>Database power tools</h2>
         <p>Advisors, extensions and generated types — live against this project’s database.</p>
       </div>
@@ -354,7 +351,6 @@ export function BudgetsPanel({ orgId }: { orgId: string }): React.JSX.Element {
   return (
     <div className="card" id="budgets">
       <div className="section-head">
-        <p className="eyebrow">Billing</p>
         <h2>Spend budgets</h2>
         <p>Monthly caps that alert — or block paid writes with 402 when breached.</p>
       </div>
@@ -485,7 +481,6 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card" id="domains">
         <div className="section-head">
-          <p className="eyebrow">Environments</p>
           <h2 style={{ fontSize: 15 }}>Custom domains</h2>
           <p>DNS-verified hostnames for api, storage, functions or app surfaces.</p>
         </div>
@@ -529,7 +524,6 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
 
       <div className="card" id="drains">
         <div className="section-head">
-          <p className="eyebrow">Environments</p>
           <h2 style={{ fontSize: 15 }}>Log drains</h2>
           <p>Signed exports of audit, billing, auth and error events to your HTTPS endpoint.</p>
         </div>
@@ -563,7 +557,6 @@ export function OrgPlatformPanel({ orgId }: { orgId: string }): React.JSX.Elemen
 
       <div className="card" id="platform-status">
         <div className="section-head">
-          <p className="eyebrow">Observability</p>
           <h2 style={{ fontSize: 15 }}>Platform status</h2>
           <p>
             Public status{status ? `: ${status.status}` : ''} · {status?.incidents?.length ?? 0} tracked

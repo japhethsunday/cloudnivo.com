@@ -71,7 +71,6 @@ export default function ProjectDeploymentsPage({
     <div>
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Project · Deployments</p>
           <h2>Deployments</h2>
           <p>Function deploys with versions and rollback, plus provisioning and lifecycle jobs.</p>
         </div>
@@ -104,7 +103,7 @@ export default function ProjectDeploymentsPage({
               {deployJobs.slice(0, 10).map(j => (
                 <li key={j.id} className="health-row">
                   <span className="grow">
-                    <span className="name"><code>{j.kind}</code> · {j.status}</span>
+                    <span className="name">{j.kind} · {j.status}</span>
                     <div className="detail">{j.lastError ? j.lastError.slice(0, 140) : new Date(j.updatedAt).toLocaleString()}</div>
                   </span>
                   <Link className="value" href={`/projects/${id}/logs`}>Logs →</Link>

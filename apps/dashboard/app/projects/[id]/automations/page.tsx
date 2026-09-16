@@ -13,7 +13,6 @@ export default function ProjectAutomationsPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
         <h2>Automations</h2>
         <p>
           Queues buffer work, schedules invoke functions on a cron timetable, and webhooks deliver

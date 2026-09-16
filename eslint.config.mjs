@@ -12,6 +12,10 @@ export default tseslint.config(
       '**/build/**',
       '**/coverage/**',
       '**/*.min.js',
+      // Vendored tooling (Impeccable design skill), not project source.
+      '.claude/**',
+      // Untracked local scratch scripts (screenshot harness, one-off probes).
+      '*.local.mjs',
       'playwright-report/**',
       'test-results/**',
       'apps/dashboard/.next/**',

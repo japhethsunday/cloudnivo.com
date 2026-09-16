@@ -167,7 +167,6 @@ function QueuesSection({ projectId }: { projectId: string }): React.JSX.Element 
     <div className="card">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Automations</p>
           <h2>Queues</h2>
           <p>Durable per-project message queues with leases, retries, and a dead-letter set.</p>
         </div>
@@ -331,7 +330,6 @@ function SchedulesSection({ projectId }: { projectId: string }): React.JSX.Eleme
     <div className="card">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Automations</p>
           <h2>Schedules</h2>
           <p>Cron expressions (UTC) that invoke a project function. The worker fires due runs.</p>
         </div>
@@ -501,7 +499,6 @@ function WebhooksSection({ projectId }: { projectId: string }): React.JSX.Elemen
     <div className="card">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Automations</p>
           <h2>Webhooks</h2>
           <p>Signed outbound HTTP on project events, with retries, history, and replay.</p>
         </div>

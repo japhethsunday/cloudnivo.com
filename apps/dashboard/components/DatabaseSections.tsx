@@ -58,7 +58,8 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
       setTables(r.data.tables);
       if (!table) {
         // Prefer editable user tables — system schemas stay out of the editor.
-        const first = r.data.tables.find(t => !isSystemSchema(t.schema)) ?? r.data.tables[0] ?? null;
+        const first =
+          r.data.tables.find(t => !isSystemSchema(t.schema)) ?? r.data.tables[0] ?? null;
         setTable(first);
       }
     } else setError(r.error ?? 'Could not load tables');
@@ -164,7 +165,6 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
   return (
     <div className="card" id="table-editor">
       <div className="section-head">
-        <p className="eyebrow">Database · Table Editor</p>
         <h2 style={{ fontSize: 15 }}>Rows, filtering, editing, pagination</h2>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -183,12 +183,25 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
         >
           {tables.map(t => (
             <option key={`${t.schema}.${t.name}`} value={`${t.schema}.${t.name}`}>
-              {t.schema === 'public' ? t.name : `${t.schema}.${t.name}`}{isSystemSchema(t.schema) ? ' (system)' : ''}
+              {t.schema === 'public' ? t.name : `${t.schema}.${t.name}`}
+              {isSystemSchema(t.schema) ? ' (system)' : ''}
             </option>
           ))}
         </select>
-        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter rows…" aria-label="Filter rows" style={{ flex: '1 1 160px' }} />
-        <input value={sortField} onChange={e => setSortField(e.target.value)} placeholder="Sort by field…" aria-label="Sort by field" style={{ flex: '1 1 120px' }} />
+        <input
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder="Filter rows…"
+          aria-label="Filter rows"
+          style={{ flex: '1 1 160px' }}
+        />
+        <input
+          value={sortField}
+          onChange={e => setSortField(e.target.value)}
+          placeholder="Sort by field…"
+          aria-label="Sort by field"
+          style={{ flex: '1 1 120px' }}
+        />
         <button
           type="button"
           className="btn btn-sm"
@@ -198,10 +211,28 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
         >
           {sortDir === 'asc' ? '↑' : '↓'}
         </button>
-        <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setOffset(0); }} aria-label="Page size">
-          {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}/page</option>)}
+        <select
+          value={limit}
+          onChange={e => {
+            setLimit(Number(e.target.value));
+            setOffset(0);
+          }}
+          aria-label="Page size"
+        >
+          {[10, 20, 50, 100].map(n => (
+            <option key={n} value={n}>
+              {n}/page
+            </option>
+          ))}
         </select>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void loadRows()}>Refresh</button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy}
+          onClick={() => void loadRows()}
+        >
+          Refresh
+        </button>
       </div>
       {error ? <ErrorState message={error} /> : null}
       {tableLocked ? (
@@ -210,95 +241,315 @@ export function TableEditor({ projectId }: { projectId: string }): React.JSX.Ele
           and manage it through the SQL editor below.
         </p>
       ) : null}
-      {!tableLocked && (busy ? <LoadingSkeleton label="Loading rows" rows={2} /> : shown.length === 0 ? (
-        <EmptyState title="No rows" hint="Insert the first row below, or import CSV from the schema section." />
-      ) : (
-        <table className="table">
-          <tbody>
-            {shown.slice(0, 25).map((r, i) => (
-              <tr key={i}>
-                <td><code style={{ wordBreak: 'break-all' }}>{JSON.stringify(r)}</code></td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(rowId(r))}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ))}
+      {!tableLocked &&
+        (busy ? (
+          <LoadingSkeleton label="Loading rows" rows={2} />
+        ) : shown.length === 0 ? (
+          <EmptyState
+            title="No rows"
+            hint="Insert the first row below, or import CSV from the schema section."
+          />
+        ) : (
+          <table className="table">
+            <tbody>
+              {shown.slice(0, 25).map((r, i) => (
+                <tr key={i}>
+                  <td>
+                    <code style={{ wordBreak: 'break-all' }}>{JSON.stringify(r)}</code>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      onClick={() => void remove(rowId(r))}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ))}
       {tableLocked ? null : (
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" className="btn btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - limit))}>← Prev</button>
-        <span className="muted" style={{ fontSize: 12 }}>offset {offset}{total !== null ? ` · ${total} total` : ''}</span>
-        <button type="button" className="btn btn-sm" onClick={() => setOffset(o => o + limit)}>Next →</button>
-      </div>
+        <div
+          style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}
+        >
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={offset === 0}
+            onClick={() => setOffset(o => Math.max(0, o - limit))}
+          >
+            ← Prev
+          </button>
+          <span className="muted" style={{ fontSize: 12 }}>
+            offset {offset}
+            {total !== null ? ` · ${total} total` : ''}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setOffset(o => o + limit)}>
+            Next →
+          </button>
+        </div>
       )}
       {!tableLocked && (
-      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-        <div className="field" style={{ margin: 0 }}>
-          <label htmlFor="new-row">Insert row (JSON)</label>
-          <input id="new-row" value={newRow} onChange={e => setNewRow(e.target.value)} placeholder='{"email":"a@x.com"}' />
-        </div>
-        <div><button type="button" className="btn btn-sm btn-primary" onClick={() => void insert()}>Insert row</button></div>
-        <div className="field" style={{ margin: 0 }}>
-          <label htmlFor="edit-id">Update row by id</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input id="edit-id" value={editId} onChange={e => setEditId(e.target.value)} placeholder="row id" style={{ flex: '1 1 120px' }} />
-            <input value={editBody} onChange={e => setEditBody(e.target.value)} placeholder='{"field":"value"}' aria-label="Update body" style={{ flex: '2 1 200px' }} />
-            <button type="button" className="btn btn-sm" onClick={() => void update()}>Update</button>
+        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label htmlFor="new-row">Insert row (JSON)</label>
+            <input
+              id="new-row"
+              value={newRow}
+              onChange={e => setNewRow(e.target.value)}
+              placeholder='{"email":"a@x.com"}'
+            />
+          </div>
+          <div>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void insert()}>
+              Insert row
+            </button>
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label htmlFor="edit-id">Update row by id</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                id="edit-id"
+                value={editId}
+                onChange={e => setEditId(e.target.value)}
+                placeholder="row id"
+                style={{ flex: '1 1 120px' }}
+              />
+              <input
+                value={editBody}
+                onChange={e => setEditBody(e.target.value)}
+                placeholder='{"field":"value"}'
+                aria-label="Update body"
+                style={{ flex: '2 1 200px' }}
+              />
+              <button type="button" className="btn btn-sm" onClick={() => void update()}>
+                Update
+              </button>
+            </div>
           </div>
         </div>
-      </div>
       )}
     </div>
   );
 }
 
 /* ── Routines: functions, triggers, views ── */
+interface RoutineFn {
+  schema: string;
+  name: string;
+  args?: string;
+  returns?: string;
+  language?: string;
+  security?: string;
+}
+interface RoutineTrigger {
+  schema: string;
+  table: string;
+  name: string;
+  timing?: string;
+  events?: string;
+  function?: string;
+}
+interface RoutineView {
+  schema: string;
+  name: string;
+}
+interface Routines {
+  functions: RoutineFn[];
+  triggers: RoutineTrigger[];
+  views: RoutineView[];
+}
+
 export function RoutinesPanel({ projectId }: { projectId: string }): React.JSX.Element {
-  const [data, setData] = useState<{ functions: unknown[]; triggers: unknown[]; views: unknown[] } | null>(null);
+  const [data, setData] = useState<Routines | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function load(): Promise<void> {
     setBusy(true);
-    const r = await apiFetch<{ functions: unknown[]; triggers: unknown[]; views: unknown[] }>(
-      `/api/v1/projects/${projectId}/database/routines`,
-    );
+    const r = await apiFetch<Routines>(`/api/v1/projects/${projectId}/database/routines`);
     setBusy(false);
     if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load routines');
-    else if (r.data) { setData(r.data); setError(null); }
+    else if (r.data) {
+      setData(r.data);
+      setError(null);
+    }
   }
   return (
     <div className="card" id="routines">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Database · Routines</p>
           <h2 style={{ fontSize: 15 }}>Functions, triggers, views</h2>
         </div>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>{busy ? 'Loading…' : 'Load routines'}</button>
+        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>
+          {busy ? 'Loading…' : 'Load routines'}
+        </button>
       </div>
       {error ? <ErrorState message={error} /> : null}
       {data ? (
-        <pre className="codeblock" style={{ maxHeight: 300 }}>{JSON.stringify(data, null, 2)}</pre>
-      ) : <p className="muted" style={{ fontSize: 13 }}>PostgreSQL routines read live from pg_proc / pg_trigger.</p>}
+        <RoutinesTables data={data} />
+      ) : (
+        <p className="muted" style={{ fontSize: 13 }}>
+          PostgreSQL routines read live from pg_proc / pg_trigger.
+        </p>
+      )}
     </div>
   );
 }
 
+/**
+ * Routines and replication used to render `JSON.stringify(data, null, 2)`
+ * straight into the page. It is real data, so it stays — as tables and named
+ * rows a reader can scan, not as a debugger dump.
+ */
+function RoutinesTables({ data }: { data: Routines }): React.JSX.Element {
+  const rows = (
+    [
+      [
+        'Functions',
+        data.functions
+          ?.filter(f => f.name)
+          .map(f => [`${f.schema}.${f.name}`, f.args || '—', f.returns || '—', f.language || '—']),
+      ],
+      [
+        'Triggers',
+        data.triggers
+          ?.filter(t => t.name)
+          .map(t => [`${t.schema}.${t.name}`, t.table || '—', t.events || '—', t.timing || '—']),
+      ],
+      ['Views', data.views?.filter(v => v.name).map(v => [`${v.schema}.${v.name}`])],
+    ] as [string, string[][] | undefined][]
+  ).filter(([, r]) => r && r.length > 0);
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No routines yet"
+        hint="Functions, triggers and views you create appear here."
+      />
+    );
+  }
+  const heads: Record<string, string[]> = {
+    Functions: ['Name', 'Arguments', 'Returns', 'Language'],
+    Triggers: ['Name', 'Table', 'Events', 'Timing'],
+    Views: ['Name'],
+  };
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      {rows.map(([label, body]) => (
+        <div key={label}>
+          <h3 className="sub-head">{label}</h3>
+          <div className="table-wrap">
+            <table className="table" aria-label={label}>
+              <thead>
+                <tr>
+                  {heads[label].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {body!.map(cells => (
+                  <tr key={cells.join('|')}>
+                    {cells.map((c, i) => (
+                      <td key={i} className={i === 0 ? 'mono' : undefined}>
+                        {c}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ReplicationStatus {
+  replicas?: { client?: string; state?: string; lagBytes?: number }[];
+  inRecovery?: boolean;
+}
+
+function ReplicationSummary({ data }: { data: ReplicationStatus }): React.JSX.Element {
+  const replicas = (data.replicas ?? []).filter(r => r.client || r.state);
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <dl className="kv-inline">
+        <dt>Role</dt>
+        <dd>{data.inRecovery ? 'Standby (in recovery)' : 'Primary'}</dd>
+        <dt>Connected replicas</dt>
+        <dd>{replicas.length}</dd>
+      </dl>
+      {replicas.length > 0 ? (
+        <div className="table-wrap">
+          <table className="table" aria-label="Replicas">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>State</th>
+                <th>Lag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {replicas.map((r, i) => (
+                <tr key={`${r.client}-${i}`}>
+                  <td className="mono">{r.client || '—'}</td>
+                  <td>{r.state || '—'}</td>
+                  <td>{formatLag(r.lagBytes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatLag(bytes?: number): string {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /* ── Extensions ── */
+interface InstalledExtension {
+  name: string;
+  version?: string;
+  schema?: string;
+}
+
+function extensionLabel(e: InstalledExtension): string {
+  if (!e.name) return '';
+  return e.version ? `${e.name} ${e.version}` : e.name;
+}
+
 export function ExtensionsPanel({ projectId }: { projectId: string }): React.JSX.Element {
-  const [data, setData] = useState<{ installed: string[]; allowlisted: string[] } | null>(null);
+  // The API returns installed extensions as records, not strings: joining
+  // them printed "[object Object]" on every project that had any.
+  const [data, setData] = useState<{
+    installed: InstalledExtension[];
+    allowlisted: string[];
+  } | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function load(): Promise<void> {
     setBusy(true);
-    const r = await apiFetch<{ installed: string[]; allowlisted: string[] }>(
+    const r = await apiFetch<{ installed: InstalledExtension[]; allowlisted: string[] }>(
       `/api/v1/projects/${projectId}/database/extensions`,
     );
     setBusy(false);
     if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load extensions');
-    else if (r.data) { setData(r.data); setError(null); }
+    else if (r.data) {
+      setData(r.data);
+      setError(null);
+    }
   }
   async function install(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -310,25 +561,40 @@ export function ExtensionsPanel({ projectId }: { projectId: string }): React.JSX
     });
     setBusy(false);
     if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Install failed');
-    else { setName(''); void load(); }
+    else {
+      setName('');
+      void load();
+    }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
   return (
     <div className="card" id="extensions">
       <div className="section-head">
-        <p className="eyebrow">Database · Extensions</p>
         <h2 style={{ fontSize: 15 }}>Allowlisted extensions</h2>
       </div>
       {error ? <ErrorState message={error} /> : null}
       {data ? (
         <>
-          <p className="muted" style={{ fontSize: 13 }}>Installed: {data.installed.length ? data.installed.join(', ') : 'none'}</p>
-          <p className="muted" style={{ fontSize: 13 }}>Allowlist: {data.allowlisted.join(', ')}</p>
+          <dl className="kv-inline">
+            <dt>Installed</dt>
+            <dd>{data.installed.map(extensionLabel).filter(Boolean).join(', ') || 'None yet'}</dd>
+            <dt>Allowlisted</dt>
+            <dd>{data.allowlisted.join(', ')}</dd>
+          </dl>
         </>
       ) : null}
       <form onSubmit={e => void install(e)} style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="pgcrypto" aria-label="Extension name" />
-        <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !name.trim()}>Install</button>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="pgcrypto"
+          aria-label="Extension name"
+        />
+        <button type="submit" className="btn btn-sm btn-primary" disabled={busy || !name.trim()}>
+          Install
+        </button>
       </form>
     </div>
   );
@@ -357,25 +623,48 @@ export function RlsSimulator({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="rls">
       <div className="section-head">
-        <p className="eyebrow">Database · Security / RLS</p>
         <h2 style={{ fontSize: 15 }}>Policy simulator</h2>
-        <p>Tests row-level-security policies against this project&apos;s database as a real caller.</p>
+        <p>
+          Tests row-level-security policies against this project&apos;s database as a real caller.
+        </p>
       </div>
       <form onSubmit={e => void run(e)} style={{ display: 'grid', gap: 8 }}>
         <div className="field" style={{ margin: 0 }}>
           <label htmlFor="rls-sql">SQL to test</label>
-          <textarea id="rls-sql" rows={3} value={sql} onChange={e => setSql(e.target.value)} className="sql-editor" />
+          <textarea
+            id="rls-sql"
+            rows={3}
+            value={sql}
+            onChange={e => setSql(e.target.value)}
+            className="sql-editor"
+          />
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="caller user UUID" aria-label="Caller user id" style={{ flex: '2 1 200px' }} />
+          <input
+            value={userId}
+            onChange={e => setUserId(e.target.value)}
+            placeholder="caller user UUID"
+            aria-label="Caller user id"
+            style={{ flex: '2 1 200px' }}
+          />
           <select value={role} onChange={e => setRole(e.target.value)} aria-label="Caller role">
-            {['authenticated', 'admin', 'service_role', 'anonymous'].map(r => <option key={r} value={r}>{r}</option>)}
+            {['authenticated', 'admin', 'service_role', 'anonymous'].map(r => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
           </select>
-          <button type="submit" className="btn btn-sm btn-primary" disabled={busy}>{busy ? 'Testing…' : 'Test policy'}</button>
+          <button type="submit" className="btn btn-sm btn-primary" disabled={busy}>
+            {busy ? 'Testing…' : 'Test policy'}
+          </button>
         </div>
       </form>
       {error ? <ErrorState message={error} /> : null}
-      {out ? <pre className="codeblock" style={{ marginTop: 8, maxHeight: 300 }}>{JSON.stringify(out, null, 2)}</pre> : null}
+      {out ? (
+        <pre className="codeblock" style={{ marginTop: 8, maxHeight: 300 }}>
+          {JSON.stringify(out, null, 2)}
+        </pre>
+      ) : null}
     </div>
   );
 }
@@ -390,21 +679,32 @@ export function ReplicasPanel({ projectId }: { projectId: string }): React.JSX.E
     const r = await apiFetch(`/api/v1/projects/${projectId}/database/replication`);
     setBusy(false);
     if (!r.ok) setError(describeDbToolsError(r.error) ?? 'Could not load replication status');
-    else { setData(r.data ?? null); setError(null); }
+    else {
+      setData(r.data ?? null);
+      setError(null);
+    }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
   return (
     <div className="card" id="replicas">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Database · Replicas</p>
           <h2 style={{ fontSize: 15 }}>Replication status</h2>
         </div>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>Refresh</button>
+        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void load()}>
+          Refresh
+        </button>
       </div>
       {error ? <ErrorState message={error} /> : null}
-      {data ? <pre className="codeblock" style={{ maxHeight: 240 }}>{JSON.stringify(data, null, 2)}</pre>
-        : <p className="muted" style={{ fontSize: 13 }}>Single-node locally; managed replicas surface here in production.</p>}
+      {data ? (
+        <ReplicationSummary data={data as ReplicationStatus} />
+      ) : (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Single-node locally; managed replicas surface here in production.
+        </p>
+      )}
     </div>
   );
 }
@@ -423,7 +723,9 @@ export function BackupsPanel({ projectId }: { projectId: string }): React.JSX.El
   useEffect(() => {
     void apiFetch<{ branches: { id: string; name: string }[] }>(
       `/api/v1/projects/${projectId}/database/branches`,
-    ).then(r => { if (r.ok && r.data) setBranches(r.data.branches); });
+    ).then(r => {
+      if (r.ok && r.data) setBranches(r.data.branches);
+    });
   }, [projectId]);
 
   async function runDiff(): Promise<void> {
@@ -454,33 +756,74 @@ export function BackupsPanel({ projectId }: { projectId: string }): React.JSX.El
   return (
     <div className="card" id="backups">
       <div className="section-head">
-        <p className="eyebrow">Database · Backups</p>
         <h2 style={{ fontSize: 15 }}>Diff, guarded restore, retention workflow</h2>
         <p>Preview base-vs-compare migrations with drops flagged; restores run transactionally.</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <label>Base <select value={base} onChange={e => setBase(e.target.value)} aria-label="Diff base">
-          <option value="main">main</option>
-          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select></label>
-        <label>Compare <select value={compare} onChange={e => setCompare(e.target.value)} aria-label="Diff compare">
-          <option value="main">main</option>
-          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select></label>
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void runDiff()}>
+        <label>
+          Base{' '}
+          <select value={base} onChange={e => setBase(e.target.value)} aria-label="Diff base">
+            <option value="main">main</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Compare{' '}
+          <select
+            value={compare}
+            onChange={e => setCompare(e.target.value)}
+            aria-label="Diff compare"
+          >
+            <option value="main">main</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy !== null}
+          onClick={() => void runDiff()}
+        >
           {busy === 'diff' ? 'Diffing…' : 'Preview diff'}
         </button>
       </div>
-      {diff ? <pre className="codeblock" style={{ maxHeight: 260 }}>{JSON.stringify(diff, null, 2)}</pre> : null}
+      {diff ? (
+        <pre className="codeblock" style={{ maxHeight: 260 }}>
+          {JSON.stringify(diff, null, 2)}
+        </pre>
+      ) : null}
       <div className="field" style={{ marginTop: 12 }}>
         <label htmlFor="restore-sql">Guarded restore SQL</label>
-        <textarea id="restore-sql" rows={5} value={restoreSql} onChange={e => setRestoreSql(e.target.value)} className="sql-editor" />
+        <textarea
+          id="restore-sql"
+          rows={5}
+          value={restoreSql}
+          onChange={e => setRestoreSql(e.target.value)}
+          className="sql-editor"
+        />
       </div>
-      <button type="button" className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void restore()}>
+      <button
+        type="button"
+        className="btn btn-sm btn-primary"
+        disabled={busy !== null}
+        onClick={() => void restore()}
+      >
         {busy === 'restore' ? 'Restoring…' : 'Run guarded restore'}
       </button>
       {error ? <ErrorState message={error} /> : null}
-      {out ? <pre className="codeblock" style={{ marginTop: 8, maxHeight: 240 }}>{JSON.stringify(out, null, 2)}</pre> : null}
+      {out ? (
+        <pre className="codeblock" style={{ marginTop: 8, maxHeight: 240 }}>
+          {JSON.stringify(out, null, 2)}
+        </pre>
+      ) : null}
     </div>
   );
 }

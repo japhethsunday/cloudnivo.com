@@ -20,23 +20,29 @@ export default function ProjectDatabasePage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Database</p>
         <h2>Database</h2>
         <p>
           Isolated PostgreSQL per project — table editor, schemas, routines, extensions, RLS
           simulation, replicas and backups, all against the live database.
         </p>
       </div>
-      <nav aria-label="Database sections" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {/* A jump list, not a tab bar: every panel below is on this page, and
+          the sidebar's nested links target the same anchors. Styled as links
+          so it stops reading like the action buttons inside the panels. */}
+      <nav className="jump-nav" aria-label="Jump to database section">
+        <span className="jump-nav-label">Jump to</span>
         {[
           ['Table Editor', '#table-editor'],
+          ['Connection', '#connection'],
           ['Routines', '#routines'],
           ['Extensions', '#extensions'],
           ['RLS', '#rls'],
           ['Replicas', '#replicas'],
           ['Backups', '#backups'],
         ].map(([label, href]) => (
-          <a key={href} className="btn btn-sm" href={href}>{label}</a>
+          <a key={href} href={href}>
+            {label}
+          </a>
         ))}
       </nav>
       <div style={{ display: 'grid', gap: 12 }}>

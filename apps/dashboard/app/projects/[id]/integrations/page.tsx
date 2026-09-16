@@ -101,7 +101,6 @@ export default function ProjectIntegrationsPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Integrations</p>
         <h2>Integrations</h2>
         <p>GitHub repository links, outbound webhooks with HMAC signatures, custom domains and log drains.</p>
       </div>

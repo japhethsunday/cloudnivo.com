@@ -9,7 +9,7 @@ import { RequireAuth } from '../../../components/RequireAuth';
 import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, Breadcrumbs, CopyField, Menu, StatusDot, statusTone } from '../../../components/ui';
-import { IconSettings } from '../../../components/icons';
+import { IconChevronDown, IconSettings } from '../../../components/icons';
 
 interface Project {
   id: string;
@@ -20,7 +20,14 @@ interface Project {
   database: { status: string; health?: string } | null;
 }
 
-const TABS = [
+/**
+ * Project sections, split by how often a working session touches them.
+ * Eighteen equal tabs in one strip overflowed the bar at every window width
+ * and hid the tail behind a fade with nothing to click. The daily surfaces
+ * stay in the bar; the rest live in one "More" menu that names the current
+ * section when the route is inside it, so nothing became unreachable.
+ */
+const PRIMARY_TABS = [
   { href: '', label: 'Overview' },
   { href: '/database', label: 'Database' },
   { href: '/sql', label: 'SQL Editor' },
@@ -29,6 +36,9 @@ const TABS = [
   { href: '/storage', label: 'Storage' },
   { href: '/realtime', label: 'Realtime' },
   { href: '/functions', label: 'Functions' },
+];
+
+const MORE_TABS = [
   { href: '/automations', label: 'Automations' },
   { href: '/ai', label: 'AI' },
   { href: '/security', label: 'Security' },
@@ -84,13 +94,19 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
     return () => clearInterval(t);
   }, [load]);
 
-  if (error && !project) return <ErrorState title="Couldn't open project" message={error} retry={() => void load()} />;
+  if (error && !project)
+    return <ErrorState title="Couldn't open project" message={error} retry={() => void load()} />;
   if (!project) return <LoadingSkeleton label="Loading project" rows={4} />;
 
   const base = `/projects/${id}`;
+  const activeMore =
+    MORE_TABS.find(
+      t => pathname === `${base}${t.href}` || pathname.startsWith(`${base}${t.href}/`),
+    ) ?? null;
   const status = project.database?.status ?? 'provisioning';
   const health = project.database?.health ?? 'unknown';
-  const healthLabel = health === 'healthy' ? 'Healthy' : health === 'unknown' ? 'Health unknown' : health;
+  const healthLabel =
+    health === 'healthy' ? 'Healthy' : health === 'unknown' ? 'Health unknown' : health;
 
   return (
     <section aria-labelledby="ws-title">
@@ -103,13 +119,14 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
           </h1>
           <div className="ws-meta">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <StatusDot tone={statusTone(health)} pulse={status === 'provisioning' || status === 'pending'} />
+              <StatusDot
+                tone={statusTone(health)}
+                pulse={status === 'provisioning' || status === 'pending'}
+              />
               {healthLabel}
             </span>
             <span aria-hidden>·</span>
             <EnvSwitcher projectId={project.id} region={project.region} />
-            <span aria-hidden>·</span>
-            <span>{project.region}</span>
           </div>
         </div>
         <div className="ws-actions">
@@ -137,7 +154,12 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
               </div>
             </div>
           </Menu>
-          <Link className="icon-btn" href={`${base}/settings`} aria-label="Project settings" title="Project settings">
+          <Link
+            className="icon-btn"
+            href={`${base}/settings`}
+            aria-label="Project settings"
+            title="Project settings"
+          >
             <IconSettings size={16} />
           </Link>
           <Link className="btn btn-primary btn-sm" href={`${base}/database#connection`}>
@@ -145,27 +167,50 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
           </Link>
         </div>
       </div>
-      <nav className="tabs" aria-label="Project sections">
-        {TABS.map(t => {
-          const [path, anchor] = t.href.split('#');
-          const href = `${base}${t.href}`;
-          let active: boolean;
-          if (anchor != null) {
-            active = pathname === `${base}${path}` && hash === `#${anchor}`;
-          } else if (t.href === '') {
-            active = pathname === base;
-          } else if (t.href === '/api') {
-            // The keys tab owns the #keys anchor on this same page.
-            active = (pathname === href || pathname.startsWith(`${href}/`)) && hash !== '#keys';
-          } else {
-            active = pathname === href || pathname.startsWith(`${href}/`);
+      <nav className="tabs-row" aria-label="Project sections">
+        <div className="tabs">
+          {PRIMARY_TABS.map(t => {
+            const [path, anchor] = t.href.split('#');
+            const href = `${base}${t.href}`;
+            let active: boolean;
+            if (anchor != null) {
+              active = pathname === `${base}${path}` && hash === `#${anchor}`;
+            } else if (t.href === '') {
+              active = pathname === base;
+            } else if (t.href === '/api') {
+              // The keys tab owns the #keys anchor on this same page.
+              active = (pathname === href || pathname.startsWith(`${href}/`)) && hash !== '#keys';
+            } else {
+              active = pathname === href || pathname.startsWith(`${href}/`);
+            }
+            return (
+              <Link key={t.href} href={href} aria-current={active ? 'page' : undefined}>
+                {t.label}
+              </Link>
+            );
+          })}
+        </div>
+        <Menu
+          label="More project sections"
+          align="right"
+          button={
+            <span className="tabs-more" aria-current={activeMore ? 'page' : undefined}>
+              {activeMore ? activeMore.label : 'More'}
+              <IconChevronDown size={14} />
+            </span>
           }
-          return (
-            <Link key={t.href} href={href} aria-current={active ? 'page' : undefined}>
+        >
+          {MORE_TABS.map(t => (
+            <Link
+              key={t.href}
+              href={`${base}${t.href}`}
+              role="menuitem"
+              aria-current={activeMore?.href === t.href ? 'page' : undefined}
+            >
               {t.label}
             </Link>
-          );
-        })}
+          ))}
+        </Menu>
       </nav>
       {children}
     </section>

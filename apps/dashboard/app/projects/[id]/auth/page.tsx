@@ -12,7 +12,6 @@ export default function ProjectAuthPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Authentication</p>
         <h2>Authentication</h2>
         <p>Manage users, sign-in methods, security policies and sessions.</p>
       </div>

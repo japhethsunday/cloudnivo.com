@@ -54,7 +54,6 @@ function CapabilitiesBody(): React.JSX.Element {
     <section aria-labelledby="caps-title">
       <div className="page-head">
         <div>
-          <p className="eyebrow">Internal · tracking only</p>
           <h1 id="caps-title">Capability registry (internal)</h1>
           <p className="sub muted">
             This is <strong>not</strong> the product. Every capability below runs in its real
@@ -104,7 +103,6 @@ function CapabilitiesBody(): React.JSX.Element {
           <div key={cat} className="card" style={{ marginBottom: 12 }}>
             <div className="section-head split">
               <div>
-                <p className="eyebrow">{cat}</p>
                 <h2 style={{ fontSize: 15 }}>
                   {cat} · {items.length}
                 </h2>

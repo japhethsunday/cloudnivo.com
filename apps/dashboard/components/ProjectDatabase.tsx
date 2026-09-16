@@ -69,6 +69,19 @@ export function ProjectDatabase({
     return () => clearInterval(t);
   }, [load, sessionLost]);
 
+  // Masked connection details and the schema are read-only and already on
+  // this page's job: fetch them once the database is actually running rather
+  // than leaving two cards empty behind a button the user must find first.
+  // Secrets still require the explicit, audit-logged reveal.
+  const running = db?.status === 'running';
+  useEffect(() => {
+    if (sessionLost || !running) return;
+    if (!conn) void loadMasked();
+    if (!schema) void loadSchema();
+    // Keyed on `running` alone on purpose: including conn/schema would
+    // re-fire the effect with every fetch it performs.
+  }, [running, sessionLost]);
+
   async function reveal(): Promise<void> {
     const r = await apiFetch(`/api/v1/projects/${projectId}/database/connection?reveal=true`);
     if (r.ok) {
@@ -234,9 +247,14 @@ export function ProjectDatabase({
       <div className="card" id="connection">
         <h2 style={{ marginTop: 0 }}>Connection information</h2>
         {!conn ? (
-          <button type="button" className="btn" onClick={() => void loadMasked()}>
-            Show connection (masked)
-          </button>
+          <>
+            <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              Host, port, database and user for this project, with the password masked.
+            </p>
+            <button type="button" className="btn" onClick={() => void loadMasked()}>
+              Show connection (masked)
+            </button>
+          </>
         ) : (
           <>
             <table className="table">
@@ -263,9 +281,14 @@ export function ProjectDatabase({
       <div className="card" id="schemas">
         <h2 style={{ marginTop: 0 }}>Tables</h2>
         {!schema ? (
-          <button type="button" className="btn" onClick={() => void loadSchema()}>
-            Inspect schema
-          </button>
+          <>
+            <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              Columns, types and defaults, read live from this project's database.
+            </p>
+            <button type="button" className="btn" onClick={() => void loadSchema()}>
+              Inspect schema
+            </button>
+          </>
         ) : schema.tables.length === 0 ? (
           <EmptyState title="No tables yet" hint="Run CREATE TABLE in the SQL editor below." />
         ) : (
@@ -445,7 +468,6 @@ function QueryCard({
     <div className="card">
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Workspace</p>
           <h2>SQL editor</h2>
         </div>
         <span className="muted" style={{ fontSize: 12 }}>

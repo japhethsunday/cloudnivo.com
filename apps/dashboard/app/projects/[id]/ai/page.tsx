@@ -13,7 +13,6 @@ export default function ProjectAIPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
         <h2>AI Builder</h2>
         <p>
           Describe → plan → review → approve → apply. CloudNivo drafts a validated plan, shows every

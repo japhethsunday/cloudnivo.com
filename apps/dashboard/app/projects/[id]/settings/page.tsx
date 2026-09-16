@@ -76,7 +76,6 @@ export default function ProjectSettingsPage({
   return (
     <div style={{ display: 'grid', gap: 12, maxWidth: 680 }}>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
         <h2>Settings</h2>
         <p>Identity, environment, and the danger zone. Destructive actions always ask for confirmation.</p>
       </div>

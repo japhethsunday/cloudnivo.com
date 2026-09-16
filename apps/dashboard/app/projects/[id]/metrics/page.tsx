@@ -79,7 +79,6 @@ export default function ProjectMetricsPage({
     <div>
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Project</p>
           <h2>Metrics</h2>
           <p>Real request counts, errors, and latency measured by the API{metrics ? ` since ${timeAgo(metrics.sinceBoot)}` : ''}.</p>
         </div>

@@ -170,7 +170,6 @@ function AuthOverview({
       </div>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Authentication</p>
           <h2 style={{ fontSize: 15 }}>How sign-in works here</h2>
         </div>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
@@ -188,7 +187,6 @@ function AuthOverview({
       </div>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Authentication</p>
           <h2 style={{ fontSize: 15 }}>Recently joined</h2>
         </div>
         {recent.length === 0 ? (
@@ -425,7 +423,6 @@ function SignInMethods({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Email delivery</p>
           <h2 style={{ fontSize: 15 }}>{delivery.name}</h2>
           <p>{delivery.note}</p>
         </div>
@@ -436,7 +433,6 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Email + password</p>
           <h2 style={{ fontSize: 15 }}>Accounts, verification, recovery</h2>
           <p>Passwords require 8+ characters. Verification links and password resets arrive by email.</p>
         </div>
@@ -456,7 +452,6 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Passwordless</p>
           <h2 style={{ fontSize: 15 }}>Email codes + magic links</h2>
           <p>Codes expire after 10 minutes and allow 5 attempts. Requests are rate-limited per address.</p>
         </div>
@@ -474,7 +469,6 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Phone</p>
           <h2 style={{ fontSize: 15 }}>SMS verification + phone sign-in</h2>
           <p>Codes are delivered through the configured SMS gateway.</p>
         </div>
@@ -488,7 +482,6 @@ function SignInMethods({
 
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Guests</p>
           <h2 style={{ fontSize: 15 }}>Anonymous accounts</h2>
           <p>Start a guest session with no credentials; it converts to a full account when the user signs up.</p>
         </div>
@@ -517,7 +510,6 @@ function MfaSection({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Two-factor</p>
           <h2 style={{ fontSize: 15 }}>Authenticator apps (TOTP) + recovery codes</h2>
           <p>Users enroll from their own signed-in session. Each enrollment returns backup codes for account recovery.</p>
         </div>
@@ -605,7 +597,6 @@ function TestSignIn({
       <div className="card">
         <div className="section-head split">
           <div>
-            <p className="eyebrow">Test session</p>
             <h2 style={{ fontSize: 15 }}>Signed in as <code>{account.email}</code></h2>
           </div>
           <button type="button" className="btn btn-sm" onClick={() => setAccount(null)}>Sign out test session</button>
@@ -618,7 +609,6 @@ function TestSignIn({
   return (
     <div className="card">
       <div className="section-head">
-        <p className="eyebrow">Test session</p>
         <h2 style={{ fontSize: 15 }}>Sign in as a user to test</h2>
         <p>{context}</p>
       </div>
@@ -654,7 +644,6 @@ function MfaTester({ base, account }: { base: string; account: TestAccount }): R
   return (
     <div className="card">
       <div className="section-head">
-        <p className="eyebrow">MFA test</p>
         <h2 style={{ fontSize: 15 }}>Enroll · confirm · disable</h2>
         <p>Scan the provisioning URI with an authenticator app, then confirm with a live code.</p>
       </div>
@@ -743,7 +732,6 @@ function SessionsSection({
         <div className="card">
           <div className="section-head split">
             <div>
-              <p className="eyebrow">Active sessions</p>
               <h2 style={{ fontSize: 15 }}>{sessions === null ? 'Sessions' : `Sessions · ${sessions.length}`}</h2>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -825,14 +813,12 @@ function AuthSecurity({
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Verification coverage</p>
           <h2 style={{ fontSize: 15 }}>{unverified === 0 ? 'All accounts verified' : `${unverified} account(s) unverified`}</h2>
           <p>Gate sensitive actions on verification status in your app. Resend verification from Sign-in methods.</p>
         </div>
       </div>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Browser policy</p>
           <h2 style={{ fontSize: 15 }}>Allowed origins</h2>
           <p>Which websites may call this project&apos;s auth from a browser. Empty inherits the global policy. Wildcards are rejected.</p>
         </div>
@@ -848,7 +834,6 @@ function AuthSecurity({
       </div>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Token policy</p>
           <h2 style={{ fontSize: 15 }}>Short-lived access, rotating refresh</h2>
         </div>
         <p className="muted" style={{ fontSize: 13, margin: 0 }}>

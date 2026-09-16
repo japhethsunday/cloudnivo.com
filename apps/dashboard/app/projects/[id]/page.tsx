@@ -95,7 +95,6 @@ export default function ProjectOverviewPage({
         <div className="card" style={{ borderColor: 'var(--danger)' }} role="alert">
           <div className="section-head split">
             <div>
-              <p className="eyebrow">Needs attention</p>
               <h2 style={{ margin: 0 }}>{failed} failed operation{failed === 1 ? '' : 's'}</h2>
               <p style={{ margin: '4px 0 0' }}>
                 {jobs.filter(j => j.status === 'failed').slice(0, 3).map(j => j.kind).join(', ')}
@@ -107,7 +106,6 @@ export default function ProjectOverviewPage({
       ) : null}
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Project</p>
           <h2>Infrastructure health</h2>
         </div>
         <ul className="health-list">
@@ -191,41 +189,6 @@ export default function ProjectOverviewPage({
       <div className="card">
         <div className="section-head split">
           <div>
-            <p className="eyebrow">Project</p>
-            <h2>Product areas</h2>
-            <p>Every workflow lives in its own section — open the console where it runs.</p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {[
-            ['Database', `/projects/${id}/database`],
-            ['SQL Editor', `/projects/${id}/sql`],
-            ['API', `/projects/${id}/api`],
-            ['Authentication', `/projects/${id}/auth`],
-            ['Storage', `/projects/${id}/storage`],
-            ['Realtime', `/projects/${id}/realtime`],
-            ['Functions', `/projects/${id}/functions`],
-            ['Automations', `/projects/${id}/automations`],
-            ['AI', `/projects/${id}/ai`],
-            ['Security', `/projects/${id}/security`],
-            ['Observability', `/projects/${id}/logs`],
-            ['Environments', `/projects/${id}/environments`],
-            ['Deployments', `/projects/${id}/deployments`],
-            ['Integrations', `/projects/${id}/integrations`],
-            ['Usage', `/projects/${id}/usage`],
-            ['Project Settings', `/projects/${id}/settings`],
-          ].map(([label, href]) => (
-            <Link key={label} className="btn btn-sm" href={href}>
-              {label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="section-head split">
-          <div>
-            <p className="eyebrow">Project</p>
             <h2>Recent activity</h2>
           </div>
           <Link href={`/projects/${id}/logs`}>All logs →</Link>
@@ -238,9 +201,9 @@ export default function ProjectOverviewPage({
               <li key={j.id} className="feed-item">
                 <Badge tone={statusTone(j.status)}>{j.status}</Badge>
                 <span className="grow">
-                  <span className="title">
-                    <code>{j.kind}</code>
-                  </span>
+                  {/* The job kind is a real API value, shown as text: boxed in
+                      <code> next to a status badge it read as debug output. */}
+                  <span className="title">{j.kind}</span>
                   <span className="meta">
                     <span>{timeAgo(j.updatedAt)}</span>
                     {j.lastError ? <span>{j.lastError.slice(0, 120)}</span> : null}

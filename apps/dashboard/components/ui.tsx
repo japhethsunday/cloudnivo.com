@@ -47,13 +47,11 @@ export function statusTone(status: string): 'ok' | 'warn' | 'bad' | 'muted' {
 // ── Section header ──────────────────────────────────────
 
 export function SectionHead({
-  eyebrow,
   title,
   desc,
   actions,
   split = true,
 }: {
-  eyebrow?: string;
   title: string;
   desc?: string;
   actions?: React.ReactNode;
@@ -62,7 +60,6 @@ export function SectionHead({
   return (
     <div className={`section-head${split && actions ? ' split' : ''}`}>
       <div>
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h2>{title}</h2>
         {desc ? <p>{desc}</p> : null}
       </div>

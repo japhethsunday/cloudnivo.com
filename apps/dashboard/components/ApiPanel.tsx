@@ -56,7 +56,6 @@ function RequestTester({ projectId, tables }: { projectId: string; tables: strin
   return (
     <div className="card" id="request">
       <div className="section-head">
-        <p className="eyebrow">REST</p>
         <h2 style={{ marginTop: 0 }}>Try it — live request</h2>
         <p>Run a real read against your API with your session. Filtering, ordering and pagination included.</p>
       </div>

@@ -9,8 +9,18 @@ import { NextResponse } from 'next/server';
  * The connect-src allowlist is built dynamically: the dashboard calls the
  * standalone API at NEXT_PUBLIC_API_URL (a different origin in production),
  * so its origin must be allowed or every API call is CSP-blocked.
+ *
+ * script-src is nonce-based, not `'self'` alone. The App Router streams its
+ * RSC payload through inline `<script>self.__next_f.push(...)</script>` tags;
+ * under a bare `script-src 'self'` the browser refuses every one of them and
+ * the app never hydrates — a blank console, no API calls, no recovery. Next
+ * reads the nonce from the CSP on the *request* headers and stamps it onto
+ * those inline scripts, so the nonce must travel both ways: on the request
+ * (for Next) and on the response (for the browser). `'self'` stays for the
+ * build-time `<script src>` tags on prerendered pages, which exist before
+ * any request can hand them a nonce.
  */
-function cspHeader(): string {
+function cspHeader(nonce: string): string {
   const connect = ["'self'"];
   // Local dev API/realtime origins (never in production builds).
   if (process.env.VERCEL_ENV !== 'production') {
@@ -20,25 +30,42 @@ function cspHeader(): string {
   if (raw) {
     try {
       const origin = new URL(raw).origin;
-      if ((origin.startsWith('https://') || origin.startsWith('http://')) && !connect.includes(origin)) {
+      if (
+        (origin.startsWith('https://') || origin.startsWith('http://')) &&
+        !connect.includes(origin)
+      ) {
         connect.push(origin);
       }
     } catch {
       // Misconfigured env: fall back to 'self'-only (fail closed, no injection).
     }
   }
-  return `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connect.join(' ')}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
+  // `'self'` stays alongside the nonce: statically prerendered pages emit
+  // their `<script src>` tags at build time, before any request exists to
+  // carry a nonce, so `'strict-dynamic'` (which makes the browser ignore
+  // `'self'`) would block the very chunks the page needs.
+  const scriptSrc = `'self' 'nonce-${nonce}'`;
+  return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connect.join(' ')}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
 }
+
 export function middleware(request: NextRequest): NextResponse {
   const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
-  const response = NextResponse.next();
+  const nonce = btoa(crypto.randomUUID());
+  const csp = cspHeader(nonce);
+
+  // Next reads the nonce off the request-side CSP to stamp its inline scripts.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('X-Request-Id', requestId);
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  response.headers.set('Content-Security-Policy', cspHeader());
+  response.headers.set('Content-Security-Policy', csp);
   return response;
 }
 

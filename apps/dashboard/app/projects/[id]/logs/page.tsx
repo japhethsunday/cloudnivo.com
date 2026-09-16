@@ -106,7 +106,6 @@ export default function ProjectLogsPage({
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="section-head">
-        <p className="eyebrow">Project</p>
         <h2>Logs</h2>
         <p>Infrastructure jobs and function executions for this project — newest last reported.</p>
       </div>
@@ -174,7 +173,7 @@ export default function ProjectLogsPage({
                 {shownJobs.map(j => (
                   <tr key={j.id}>
                     <td>
-                      <code>{j.kind}</code>
+                      {j.kind}
                     </td>
                     <td>
                       <Badge tone={statusTone(j.status)}>{j.status}</Badge>

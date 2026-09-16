@@ -292,7 +292,6 @@ function AppearanceSection(): React.JSX.Element {
   return (
     <div className="card">
       <div className="section-head">
-        <p className="eyebrow">Account</p>
         <h2>Appearance</h2>
         <p>Applies instantly and is remembered in this browser.</p>
       </div>
@@ -316,7 +315,6 @@ function NotificationsSection({ email }: { email: string }): React.JSX.Element {
   return (
     <div className="card">
       <div className="section-head">
-        <p className="eyebrow">Account</p>
         <h2>Notifications</h2>
         <p>
           Security notices for this account go to <strong>{email || 'your account email'}</strong>. There are
@@ -371,7 +369,6 @@ function SessionsSection(): React.JSX.Element {
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card">
         <div className="section-head">
-          <p className="eyebrow">Account</p>
           <h2>Sessions</h2>
           <p>Signed-in browsers holding a session token. Sessions are short-lived and verified server-side.</p>
         </div>
@@ -437,7 +434,6 @@ function DangerSection(): React.JSX.Element {
   return (
     <div className="card" style={{ borderColor: 'var(--danger)' }}>
       <div className="section-head">
-        <p className="eyebrow">Account</p>
         <h2>Danger zone</h2>
         <p>
           Revoking agent tokens takes effect instantly across every plane — affected agents and CI jobs

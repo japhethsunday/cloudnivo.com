@@ -51,7 +51,6 @@ export default function DeveloperPage(): React.JSX.Element {
         <div style={{ display: 'grid', gap: 12 }}>
           <div>
             <SectionHead
-              eyebrow="Command line"
               title="cloudnivo CLI"
               desc="The CLI ships in this monorepo (packages/cli). Build it once, then run it anywhere Node 20+ exists."
             />
@@ -100,7 +99,6 @@ node packages/cli/dist/bin.js metrics --org <org-id> --project <project-id> --wi
 
           <div>
             <SectionHead
-              eyebrow="TypeScript"
               title="SDK"
               desc="The typed client (packages/sdk) speaks the same versioned envelope as the dashboard."
             />
@@ -127,7 +125,6 @@ const { token, raw } = await cn.createAgentToken(orgId, {
           <SectionCapabilities category="Developer Tools" />
           <div>
             <SectionHead
-              eyebrow="Raw HTTP"
               title="Direct API access"
               desc="Every response uses the platform envelope { data, meta } on success and { error } on failure."
             />

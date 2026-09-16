@@ -261,7 +261,6 @@ function BillingBody(): React.JSX.Element {
           <div className="ov-grid">
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Organization</p>
                 <h2>
                   {plan.plan.name} plan{' '}
                   <Badge tone={statusTone(plan.subscriptionStatus)}>{plan.subscriptionStatus}</Badge>
@@ -310,7 +309,6 @@ function BillingBody(): React.JSX.Element {
 
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Current period</p>
                 <h2>Quota usage</h2>
               </div>
               {meters.map(m => (
@@ -331,7 +329,6 @@ function BillingBody(): React.JSX.Element {
 
           <div className="card">
             <div className="section-head">
-              <p className="eyebrow">Current period</p>
               <h2>Metered activity</h2>
               <p>Every row is measured by the backend — counters sum within the period, gauges take the peak.</p>
             </div>
@@ -377,7 +374,6 @@ function BillingBody(): React.JSX.Element {
           <div className="ov-grid">
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Organization</p>
                 <h2>Invoices</h2>
               </div>
               {invoices.length === 0 ? (
@@ -413,7 +409,6 @@ function BillingBody(): React.JSX.Element {
             </div>
             <div className="card">
               <div className="section-head">
-                <p className="eyebrow">Organization</p>
                 <h2>Payments</h2>
               </div>
               {payments.length === 0 ? (

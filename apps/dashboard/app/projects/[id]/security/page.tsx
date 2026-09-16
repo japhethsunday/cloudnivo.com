@@ -104,7 +104,6 @@ export default function ProjectSecurityPage({
     <div>
       <div className="section-head split">
         <div>
-          <p className="eyebrow">Project · Security</p>
           <h2>Security</h2>
           <p>Live posture scan — public buckets, open CORS, quota breaches and unverified cohorts.</p>
         </div>

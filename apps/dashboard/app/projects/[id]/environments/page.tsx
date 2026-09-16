@@ -12,7 +12,6 @@ export default function ProjectEnvironmentsPage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Environments</p>
         <h2>Environments</h2>
         <p>
           Full-database branches, preview environments with auto-branch, and the project vault for

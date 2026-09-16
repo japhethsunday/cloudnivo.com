@@ -13,7 +13,6 @@ export default function ProjectRealtimePage({
   return (
     <div>
       <div className="section-head">
-        <p className="eyebrow">Project · Realtime</p>
         <h2>Realtime</h2>
         <p>
           Project-scoped channels, broadcast, presence and monitoring — over one authenticated
