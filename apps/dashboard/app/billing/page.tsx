@@ -376,7 +376,7 @@ function BillingBody(): React.JSX.Element {
                   >
                     <div
                       className={`fill${m.pct >= 100 ? ' bad' : m.pct >= 75 ? ' warn' : ' ok'}`}
-                      style={{ width: `${m.limit > 0 ? m.pct : 0}%` }}
+                      style={{ transform: `scaleX(${(m.limit > 0 ? m.pct : 0) / 100})` }}
                     />
                   </div>
                 </div>

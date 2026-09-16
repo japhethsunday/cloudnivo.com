@@ -18,7 +18,11 @@ interface Project {
   slug: string;
   region: string;
   organizationId: string;
-  database: { status: string; health?: string } | null;
+}
+
+interface ProjectDatabase {
+  status: string;
+  health?: string;
 }
 
 /**
@@ -70,6 +74,7 @@ export default function ProjectLayout({
 function Workspace({ id, children }: { id: string; children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();
   const [project, setProject] = useState<Project | null>(null);
+  const [database, setDatabase] = useState<ProjectDatabase | null>(null);
   const [job, setJob] = useState<ProvisionJobLike | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hash, setHash] = useState('');
@@ -82,12 +87,16 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
   }, []);
 
   const load = useCallback(async () => {
-    const r = await apiFetch<{ project: Project; job: ProvisionJobLike | null }>(
-      `/api/v1/projects/${id}`,
-    );
+    const r = await apiFetch<{
+      project: Project;
+      database: ProjectDatabase | null;
+      job: ProvisionJobLike | null;
+    }>(`/api/v1/projects/${id}`);
     if (!r.ok) setError(r.error ?? 'Project not found');
     else if (r.data) {
       setProject(r.data.project);
+      // Sibling of the project, not a field on it — see the overview page.
+      setDatabase(r.data.database ?? null);
       setJob(r.data.job ?? null);
       setSelectedProject(r.data.project.id);
     }
@@ -108,8 +117,8 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
     MORE_TABS.find(
       t => pathname === `${base}${t.href}` || pathname.startsWith(`${base}${t.href}/`),
     ) ?? null;
-  const status = databaseState(project.database, job).label;
-  const health = project.database?.health ?? 'unknown';
+  const status = databaseState(database, job).label;
+  const health = database?.health ?? 'unknown';
   const healthLabel =
     health === 'healthy' ? 'Healthy' : health === 'unknown' ? 'Health unknown' : health;
 

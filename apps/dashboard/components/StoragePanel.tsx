@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiFetchRaw } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
+import { Menu, Modal, useToast } from './ui';
+import { IconMore } from './icons';
 
 interface Bucket {
   id: string;
@@ -53,6 +55,10 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
   const [preview, setPreview] = useState<{ url: string; mime: string; name: string } | null>(null);
   const [meta, setMeta] = useState<ListedObject | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [transfer, setTransfer] = useState<{ op: 'move' | 'copy'; path: string } | null>(null);
+  const [dest, setDest] = useState('');
+  const [transferBusy, setTransferBusy] = useState(false);
+  const toast = useToast();
   const [notice, setNotice] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -168,6 +174,30 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
     }
   }
 
+  /**
+   * Move and copy used to live in their own panel of three empty inputs —
+   * bucket, source path, destination — which asked the operator to retype a
+   * path they were already looking at. They belong to the object.
+   */
+  async function runTransfer(): Promise<void> {
+    if (!transfer || !dest.trim()) return;
+    setTransferBusy(true);
+    const r = await apiFetch(
+      `${base}/buckets/${encodeURIComponent(active)}/objects/${transfer.path.split('/').map(encodeURIComponent).join('/')}/${transfer.op}`,
+      { method: 'POST', body: { dest: dest.trim() } },
+    );
+    setTransferBusy(false);
+    if (!r.ok) {
+      setError(r.error ?? `Could not ${transfer.op} this file`);
+      return;
+    }
+    toast(`${transfer.op === 'move' ? 'Moved' : 'Copied'} to ${dest.trim()}`, 'ok');
+    setTransfer(null);
+    setDest('');
+    void loadObjects();
+    void loadUsage();
+  }
+
   async function remove(path: string): Promise<void> {
     if (!window.confirm(`Delete "${path}"?`)) return;
     const r = await apiFetch(
@@ -218,8 +248,6 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
 
   const activeBucket = buckets?.find(b => b.name === active) ?? null;
   const crumbs = prefix ? prefix.split('/') : [];
-  const pct =
-    usage && usage.quotaBytes > 0 ? Math.min(100, (usage.bytes / usage.quotaBytes) * 100) : 0;
   const previewable = (m: string): boolean =>
     m.startsWith('image/') ||
     m === 'application/pdf' ||
@@ -228,35 +256,34 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <div className="card">
-        <h2>Usage</h2>
-        {!usage ? (
-          <LoadingSkeleton label="Loading usage" />
-        ) : (
-          <>
-            <p>
-              <strong>{formatBytes(usage.bytes)}</strong> of {formatBytes(usage.quotaBytes)} used ·{' '}
-              {usage.files} files · {usage.uploads} uploads · {usage.downloads} downloads
-            </p>
-            <div
-              role="progressbar"
-              aria-valuenow={Math.round(pct)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              style={{ background: 'var(--bg-muted)', borderRadius: 6, height: 10 }}
-            >
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: '100%',
-                  borderRadius: 6,
-                  background: 'var(--accent)',
-                }}
-              />
-            </div>
-          </>
-        )}
-      </div>
+      {/* One bordered face of readings, in the console's gauge grammar. The
+          old card carried a sentence plus a meter that rendered as an empty
+          bar at zero — a decorative track reporting nothing. */}
+      {usage ? (
+        <div className="stat-grid" role="list" aria-label="Storage usage">
+          <div className="stat" role="listitem">
+            <div className="k">Stored</div>
+            <div className="v">{formatBytes(usage.bytes)}</div>
+            <div className="s">of {formatBytes(usage.quotaBytes)}</div>
+          </div>
+          <div className="stat" role="listitem">
+            <div className="k">Files</div>
+            <div className="v">{usage.files}</div>
+          </div>
+          <div className="stat" role="listitem">
+            <div className="k">Uploads</div>
+            <div className="v">{usage.uploads}</div>
+          </div>
+          <div className="stat" role="listitem">
+            <div className="k">Downloads</div>
+            <div className="v">{usage.downloads}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <LoadingSkeleton label="Loading usage" rows={1} />
+        </div>
+      )}
 
       <div className="card" id="buckets">
         <h2>Buckets</h2>
@@ -265,7 +292,8 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
         ) : buckets.length === 0 ? (
           <EmptyState title="No buckets" hint="Create one for avatars, documents, backups…" />
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -300,6 +328,7 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
               ))}
             </tbody>
           </table>
+          </div>
         )}
         <form
           onSubmit={e => void createBucket(e)}
@@ -329,15 +358,9 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
         {error ? <ErrorState message={error} /> : null}
       </div>
 
-      {!activeBucket ? (
-        <div className="card" id="objects">
-          <h2>Files</h2>
-          <EmptyState
-            title="Select a bucket"
-            hint="Choose a bucket above to browse, upload and sign its objects."
-          />
-        </div>
-      ) : null}
+      {/* No bucket picked means there is nothing to show — the bucket list
+          above is the page. Two placeholder cards reading "Select a bucket"
+          reserved two screenfuls to say so. */}
       {activeBucket ? (
         <div className="card" id="objects">
           <h2>
@@ -370,7 +393,8 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
           {objects.length === 0 ? (
             <EmptyState title="Empty folder" hint="Upload files or navigate with prefixes." />
           ) : (
-            <table className="table">
+            <div className="table-wrap">
+              <table className="table">
               <thead>
                 <tr>
                   <th>Path</th>
@@ -390,31 +414,42 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
                     </td>
                     <td>{formatBytes(o.size)}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {/* One control per row. Four equal-weight buttons in
+                          every row made the table read as a control panel
+                          rather than a list of files, and pushed the path
+                          column — the thing being scanned — off to the left. */}
+                      <Menu
+                        label={`Actions for ${o.path}`}
+                        align="right"
+                        button={<IconMore size={16} />}
+                      >
                         {previewable(o.mimeType) ? (
-                          <button type="button" className="btn" onClick={() => void showPreview(o)}>
+                          <button type="button" onClick={() => void showPreview(o)}>
                             Preview
                           </button>
                         ) : null}
-                        <button type="button" className="btn" onClick={() => void inspect(o.path)}>
-                          Metadata
-                        </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => void downloadLink(o.path)}
-                        >
+                        <button type="button" onClick={() => void downloadLink(o.path)}>
                           Signed link
                         </button>
-                        <button type="button" className="btn" onClick={() => void remove(o.path)}>
+                        <button type="button" onClick={() => void inspect(o.path)}>
+                          Metadata
+                        </button>
+                        <button type="button" onClick={() => setTransfer({ op: 'move', path: o.path })}>
+                          Move…
+                        </button>
+                        <button type="button" onClick={() => setTransfer({ op: 'copy', path: o.path })}>
+                          Copy…
+                        </button>
+                        <button type="button" onClick={() => void remove(o.path)}>
                           Delete
                         </button>
-                      </div>
+                      </Menu>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           {preview ? (
             <div style={{ marginTop: 8 }}>
@@ -454,18 +489,53 @@ export function StoragePanel({ projectId }: { projectId: string }): React.JSX.El
         </div>
       ) : null}
 
-      {!activeBucket ? (
-        <div className="card" id="policies">
-          <h2>Bucket settings &amp; policies</h2>
-          <EmptyState
-            title="Select a bucket"
-            hint="Visibility, owner isolation and path policies are configured per bucket."
-          />
-        </div>
+      {transfer ? (
+        <Modal
+          title={`${transfer.op === 'move' ? 'Move' : 'Copy'} ${transfer.path}`}
+          onClose={() => {
+            setTransfer(null);
+            setDest('');
+          }}
+        >
+          <div className="field">
+            <label htmlFor="transfer-dest">Destination path</label>
+            <input
+              id="transfer-dest"
+              value={dest}
+              onChange={e => setDest(e.target.value)}
+              placeholder={transfer.path}
+              autoFocus
+            />
+            <span className="hint">
+              Runs server-side in {activeBucket?.name}; the bytes never pass through the browser.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                setTransfer(null);
+                setDest('');
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={transferBusy || !dest.trim()}
+              onClick={() => void runTransfer()}
+            >
+              {transferBusy ? 'Working…' : transfer.op === 'move' ? 'Move file' : 'Copy file'}
+            </button>
+          </div>
+        </Modal>
       ) : null}
+
       {activeBucket ? (
         <div className="card" id="policies">
-          <h2>Bucket settings & policies</h2>
+          <h2>Access</h2>
           <p className="muted">
             Visibility controls anonymous downloads. Owner isolation restricts customer users to
             their <code>{'<userId>/'}</code> folder (admins and service keys bypass). Platform

@@ -2,7 +2,6 @@
 
 import { use } from 'react';
 import { StoragePanel } from '../../../../components/StoragePanel';
-import { StorageOps } from '../../../../components/IntegrationSections';
 
 export default function ProjectStoragePage({
   params,
@@ -12,17 +11,15 @@ export default function ProjectStoragePage({
   const { id } = use(params);
   return (
     <div>
+      {/* The description used to list the feature set back to the operator
+          ("buckets, files, upload/download, move/copy, policies and signed
+          URLs"). It says what the page is for instead. Move and copy now live
+          on the file they act on, so the standalone path-form panel is gone. */}
       <div className="section-head">
         <h2>Storage</h2>
-        <p>
-          Buckets, files, upload/download, move/copy, policies and signed URLs. Bytes persist
-          through the configured provider; metadata stays tenant-scoped.
-        </p>
+        <p>Files for this project, kept in buckets you control access to.</p>
       </div>
-      <div style={{ display: 'grid', gap: 12 }}>
-        <StoragePanel projectId={id} />
-        <StorageOps projectId={id} />
-      </div>
+      <StoragePanel projectId={id} />
     </div>
   );
 }

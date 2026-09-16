@@ -161,6 +161,17 @@ export function IconX(props: IconProps): React.JSX.Element {
   );
 }
 
+/** Row-action affordance: one control that opens the row's menu. */
+export function IconMore(props: IconProps): React.JSX.Element {
+  return (
+    <Icon {...props} strokeWidth={2}>
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </Icon>
+  );
+}
+
 export function IconMenu(props: IconProps): React.JSX.Element {
   return (
     <Icon {...props} strokeWidth={2}>

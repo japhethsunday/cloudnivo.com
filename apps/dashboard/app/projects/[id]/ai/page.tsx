@@ -13,10 +13,7 @@ export default function ProjectAIPage({
     <div>
       <div className="section-head">
         <h2>AI Builder</h2>
-        <p>
-          Describe → plan → review → approve → apply. CloudNivo drafts a validated plan, shows every
-          change, and applies it only after your approval. Nothing executes silently.
-        </p>
+        <p>Describe what you need. Nothing runs until you approve the plan.</p>
       </div>
       <AIBuilderPanel projectId={id} />
     </div>

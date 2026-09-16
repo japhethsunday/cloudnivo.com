@@ -13,10 +13,7 @@ export default function ProjectAutomationsPage({
     <div>
       <div className="section-head">
         <h2>Automations</h2>
-        <p>
-          Queues buffer work, schedules invoke functions on a cron timetable, and webhooks deliver
-          signed events to your systems — all scoped to this project.
-        </p>
+        <p>Work that runs on a timetable, on a queue, or on an event.</p>
       </div>
       <AutomationPanel projectId={id} />
     </div>

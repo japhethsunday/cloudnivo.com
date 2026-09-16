@@ -473,6 +473,11 @@ code,
   padding: 14px 16px 16px;
   box-shadow: none;
   transition: border-color 0.14s ease;
+  /* Panels sit in flex and grid parents, where the automatic minimum size is
+     the panel's min-content width. One wide table or one unbreakable
+     identifier inside a panel would otherwise widen the whole page, and the
+     document — not the panel — scrolls sideways on a phone. */
+  min-width: 0;
 }
 /* A panel names its channel along the top edge, the way an instrument
    labels a gauge: a hairline, not a shadow, separates it from its ground. */
@@ -727,10 +732,38 @@ details > summary::marker {
   color: var(--text-faint);
 }
 
+/* Flex and grid children default to min-width:auto, which is their content's
+   intrinsic width — an input or a select then refuses to shrink and pushes the
+   whole document sideways on a phone. Every control that sits in a row inside
+   a panel may shrink; the row wraps instead of the page scrolling. */
+.card form,
+.card .form-row {
+  flex-wrap: wrap;
+}
+.card form > input,
+.card form > select,
+.card .form-row > input,
+.card .form-row > select,
+.card .field {
+  min-width: 0;
+}
+
+/* Machine values — connection strings, ids, paths — are one unbroken token.
+   They wrap inside their cell rather than setting the table's width. */
+.card td code,
+.card th code,
+.card .kv-inline dd code {
+  overflow-wrap: anywhere;
+}
+
 /* ── Tables ────────────────────────────────────────────── */
 
 .table-wrap {
   overflow-x: auto;
+  /* A scroll container still reports its content's min-content width to the
+     layout unless it is told it may shrink. Without this the wrapper scrolls
+     but the page still grows to fit the widest table. */
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-elevated);
@@ -2150,9 +2183,13 @@ kbd,
 }
 .meter .bar .fill {
   height: 100%;
+  width: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 0.4s ease;
+  transform-origin: left center;
+  /* Scaled, not resized: animating width relayouts the bar on every frame.
+     The fill is full width and scaled down to its value instead. */
+  transition: transform 0.4s ease;
 }
 .meter .bar .fill.warn {
   background: var(--warning);
@@ -3419,14 +3456,32 @@ summary code,
    as its neighbours. */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  /* `min()` keeps the 150px track from becoming a floor narrower than the
+     screen: with a bare minmax(150px, 1fr) a four-cell strip forced the page
+     ~80px wider than a 390px viewport and the whole document scrolled
+     sideways. */
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: 0;
   margin-bottom: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-elevated);
   overflow: hidden;
+  /* A grid item defaults to min-width:auto — its min-content width. Inside
+     the page's own grid that made this strip 457px wide in a 366px column
+     and scrolled the whole document sideways on a phone. */
+  min-width: 0;
 }
+/* Stacks under the same breakpoint that turns the dividers horizontal. This
+   rule has to live after the base rule above, not in the earlier 720px block:
+   at equal specificity the later declaration wins, and the earlier one was
+   silently overridden. */
+@media (max-width: 720px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* An empty panel states the absence and stops; it does not reserve a
    screenful for content that is not there. */
 .card > .empty {

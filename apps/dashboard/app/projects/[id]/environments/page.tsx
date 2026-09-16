@@ -13,11 +13,7 @@ export default function ProjectEnvironmentsPage({
     <div>
       <div className="section-head">
         <h2>Environments</h2>
-        <p>
-          Full-database branches, preview environments with auto-branch, and the project vault for
-          secrets — all scoped to this project. The header switcher keeps production styling
-          distinct from previews.
-        </p>
+        <p>Branches of the whole database, and the secrets each one runs with.</p>
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         <BranchesPanel projectId={id} />

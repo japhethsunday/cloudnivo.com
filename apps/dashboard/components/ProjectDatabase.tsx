@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiFetchRaw, isAuthFailure } from '../lib/api';
 import { isSystemSchema, qualifiedRef } from './DatabaseSections';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
-import { StatusDot, statusTone } from './ui';
 
 interface DbRecord {
   status: string;
@@ -23,15 +22,28 @@ interface TableInfo {
   primaryKeys: string[];
 }
 
+/** The connection payload's keys are API field names; these are what an operator reads. */
+const CREDENTIAL_LABELS: Record<string, string> = {
+  password: 'Password',
+  connectionString: 'Connection string',
+  sslmode: 'SSL mode',
+};
+
 export function ProjectDatabase({
   projectId,
   mode = 'full',
 }: {
   projectId: string;
-  mode?: 'full' | 'query';
+  /**
+   * `connection` is the database's own view: status, lifecycle and
+   * credentials. The schema tree and the embedded SQL editor moved out of it
+   * — the workspace already has a Table editor tab and a SQL Editor section,
+   * and shipping a third copy of each inside Connection is why this page read
+   * as generated rather than designed.
+   */
+  mode?: 'full' | 'query' | 'connection';
 }): React.JSX.Element {
   const [db, setDb] = useState<DbRecord | null>(null);
-  const [health, setHealth] = useState('unknown');
   const [conn, setConn] = useState<Record<string, unknown> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [schema, setSchema] = useState<{ tables: TableInfo[] } | null>(null);
@@ -48,7 +60,6 @@ export function ProjectDatabase({
     );
     if (r.ok && r.data) {
       setDb(r.data.database);
-      setHealth(r.data.health);
       setError(null);
     } else if (r.status === 404) {
       setDb(null);
@@ -161,15 +172,13 @@ export function ProjectDatabase({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {/* The state is already named in the workspace strip above, in the
+          console's state vocabulary. Repeating it here as "running (healthy)"
+          said the same thing twice, in a different grammar. */}
       <div className="card">
         <h2>Database</h2>
-        <p>
-          <span role="status" aria-label={`Database ${db.status}, ${health}`}>
-            <StatusDot tone={health === 'healthy' ? statusTone(db.status) : statusTone(health)} />{' '}
-            {db.status} ({health})
-          </span>
-        </p>
-        <table className="table">
+        <div className="table-wrap">
+          <table className="table">
           <tbody>
             <tr>
               <th scope="row">Engine</th>
@@ -213,6 +222,7 @@ export function ProjectDatabase({
             ) : null}
           </tbody>
         </table>
+        </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -244,31 +254,39 @@ export function ProjectDatabase({
         </div>
       </div>
 
+      {/* Credentials only. This panel used to repeat host, port, database and
+          user — the four rows the panel above already shows — so the same
+          facts appeared twice on one screen in two different capitalisations.
+          Everything the operator cannot see above, and nothing else. */}
       <div className="card" id="connection">
-        <h2>Connection information</h2>
+        <h2>Credentials</h2>
         {!conn ? (
           <>
             <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
-              Host, port, database and user for this project, with the password masked.
+              The password and connection string are held back until you ask for them.
             </p>
             <button type="button" className="btn" onClick={() => void loadMasked()}>
-              Show connection (masked)
+              Show credentials (masked)
             </button>
           </>
         ) : (
           <>
-            <table className="table">
+            <div className="table-wrap">
+              <table className="table">
               <tbody>
-                {Object.entries(conn).map(([k, v]) => (
-                  <tr key={k}>
-                    <th scope="row">{k}</th>
-                    <td>
-                      <code style={{ wordBreak: 'break-all' }}>{String(v)}</code>
-                    </td>
-                  </tr>
-                ))}
+                {Object.entries(conn)
+                  .filter(([k]) => !['host', 'port', 'database', 'user'].includes(k))
+                  .map(([k, v]) => (
+                    <tr key={k}>
+                      <th scope="row">{CREDENTIAL_LABELS[k] ?? k}</th>
+                      <td>
+                        <code style={{ wordBreak: 'break-all' }}>{String(v)}</code>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
+            </div>
             {!revealed ? (
               <button type="button" className="btn" onClick={() => void reveal()}>
                 Reveal secrets (logged)
@@ -278,79 +296,21 @@ export function ProjectDatabase({
         )}
       </div>
 
-      <div className="card" id="schemas">
-        <h2>Tables</h2>
-        {!schema ? (
-          <>
-            <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
-              Columns, types and defaults, read live from this project's database.
-            </p>
-            <button type="button" className="btn" onClick={() => void loadSchema()}>
-              Inspect schema
-            </button>
-          </>
-        ) : schema.tables.length === 0 ? (
-          <EmptyState title="No tables yet" hint="Run CREATE TABLE in the SQL editor below." />
-        ) : (
-          schema.tables.map(t => (
-            <details key={`${t.schema}.${t.name}`} style={{ marginBottom: 8 }}>
-              <summary>
-                <code>
-                  {t.schema}.{t.name}
-                </code>{' '}
-                ({t.columns.length} columns)
-              </summary>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Column</th>
-                    <th>Type</th>
-                    <th>Nullable</th>
-                    <th>Default</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {t.columns.map(c => (
-                    <tr key={c.name}>
-                      <td>
-                        <code>{c.name}</code>
-                        {t.primaryKeys.includes(c.name) ? ' (PK)' : ''}
-                      </td>
-                      <td>
-                        <code>{c.dataType}</code>
-                      </td>
-                      <td>{c.nullable ? 'yes' : 'no'}</td>
-                      <td>
-                        <code>{c.defaultValue ?? '—'}</code>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {isSystemSchema(t.schema) ? (
-                <p className="muted" style={{ fontSize: 12 }}>
-                  System table — managed through the SQL editor below.
-                </p>
-              ) : (
-                <CsvActions projectId={projectId} table={qualifiedRef(t.schema, t.name)} />
-              )}
-            </details>
-          ))
-        )}
-      </div>
 
-      <QueryCard
-        sql={sql}
-        setSql={setSql}
-        result={result}
-        error={error}
-        busy={busy}
-        onRun={runSql}
-        onClear={() => {
-          setResult(null);
-          setError(null);
-        }}
-      />
+      {mode === 'connection' ? null : (
+        <QueryCard
+          sql={sql}
+          setSql={setSql}
+          result={result}
+          error={error}
+          busy={busy}
+          onRun={runSql}
+          onClear={() => {
+            setResult(null);
+            setError(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -444,6 +404,95 @@ function CsvActions({ projectId, table }: { projectId: string; table: string }):
         </span>
       ) : null}
     </div>
+  );
+}
+
+
+/**
+ * The schema tree, as its own panel.
+ *
+ * It used to render inside the database's connection view, which meant the
+ * project's tables appeared in three places at once — here, in the Table
+ * editor, and in the SQL editor's results. It belongs next to the editor that
+ * changes it.
+ */
+export function SchemaPanel({ projectId }: { projectId: string }): React.JSX.Element {
+  const [schema, setSchema] = useState<{ tables: TableInfo[] } | null>(null);
+
+  const loadSchema = useCallback(async (): Promise<void> => {
+    const r = await apiFetch<{ tables: TableInfo[] }>(
+      `/api/v1/projects/${projectId}/database/schema`,
+    );
+    if (r.ok && r.data) setSchema(r.data);
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadSchema();
+  }, [loadSchema]);
+
+  return (
+      <div className="card" id="schemas">
+        <h2>Tables</h2>
+        {!schema ? (
+          <>
+            <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              Columns, types and defaults, read live from this project's database.
+            </p>
+            <button type="button" className="btn" onClick={() => void loadSchema()}>
+              Inspect schema
+            </button>
+          </>
+        ) : schema.tables.length === 0 ? (
+          <EmptyState title="No tables yet" hint="Create one from the SQL editor." />
+        ) : (
+          schema.tables.map(t => (
+            <details key={`${t.schema}.${t.name}`} style={{ marginBottom: 8 }}>
+              <summary>
+                <code>
+                  {t.schema}.{t.name}
+                </code>{' '}
+                ({t.columns.length} columns)
+              </summary>
+              <div className="table-wrap">
+                <table className="table">
+                <thead>
+                  <tr>
+                    <th>Column</th>
+                    <th>Type</th>
+                    <th>Nullable</th>
+                    <th>Default</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {t.columns.map(c => (
+                    <tr key={c.name}>
+                      <td>
+                        <code>{c.name}</code>
+                        {t.primaryKeys.includes(c.name) ? ' (PK)' : ''}
+                      </td>
+                      <td>
+                        <code>{c.dataType}</code>
+                      </td>
+                      <td>{c.nullable ? 'yes' : 'no'}</td>
+                      <td>
+                        <code>{c.defaultValue ?? '—'}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+              {isSystemSchema(t.schema) ? (
+                <p className="muted" style={{ fontSize: 12 }}>
+                  System table — change it from the SQL editor.
+                </p>
+              ) : (
+                <CsvActions projectId={projectId} table={qualifiedRef(t.schema, t.name)} />
+              )}
+            </details>
+          ))
+        )}
+      </div>
   );
 }
 

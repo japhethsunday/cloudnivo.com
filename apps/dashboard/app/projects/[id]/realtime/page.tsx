@@ -14,10 +14,7 @@ export default function ProjectRealtimePage({
     <div>
       <div className="section-head">
         <h2>Realtime</h2>
-        <p>
-          Project-scoped channels, broadcast, presence and monitoring — over one authenticated
-          socket per project. Postgres change feeds fan out on subscribe.
-        </p>
+        <p>Live channels for this project, and who is currently on them.</p>
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         <RealtimeComposer projectId={id} />

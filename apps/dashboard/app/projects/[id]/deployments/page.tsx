@@ -72,7 +72,7 @@ export default function ProjectDeploymentsPage({
       <div className="section-head split">
         <div>
           <h2>Deployments</h2>
-          <p>Function deploys with versions and rollback, plus provisioning and lifecycle jobs.</p>
+          <p>Every deploy and infrastructure job, newest first. Roll back from here.</p>
         </div>
         <Link className="btn btn-sm" href={`/projects/${id}/functions`}>Open Functions →</Link>
       </div>

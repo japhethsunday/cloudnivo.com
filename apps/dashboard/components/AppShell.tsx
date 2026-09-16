@@ -90,14 +90,13 @@ const PROJECT_NAV: ProjectNavEntry[] = [
   {
     suffix: '/database', label: 'Database', icon: <IconDatabase size={16} />,
     children: [
-      { label: 'Table Editor', suffix: '#table-editor', group: 'Manage' },
-      { label: 'Connection', suffix: '#connection', group: 'Manage' },
-      { label: 'Schemas', suffix: '#schemas', group: 'Manage' },
-      { label: 'Routines', suffix: '#routines', group: 'Manage' },
-      { label: 'Extensions', suffix: '#extensions', group: 'Configuration' },
-      { label: 'RLS simulator', suffix: '#rls', group: 'Configuration' },
-      { label: 'Replicas', suffix: '#replicas', group: 'Configuration' },
-      { label: 'Backups', suffix: '#backups', group: 'Configuration' },
+      { label: 'Connection', suffix: '?tab=connection', group: 'Manage' },
+      { label: 'Table editor', suffix: '?tab=tables', group: 'Manage' },
+      { label: 'Routines', suffix: '?tab=routines', group: 'Manage' },
+      { label: 'Extensions', suffix: '?tab=extensions', group: 'Configuration' },
+      { label: 'Row-level security', suffix: '?tab=rls', group: 'Configuration' },
+      { label: 'Replicas', suffix: '?tab=replicas', group: 'Configuration' },
+      { label: 'Backups', suffix: '?tab=backups', group: 'Configuration' },
     ],
   },
   {
@@ -124,9 +123,8 @@ const PROJECT_NAV: ProjectNavEntry[] = [
     suffix: '/storage', label: 'Storage', icon: <IconStorage size={16} />,
     children: [
       { label: 'Buckets', suffix: '#buckets', group: 'Manage' },
-      { label: 'Objects', suffix: '#objects', group: 'Manage' },
-      { label: 'Move & copy', suffix: '#storage-ops', group: 'Manage' },
-      { label: 'Policies', suffix: '#policies', group: 'Configuration' },
+      { label: 'Files', suffix: '#objects', group: 'Manage' },
+      { label: 'Access', suffix: '#policies', group: 'Configuration' },
     ],
   },
   {

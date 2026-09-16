@@ -13,10 +13,7 @@ export default function ProjectFunctionsPage({
     <div>
       <div className="section-head">
         <h2>Functions</h2>
-        <p>
-          Serverless functions run your backend code in isolated runtimes — scoped to this project,
-          versioned on every deploy, never across projects.
-        </p>
+        <p>Your code, running on demand. Every deploy keeps its own version.</p>
       </div>
       <FunctionsPanel projectId={id} />
     </div>

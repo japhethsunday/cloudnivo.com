@@ -17,10 +17,9 @@ interface Job {
   lastError: string | null;
 }
 
-interface Project {
-  id: string;
-  name: string;
-  database: { status: string; health?: string } | null;
+interface ProjectDatabase {
+  status: string;
+  health?: string;
 }
 
 interface StorageUsage {
@@ -41,7 +40,7 @@ export default function ProjectOverviewPage({
 }): React.JSX.Element {
   const { id } = use(params);
   const toast = useToast();
-  const [project, setProject] = useState<Project | null>(null);
+  const [database, setDatabase] = useState<ProjectDatabase | null>(null);
   const [provisionJob, setProvisionJob] = useState<ProvisionJobLike | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -58,7 +57,9 @@ export default function ProjectOverviewPage({
 
   const load = useCallback(async () => {
     const [p, j, k, s, b, f, u, r] = await Promise.all([
-      apiFetch<{ project: Project; job: ProvisionJobLike | null }>(`/api/v1/projects/${id}`),
+      apiFetch<{ database: ProjectDatabase | null; job: ProvisionJobLike | null }>(
+        `/api/v1/projects/${id}`,
+      ),
       apiFetch<{ jobs: Job[] }>(`/api/v1/projects/${id}/jobs`),
       apiFetch<{ keys: unknown[] }>(`/api/v1/projects/${id}/keys`),
       apiFetch<{ tables: { name: string }[] }>(`/api/v1/projects/${id}/database/schema`),
@@ -70,7 +71,10 @@ export default function ProjectOverviewPage({
     if (!j.ok) setError(j.error ?? 'Could not load project activity');
     else setJobs(j.data?.jobs ?? []);
     if (p.ok && p.data) {
-      setProject(p.data.project);
+      // The database is a sibling of the project in this payload, not a field
+      // on it. Reading `project.database` here always produced undefined,
+      // which is why the console reported a healthy database as unprovisioned.
+      setDatabase(p.data.database ?? null);
       setProvisionJob(p.data.job ?? null);
     }
     setCounts({
@@ -100,9 +104,9 @@ export default function ProjectOverviewPage({
 
   const recent = jobs.slice(0, 5);
   const failed = jobs.filter(j => j.status === 'failed').length;
-  const dbState = databaseState(project?.database, provisionJob);
+  const dbState = databaseState(database, provisionJob);
   const dbStatus = dbState.label;
-  const dbHealth = project?.database?.health ?? 'unknown';
+  const dbHealth = database?.health ?? 'unknown';
 
   async function provision(): Promise<void> {
     setRetrying(true);
@@ -125,9 +129,9 @@ export default function ProjectOverviewPage({
   }[] = [
     {
       name: 'Database',
-      tone: project?.database ? statusTone(dbHealth) : dbState.pending ? 'warn' : 'bad',
+      tone: database ? statusTone(dbHealth) : dbState.pending ? 'warn' : 'bad',
       state: dbStatus,
-      reading: project?.database
+      reading: database
         ? `PostgreSQL · health ${dbHealth}`
         : (dbState.error ?? 'No database record for this project'),
       href: `/projects/${id}/database`,

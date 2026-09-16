@@ -1,7 +1,7 @@
 'use client';
 
 import { use } from 'react';
-import { ProjectDatabase } from '../../../../components/ProjectDatabase';
+import { ProjectDatabase, SchemaPanel } from '../../../../components/ProjectDatabase';
 import {
   BackupsPanel,
   ExtensionsPanel,
@@ -10,6 +10,28 @@ import {
   RoutinesPanel,
   TableEditor,
 } from '../../../../components/DatabaseSections';
+import { SectionTabs } from '../../../../components/SectionTabs';
+
+/**
+ * One view at a time.
+ *
+ * This page used to render all seven panels at once — table editor,
+ * connection, routines, extensions, RLS simulator, replicas, backups — down a
+ * single scroll, with a "Jump to" strip on top to cope with the length and
+ * sidebar links that were anchors into the same dump. Authentication already
+ * had the answer in this codebase: `?tab=` sections, deep-linkable, one
+ * subject on screen. Database now uses the same grammar, so the two sections
+ * stop behaving like two different products.
+ */
+const TABS = [
+  { id: 'connection', label: 'Connection' },
+  { id: 'tables', label: 'Table editor' },
+  { id: 'routines', label: 'Routines' },
+  { id: 'extensions', label: 'Extensions' },
+  { id: 'rls', label: 'Row-level security' },
+  { id: 'replicas', label: 'Replicas' },
+  { id: 'backups', label: 'Backups' },
+];
 
 export default function ProjectDatabasePage({
   params,
@@ -21,39 +43,29 @@ export default function ProjectDatabasePage({
     <div>
       <div className="section-head">
         <h2>Database</h2>
-        <p>
-          Isolated PostgreSQL per project — table editor, schemas, routines, extensions, RLS
-          simulation, replicas and backups, all against the live database.
-        </p>
+        <p>A Postgres instance of your own, with its schema, policies and backups.</p>
       </div>
-      {/* A jump list, not a tab bar: every panel below is on this page, and
-          the sidebar's nested links target the same anchors. Styled as links
-          so it stops reading like the action buttons inside the panels. */}
-      <nav className="jump-nav" aria-label="Jump to database section">
-        <span className="jump-nav-label">Jump to</span>
-        {[
-          ['Table Editor', '#table-editor'],
-          ['Connection', '#connection'],
-          ['Routines', '#routines'],
-          ['Extensions', '#extensions'],
-          ['RLS', '#rls'],
-          ['Replicas', '#replicas'],
-          ['Backups', '#backups'],
-        ].map(([label, href]) => (
-          <a key={href} href={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <div style={{ display: 'grid', gap: 12 }}>
-        <TableEditor projectId={id} />
-        <ProjectDatabase projectId={id} />
-        <RoutinesPanel projectId={id} />
-        <ExtensionsPanel projectId={id} />
-        <RlsSimulator projectId={id} />
-        <ReplicasPanel projectId={id} />
-        <BackupsPanel projectId={id} />
-      </div>
+      <SectionTabs
+        tabs={TABS}
+        initial="connection"
+        param="tab"
+        label="Database sections"
+        render={active => {
+          if (active === 'tables')
+            return (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <TableEditor projectId={id} />
+                <SchemaPanel projectId={id} />
+              </div>
+            );
+          if (active === 'routines') return <RoutinesPanel projectId={id} />;
+          if (active === 'extensions') return <ExtensionsPanel projectId={id} />;
+          if (active === 'rls') return <RlsSimulator projectId={id} />;
+          if (active === 'replicas') return <ReplicasPanel projectId={id} />;
+          if (active === 'backups') return <BackupsPanel projectId={id} />;
+          return <ProjectDatabase projectId={id} mode="connection" />;
+        }}
+      />
     </div>
   );
 }

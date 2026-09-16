@@ -1,52 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { apiBase, apiFetch, getToken } from '../lib/api';
+import { apiBase, getToken } from '../lib/api';
 import { ErrorState } from './States';
 
-/* ── Storage: real move / copy between paths ── */
-export function StorageOps({ projectId }: { projectId: string }): React.JSX.Element {
-  const [bucket, setBucket] = useState('');
-  const [src, setSrc] = useState('');
-  const [dest, setDest] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function run(op: 'move' | 'copy'): Promise<void> {
-    if (!bucket || !src.trim() || !dest.trim()) return;
-    setBusy(op);
-    setError(null);
-    setMsg(null);
-    const r = await apiFetch(
-      `/api/v1/projects/${projectId}/storage/buckets/${encodeURIComponent(bucket)}/objects/${encodeURIComponent(src.trim())}/${op}`,
-      { method: 'POST', body: { dest: dest.trim() } },
-    );
-    setBusy(null);
-    if (!r.ok) setError(r.error ?? `${op} failed`);
-    else setMsg(`${op === 'move' ? 'Moved' : 'Copied'} ${src.trim()} → ${dest.trim()}`);
-  }
-
-  return (
-    <div className="card" id="storage-ops">
-      <div className="section-head">
-        <h2>Move and copy{bucket ? ` in ${bucket}` : ''}</h2>
-        <p>Server-side operations — bytes never round-trip through the browser.</p>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input value={bucket} onChange={e => setBucket(e.target.value)} placeholder="bucket" aria-label="Bucket" style={{ flex: '1 1 120px' }} />
-        <input value={src} onChange={e => setSrc(e.target.value)} placeholder="source path" aria-label="Source path" style={{ flex: '2 1 160px' }} />
-        <input value={dest} onChange={e => setDest(e.target.value)} placeholder="destination path" aria-label="Destination path" style={{ flex: '2 1 160px' }} />
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void run('move')}>Move</button>
-        <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void run('copy')}>Copy</button>
-      </div>
-      {msg ? <p role="status" style={{ fontSize: 13 }}>{msg}</p> : null}
-      {error ? <ErrorState message={error} /> : null}
-    </div>
-  );
-}
-
-/* ── Realtime: real broadcast composer over the project WebSocket ── */
+/* ── Realtime: broadcast composer ── */
 export function RealtimeComposer({ projectId }: { projectId: string }): React.JSX.Element {
   const [channel, setChannel] = useState('general');
   const [message, setMessage] = useState('{"hello":"world"}');

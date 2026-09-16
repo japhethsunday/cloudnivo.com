@@ -102,7 +102,7 @@ export default function ProjectIntegrationsPage({
     <div>
       <div className="section-head">
         <h2>Integrations</h2>
-        <p>GitHub repository links, outbound webhooks with HMAC signatures, custom domains and log drains.</p>
+        <p>Where this project connects to the rest of your stack.</p>
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
         <div className="card">

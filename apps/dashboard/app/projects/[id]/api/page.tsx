@@ -13,10 +13,7 @@ export default function ProjectApiPage({
     <div>
       <div className="section-head">
         <h2>API</h2>
-        <p>
-          Auto-generated REST over your Postgres tables. Responses follow the platform envelope{' '}
-          <code>{'{ data, meta }'}</code> / <code>{'{ error }'}</code>.
-        </p>
+        <p>REST endpoints, generated from your tables as you change them.</p>
       </div>
       <ApiPanel projectId={id} />
     </div>
