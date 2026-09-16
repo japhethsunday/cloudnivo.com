@@ -12,6 +12,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'packages/*/tests/**/*.test.ts',
       'apps/api/src/**/*.test.ts',
+      'apps/dashboard/lib/**/*.test.ts',
       'tests/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],

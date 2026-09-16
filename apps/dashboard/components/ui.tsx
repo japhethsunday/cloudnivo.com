@@ -33,7 +33,19 @@ export function statusTone(status: string): 'ok' | 'warn' | 'bad' | 'muted' {
   const s = status.toLowerCase();
   if (['running', 'ready', 'healthy', 'active', 'completed', 'paid', 'applied', 'approved', 'connected'].includes(s))
     return 'ok';
-  if (['failed', 'error', 'expired', 'canceled', 'unhealthy', 'unavailable', 'rejected', 'void'].includes(s))
+  if (
+    [
+      'failed',
+      'error',
+      'expired',
+      'canceled',
+      'unhealthy',
+      'unavailable',
+      'rejected',
+      'void',
+      'provisioning failed',
+    ].includes(s)
+  )
     return 'bad';
   if (
     ['pending', 'provisioning', 'retrying', 'building', 'deploying', 'starting', 'trialing', 'past_due', 'open'].includes(

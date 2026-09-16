@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { timeAgo } from '../lib/format';
 import { IconArrowRight } from './icons';
 import { statusTone } from './ui';
+import { databaseState, type ProvisionJobLike } from '../lib/dbstate';
 
 export interface ProjectRow {
   id: string;
@@ -15,6 +16,8 @@ export interface ProjectRow {
   updatedAt?: string;
   createdAt?: string;
   database: { status: string; health?: string } | null;
+  /** Present only when there is no database: why it is missing. */
+  provisionJob?: ProvisionJobLike | null;
 }
 
 /**
@@ -44,7 +47,7 @@ export function ProjectTable({ projects }: { projects: ProjectRow[] }): React.JS
         </thead>
         <tbody>
           {projects.map(p => {
-            const status = p.database?.status ?? 'provisioning';
+            const status = databaseState(p.database, p.provisionJob).label;
             const health = p.database?.health ?? 'unknown';
             const stamped = p.updatedAt ?? p.createdAt;
             return (

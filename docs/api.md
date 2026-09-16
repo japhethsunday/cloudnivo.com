@@ -45,6 +45,7 @@ redacted), `502` infrastructure operation failure (detail logged, not returned),
 | `GET`    | `/api/v1/projects/:id/database`            | Bearer | overview with REAL live status/health                    |
 | `GET`    | `/api/v1/projects/:id/database/connection` | Bearer | masked by default; `?reveal=true` audited full access    |
 | `POST`   | `/api/v1/projects/:id/database/actions`    | Bearer | `{ action: start\|stop\|restart }`                       |
+| `POST`   | `/api/v1/projects/:id/database/provision`  | Bearer | re-run provisioning after a failed attempt → `202 { jobId }`; `409` if a database already exists |
 | `GET`    | `/api/v1/projects/:id/database/schema`     | Bearer | tables, columns, PKs, FKs, indexes                       |
 | `POST`   | `/api/v1/projects/:id/database/query`      | Bearer | guarded single-statement SQL + duration                  |
 | `GET`    | `/api/v1/projects/:id/database/metrics`    | Bearer | version, size, connection count                          |

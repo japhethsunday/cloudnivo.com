@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { formatBytes, timeAgo } from '../../../lib/format';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../../../components/States';
-import { Badge, statusTone } from '../../../components/ui';
+import { Badge, statusTone, useToast } from '../../../components/ui';
+import { databaseState, type ProvisionJobLike } from '../../../lib/dbstate';
 
 interface Job {
   id: string;
@@ -39,7 +40,10 @@ export default function ProjectOverviewPage({
   params: Promise<{ id: string }>;
 }): React.JSX.Element {
   const { id } = use(params);
+  const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
+  const [provisionJob, setProvisionJob] = useState<ProvisionJobLike | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [counts, setCounts] = useState<{
     keys: number;
@@ -54,7 +58,7 @@ export default function ProjectOverviewPage({
 
   const load = useCallback(async () => {
     const [p, j, k, s, b, f, u, r] = await Promise.all([
-      apiFetch<{ project: Project }>(`/api/v1/projects/${id}`),
+      apiFetch<{ project: Project; job: ProvisionJobLike | null }>(`/api/v1/projects/${id}`),
       apiFetch<{ jobs: Job[] }>(`/api/v1/projects/${id}/jobs`),
       apiFetch<{ keys: unknown[] }>(`/api/v1/projects/${id}/keys`),
       apiFetch<{ tables: { name: string }[] }>(`/api/v1/projects/${id}/database/schema`),
@@ -65,7 +69,10 @@ export default function ProjectOverviewPage({
     ]);
     if (!j.ok) setError(j.error ?? 'Could not load project activity');
     else setJobs(j.data?.jobs ?? []);
-    if (p.ok && p.data) setProject(p.data.project);
+    if (p.ok && p.data) {
+      setProject(p.data.project);
+      setProvisionJob(p.data.job ?? null);
+    }
     setCounts({
       keys: k.ok && k.data ? k.data.keys.length : 0,
       tables: s.ok && s.data ? s.data.tables.length : 0,
@@ -93,8 +100,21 @@ export default function ProjectOverviewPage({
 
   const recent = jobs.slice(0, 5);
   const failed = jobs.filter(j => j.status === 'failed').length;
-  const dbStatus = project?.database?.status ?? 'provisioning';
+  const dbState = databaseState(project?.database, provisionJob);
+  const dbStatus = dbState.label;
   const dbHealth = project?.database?.health ?? 'unknown';
+
+  async function provision(): Promise<void> {
+    setRetrying(true);
+    const r = await apiFetch(`/api/v1/projects/${id}/database/provision`, { method: 'POST' });
+    setRetrying(false);
+    if (!r.ok) {
+      toast(r.error ?? 'Could not start provisioning', 'bad');
+      return;
+    }
+    toast('Provisioning started', 'ok');
+    void load();
+  }
 
   const systems: {
     name: string;
@@ -105,9 +125,11 @@ export default function ProjectOverviewPage({
   }[] = [
     {
       name: 'Database',
-      tone: statusTone(dbHealth),
+      tone: project?.database ? statusTone(dbHealth) : dbState.pending ? 'warn' : 'bad',
       state: dbStatus,
-      reading: `PostgreSQL · health ${dbHealth}`,
+      reading: project?.database
+        ? `PostgreSQL · health ${dbHealth}`
+        : (dbState.error ?? 'No database record for this project'),
       href: `/projects/${id}/database`,
     },
     {
@@ -149,6 +171,28 @@ export default function ProjectOverviewPage({
 
   return (
     <div className="board">
+      {dbState.actionable ? (
+        <div className="card alarm" role="alert">
+          <div className="section-head split">
+            <div>
+              <h2>Database {dbState.label}</h2>
+              <p style={{ margin: '4px 0 0' }}>
+                {dbState.error ??
+                  'This project has no database yet. Provisioning never completed.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={retrying}
+              onClick={() => void provision()}
+            >
+              {retrying ? 'Starting…' : 'Provision database'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {failed > 0 ? (
         <div className="card alarm" role="alert">
           <div className="section-head split">
@@ -180,7 +224,7 @@ export default function ProjectOverviewPage({
             {systems.map(sys => (
               <li
                 className={`health-row state-row state-${sys.tone}${
-                  sys.name === 'Database' && dbStatus === 'provisioning' ? ' state-working' : ''
+                  sys.name === 'Database' && dbState.pending ? ' state-working' : ''
                 }`}
                 key={sys.name}
               >

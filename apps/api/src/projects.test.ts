@@ -254,3 +254,60 @@ describe('phase 2 provisioning API (fake provider)', () => {
     expect((await api(base, 'GET', `/api/v1/projects/${projectId}`, tokenA)).status).toBe(404);
   });
 });
+
+describe('database provision retry', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let tokenA = '';
+  let orgA = '';
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    tokenA = await tokenFor(USER_A);
+    const org = await api(base, 'POST', '/api/v1/organizations', tokenA, {
+      name: 'Org R',
+      slug: 'org-r',
+    });
+    orgA = data<{ organization: { id: string } }>(org.json).organization.id;
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('refuses to re-provision a project that already has a database', async () => {
+    const created = await api(base, 'POST', '/api/v1/projects', tokenA, {
+      name: 'Live',
+      slug: 'live',
+      organizationId: orgA,
+    });
+    const body = data<{ project: { id: string }; jobId: string }>(created.json);
+    await pollJob(base, tokenA, body.project.id, body.jobId);
+    const again = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${body.project.id}/database/provision`,
+      tokenA,
+    );
+    // Never clobber a live database: the retry path exists for the dead case.
+    expect(again.status).toBe(409);
+  });
+
+  it('is rejected for a project the caller does not own', async () => {
+    const created = await api(base, 'POST', '/api/v1/projects', tokenA, {
+      name: 'Mine',
+      slug: 'mine',
+      organizationId: orgA,
+    });
+    const body = data<{ project: { id: string } }>(created.json);
+    const tokenB = await tokenFor(USER_B);
+    const r = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${body.project.id}/database/provision`,
+      tokenB,
+    );
+    expect([403, 404]).toContain(r.status);
+  });
+});

@@ -463,7 +463,20 @@ export async function handleProjectRoutes(
       projects.map(async p => {
         const entry = byProject.get(p.id);
         const db = entry?.db ?? null;
-        if (!db) return { ...p, database: null };
+        if (!db) {
+          // No database row means provisioning never finished. Send the last
+          // provision job with it, so the console can say whether it is still
+          // running or failed instead of showing "provisioning" forever.
+          const jobs = await ctx.jobs.listByProject(p.id);
+          const last = jobs.filter(j => j.kind === 'provision').at(-1) ?? null;
+          return {
+            ...p,
+            database: null,
+            provisionJob: last
+              ? { id: last.id, status: last.status, lastError: last.lastError }
+              : null,
+          };
+        }
         try {
           const cred = entry?.cred ?? null;
           const live = cred
@@ -632,6 +645,80 @@ export async function handleProjectRoutes(
 
     if (rest[0] !== 'database') return false;
     const db = await ctx.registry.getDatabaseByProject(project.id);
+
+    // POST /:id/database/provision — re-run provisioning for a project whose
+    // first attempt failed. Without this a failed provision is a dead end:
+    // the row never appears, every other /database route 404s, and the
+    // console has nothing to show but "provisioning" forever. Runs only when
+    // there is no database record, so it can never clobber a live one.
+    if (rest.length === 2 && rest[1] === 'provision' && req.method === 'POST') {
+      if (db) throw new ApiError('CONFLICT', 'Database is already provisioned', 409);
+      if (agent) {
+        await gate({
+          scope: 'projects.update',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'database.provision',
+        });
+      }
+      const password = generateDbPassword();
+      const job = await ctx.jobs.create({
+        projectId: project.id,
+        organizationId: project.organizationId,
+        kind: 'provision',
+        status: 'pending',
+        idempotencyKey: `reprovision:${project.id}:${Date.now()}`,
+        attempts: 0,
+        maxAttempts: config.PROVISION_MAX_ATTEMPTS,
+        lastError: null,
+        logs: [],
+      });
+      void (async () => {
+        try {
+          const result = await provisionProjectDatabase(
+            ctx.provider,
+            ctx.jobs,
+            ctx.audit,
+            {
+              projectId: project.id,
+              organizationId: project.organizationId,
+              userId: session.sub,
+              slug: project.slug,
+              password,
+              version: '16',
+              region: project.region,
+              idempotencyKey: `reprovision:${project.id}`,
+            },
+            {
+              maxAttempts: config.PROVISION_MAX_ATTEMPTS,
+              sleep: () => Promise.resolve(),
+              resumeJobId: job.id,
+            },
+          );
+          if (result.database) {
+            await ctx.registry.saveDatabase({
+              projectId: project.id,
+              organizationId: project.organizationId,
+              databaseId: result.database.databaseId,
+              host: result.database.host,
+              port: result.database.port,
+              dbName: result.database.dbName,
+              dbUser: result.database.dbUser,
+              version: result.database.version,
+              region: project.region,
+              status: 'ready',
+            });
+            await ctx.registry.saveCredential(project.id, result.database.dbUser, password);
+          }
+        } catch {
+          // The job row and audit trail already carry the failure.
+        }
+      })();
+      auditSuccess('database.provision', project.organizationId, project.id, 'provision');
+      sendJson(res, 202, ok({ jobId: job.id }, requestId), baseHeaders);
+      return true;
+    }
+
     if (!db) throw new ApiError('NOT_FOUND', 'Database not provisioned yet', 404);
 
     // Database power-tools (extensions, advisors, types, diff, restore,

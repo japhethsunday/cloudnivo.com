@@ -9,6 +9,7 @@ import { RequireAuth } from '../../../components/RequireAuth';
 import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, Breadcrumbs, CopyField, Menu, statusTone } from '../../../components/ui';
+import { databaseState, type ProvisionJobLike } from '../../../lib/dbstate';
 import { IconChevronDown, IconSettings } from '../../../components/icons';
 
 interface Project {
@@ -69,6 +70,7 @@ export default function ProjectLayout({
 function Workspace({ id, children }: { id: string; children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();
   const [project, setProject] = useState<Project | null>(null);
+  const [job, setJob] = useState<ProvisionJobLike | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hash, setHash] = useState('');
 
@@ -80,10 +82,13 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
   }, []);
 
   const load = useCallback(async () => {
-    const r = await apiFetch<{ project: Project }>(`/api/v1/projects/${id}`);
+    const r = await apiFetch<{ project: Project; job: ProvisionJobLike | null }>(
+      `/api/v1/projects/${id}`,
+    );
     if (!r.ok) setError(r.error ?? 'Project not found');
     else if (r.data) {
       setProject(r.data.project);
+      setJob(r.data.job ?? null);
       setSelectedProject(r.data.project.id);
     }
   }, [id]);
@@ -103,7 +108,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
     MORE_TABS.find(
       t => pathname === `${base}${t.href}` || pathname.startsWith(`${base}${t.href}/`),
     ) ?? null;
-  const status = project.database?.status ?? 'provisioning';
+  const status = databaseState(project.database, job).label;
   const health = project.database?.health ?? 'unknown';
   const healthLabel =
     health === 'healthy' ? 'Healthy' : health === 'unknown' ? 'Health unknown' : health;
