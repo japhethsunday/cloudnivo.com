@@ -3338,3 +3338,117 @@ summary code,
   text-align: right;
   font-size: 12.5px;
 }
+
+/* ── Gauge strip ───────────────────────────────────────── */
+/* Readouts belong on one instrument face, not on separate floating cards:
+   a single bordered strip, cells divided by hairlines, values in tabular
+   figures so a row of numbers aligns down the column. */
+.stat-grid {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.stat {
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 12px 14px;
+}
+.stat:last-child {
+  border-right: 0;
+}
+.stat .k {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.stat .v {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.stat:hover {
+  background: var(--bg-muted);
+  transform: none;
+}
+@media (max-width: 720px) {
+  .stat {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat:last-child {
+    border-bottom: 0;
+  }
+}
+
+/* ── Section rail (in-page tabs) ───────────────────────── */
+/* Same instrument grammar as the project rail, one level quieter. */
+.subtabs {
+  gap: 0;
+  padding: 0 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+.subtabs button {
+  font-size: 12.5px;
+  padding: 7px 11px;
+}
+
+/* ── State bands on rows ───────────────────────────────── */
+/* The board's rule reaches the tables and the feed: a row states its
+   subject's condition on its own edge, not only in a badge. */
+.table tbody tr {
+  border-left: 3px solid transparent;
+}
+.table tbody tr:has(.dot.ok) {
+  border-left-color: var(--success);
+}
+.table tbody tr:has(.dot.warn) {
+  border-left-color: var(--warning);
+}
+.table tbody tr:has(.dot.bad) {
+  border-left-color: var(--danger);
+}
+.table tbody tr:has(.dot.muted) {
+  border-left-color: var(--border-strong);
+}
+.feed-item {
+  padding-left: 10px;
+  border-left: 3px solid transparent;
+}
+.feed-item:has(.badge.ok) {
+  border-left-color: var(--success);
+}
+.feed-item:has(.badge.warn) {
+  border-left-color: var(--warning);
+}
+.feed-item:has(.badge.bad) {
+  border-left-color: var(--danger);
+}
+
+/* ── Page heading ──────────────────────────────────────── */
+/* Identity lives in the strip above, so a page heading introduces its
+   section without competing with the board. */
+.main > div > .section-head:first-child h2,
+.main > section > .section-head:first-child h2 {
+  font-size: 15px;
+}
+
+/* Cells share the face equally; auto-fill left the last readout stretched
+   across the leftover track, which made one gauge look twice as important
+   as its neighbours. */
+.stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+/* An empty panel states the absence and stops; it does not reserve a
+   screenful for content that is not there. */
+.card > .empty {
+  padding: 24px 16px;
+}
