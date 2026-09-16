@@ -17,7 +17,15 @@ const inter = Inter({ subsets: ['latin'], display: 'swap' });
  */
 export const dynamic = 'force-dynamic';
 
+/**
+ * `metadataBase` is the canonical production origin: Next resolves every
+ * relative metadata URL (canonical links, Open Graph, Twitter images) against
+ * it. The apex is canonical — cloudnivo.org, not www — so a page that later
+ * declares `alternates.canonical` or an OG image resolves to one host instead
+ * of whichever one the visitor happened to arrive on.
+ */
 export const metadata: Metadata = {
+  metadataBase: new URL('https://cloudnivo.org'),
   title: 'CloudNivo — Backend as a Service',
   description: 'Developer-focused control plane for projects, auth, storage, and APIs.',
   icons: { icon: '/icon.svg' },

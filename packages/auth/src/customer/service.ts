@@ -81,9 +81,21 @@ export class CustomerAuthService {
     this.deps.audit(event, fields);
   }
 
+  /**
+   * The console's canonical origin, without a trailing slash.
+   *
+   * Only the email branding normalised APP_URL; the verify, reset and
+   * magic-link builders used it raw, so an APP_URL ending in "/" produced
+   * links like `https://cloudnivo.org//verify?token=…`. One accessor, used
+   * everywhere a link is built.
+   */
+  private get appOrigin(): string {
+    return this.deps.appUrl.replace(/\/+$/, '');
+  }
+
   /** Branding for transactional emails (logo + real product links). */
   private brand(): { appUrl: string; logoUrl: string } {
-    const appUrl = this.deps.appUrl.replace(/\/$/, '');
+    const appUrl = this.appOrigin;
     return { appUrl, logoUrl: `${appUrl}/icon.svg` };
   }
 
@@ -189,7 +201,7 @@ export class CustomerAuthService {
     });
     await this.deps.email.sendVerificationEmail(
       email,
-      `${this.deps.appUrl}/verify?token=${raw}&project=${projectId}`,
+      `${this.appOrigin}/verify?token=${raw}&project=${projectId}`,
       this.brand(),
     );
     this.audit('user.signup', { projectId, userId: user.id });
@@ -396,7 +408,7 @@ export class CustomerAuthService {
       });
       await this.deps.email.sendPasswordResetEmail(
         user.email,
-        `${this.deps.appUrl}/reset?token=${raw}&project=${projectId}`,
+        `${this.appOrigin}/reset?token=${raw}&project=${projectId}`,
         this.brand(),
       );
     }
@@ -523,7 +535,7 @@ export class CustomerAuthService {
     });
     await this.deps.email.sendVerificationEmail(
       email,
-      `${this.deps.appUrl}/verify?token=${raw}&project=${projectId}`,
+      `${this.appOrigin}/verify?token=${raw}&project=${projectId}`,
       this.brand(),
     );
     this.audit('user.converted', { projectId, userId: user.id });
@@ -610,7 +622,7 @@ export class CustomerAuthService {
     });
     await this.deps.email.sendMagicLink(
       normalized,
-      `${this.deps.appUrl}/magic?token=${raw}&project=${projectId}`,
+      `${this.appOrigin}/magic?token=${raw}&project=${projectId}`,
       this.brand(),
     );
     this.audit('user.magic_requested', { projectId });

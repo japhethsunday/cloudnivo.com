@@ -27,7 +27,14 @@ service). Attach Postgres + Redis plugins once; reference
   `.env.staging.example`, `.env.production.example`.
 - Only `NEXT_PUBLIC_API_URL` is browser-safe. Everything else stays in
   Railway/Vercel environment config — never git, logs, or responses.
-- `CORS_ORIGINS` must list the exact dashboard origin (no wildcards).
+- `CORS_ORIGINS` must list the exact dashboard origin (no wildcards). In
+  production that is the canonical apex `https://cloudnivo.org`, plus
+  `https://www.cloudnivo.org` for as long as the edge redirects apex → www.
+- `APP_URL` is the canonical console origin (`https://cloudnivo.org`). Every
+  link the backend generates — email verification, password reset, billing —
+  is built from it, and the session cookie's `Secure` flag is set when it is
+  `https`. Point it at the host you want users to land on, not a redirecting
+  alias.
 - Tokens (`RAILWAY_TOKEN`, `VERCEL_TOKEN`) live in GitHub secrets only.
   There is no token in this repo; automation degrades to clear errors
   without them.
