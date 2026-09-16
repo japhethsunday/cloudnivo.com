@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-16T00:00:00.000Z",
+  "title": "Design System: CloudNivo Console",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Instrument Ground",
+        "canonical": "#0e1930",
+        "lightScene": "#eef2f8",
+        "tonalRamp": ["#05090f", "#080e1a", "#0b1424", "#0e1930", "#1b2c4c", "#2b4372", "#5f7aae", "#c3cfe5"]
+      },
+      "ground-muted": {
+        "role": "neutral",
+        "displayName": "Strip Ground",
+        "canonical": "#0b1527",
+        "lightScene": "#e7edf5",
+        "tonalRamp": ["#040810", "#070f1d", "#0b1527", "#111f3a", "#1a2f56", "#294878", "#5b78ad", "#c0cee6"]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#0c1729",
+        "lightScene": "#f3f6fb",
+        "tonalRamp": ["#04080f", "#08101d", "#0c1729", "#12223c", "#1c3358", "#2c4d7c", "#5e7cb0", "#c2d0e7"]
+      },
+      "inset": {
+        "role": "neutral",
+        "displayName": "Inset",
+        "canonical": "#081120",
+        "lightScene": "#e2e9f2",
+        "tonalRamp": ["#030610", "#060c18", "#081120", "#0e1c33", "#162a4c", "#234070", "#5573a8", "#bdcce4"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#1c2738",
+        "lightScene": "#dbe3ee",
+        "tonalRamp": ["#0a0f16", "#121a25", "#1c2738", "#26344a", "#33465f", "#4a6183", "#7e93b3", "#cfd9e8"]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "#2f3e56",
+        "lightScene": "#b9c6d8",
+        "tonalRamp": ["#0d1119", "#1a2231", "#253144", "#2f3e56", "#3e5273", "#587096", "#8b9dbb", "#d3dbe9"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Primary Ink",
+        "canonical": "#e9eef7",
+        "lightScene": "#0c1624",
+        "tonalRamp": ["#1b2432", "#2c3a4d", "#3f4d62", "#5c6c85", "#8b99ae", "#b6c1d2", "#e9eef7", "#f8fafd"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#9aa8bd",
+        "lightScene": "#4c5766",
+        "tonalRamp": ["#171d26", "#26303e", "#374558", "#4c5c74", "#687a94", "#8593ab", "#9aa8bd", "#d5dde8"]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Faint Ink",
+        "canonical": "#7d8ba3",
+        "lightScene": "#5d6776",
+        "tonalRamp": ["#13181f", "#202833", "#2f3a49", "#425065", "#5a6a83", "#7d8ba3", "#a3aec1", "#d8dee8"]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#4d8dff",
+        "lightScene": "#1f5fd0",
+        "tonalRamp": ["#08172f", "#0f2a56", "#163f80", "#1d54aa", "#2a6ed6", "#4d8dff", "#8fb6ff", "#d6e4ff"]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Blue Field",
+        "canonical": "#15254a",
+        "lightScene": "#dde9fc",
+        "tonalRamp": ["#070c18", "#0d1730", "#15254a", "#1d3568", "#274890", "#3762bd", "#6f93df", "#c9dbf7"]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Blue Ink",
+        "canonical": "#a6c6ff",
+        "lightScene": "#1544a8",
+        "tonalRamp": ["#0b1c3a", "#123061", "#194589", "#215bb2", "#3b78d6", "#6a9bee", "#a6c6ff", "#e0ebff"]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Live Green",
+        "canonical": "#35c88a",
+        "lightScene": "#12885f",
+        "tonalRamp": ["#04180f", "#07301f", "#0b4a30", "#0f6442", "#188a5d", "#25a872", "#35c88a", "#a9ebd0"]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Attention Amber",
+        "canonical": "#f2b544",
+        "lightScene": "#a65a09",
+        "tonalRamp": ["#1e1403", "#3a2707", "#573b0b", "#75500f", "#a1701a", "#cc9029", "#f2b544", "#fbe4b4"]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Alarm Coral",
+        "canonical": "#fa7268",
+        "lightScene": "#c02f26",
+        "tonalRamp": ["#220908", "#3f100e", "#5d1a16", "#7d2620", "#a8372f", "#d24f45", "#fa7268", "#ffcfca"]
+      },
+      "info": {
+        "role": "tertiary",
+        "displayName": "Notice Blue",
+        "canonical": "#45a5f5",
+        "lightScene": "#0e6bb0",
+        "tonalRamp": ["#04141f", "#07263c", "#0a3a5c", "#0d4f7d", "#166fac", "#2a8ed4", "#45a5f5", "#bfe0fc"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The single large scoreboard figure (security posture score). Nothing else uses it." },
+      "headline": { "displayName": "Headline", "purpose": "Page heading and workspace strip title." },
+      "title": { "displayName": "Title", "purpose": "Panel and section headings, empty-state titles, modal titles." },
+      "body": { "displayName": "Body", "purpose": "All prose, capped at 72-78ch." },
+      "control": { "displayName": "Control", "purpose": "Buttons, nav, tabs, table cells, rows, menus - the console's working size." },
+      "channel-label": { "displayName": "Channel Label", "purpose": "Uppercase panel chrome naming a channel. Never a kicker above a heading." },
+      "reading": { "displayName": "Reading", "purpose": "Every backend-read value: state words, IDs, regions, timestamps, counts." },
+      "gauge-key": { "displayName": "Gauge Key", "purpose": "The mono uppercase key above a readout value in the gauge strip." }
+    },
+    "shadows": [
+      { "name": "resting", "value": "none", "purpose": "The resting state of every panel, stat, badge, row and strip. Depth is hairline and tonal step." },
+      { "name": "overlay", "value": "0 8px 28px -12px rgb(0 0 0 / 0.7)", "purpose": "Dropdown menus, toasts, mobile nav drawer. Light scene: 0 8px 24px -14px rgb(12 22 36 / 0.3)." },
+      { "name": "overlay-deep", "value": "0 20px 56px -18px rgb(0 0 0 / 0.78)", "purpose": "Modals, command palette, notification panel. Light scene: 0 18px 48px -20px rgb(12 22 36 / 0.34)." }
+    ],
+    "motion": [
+      { "name": "state", "value": "0.1s ease", "purpose": "Row, nav and menu background/border state changes." },
+      { "name": "control", "value": "0.12s ease", "purpose": "Buttons, inputs, tabs, icon buttons - colour, border and shadow." },
+      { "name": "surface", "value": "0.14s ease", "purpose": "Panel border-colour on hover; the only hover response a panel gives." },
+      { "name": "overlay-in", "value": "0.14s-0.16s ease", "purpose": "Modal, palette and toast entry (fade, or rise-and-settle from 8-10px)." },
+      { "name": "page-in", "value": "0.18s ease", "purpose": "Section entry: 4px rise with fade." },
+      { "name": "fill", "value": "0.4s ease", "purpose": "Meter bar width." },
+      { "name": "pulse", "value": "1.4s-1.6s ease-in-out infinite", "purpose": "Provisioning dot and active step marker, opacity 1 to 0.35." },
+      { "name": "edge-pulse", "value": "2.4s ease-in-out infinite", "purpose": "Working-row left edge between accent and 35% accent. Stopped under prefers-reduced-motion." },
+      { "name": "reduced", "value": "0.01ms", "purpose": "Global prefers-reduced-motion clamp on every animation and transition." }
+    ],
+    "breakpoints": [
+      { "name": "board", "value": "1080px" },
+      { "name": "overview", "value": "980px" },
+      { "name": "shell", "value": "900px" },
+      { "name": "gauge", "value": "720px" },
+      { "name": "account", "value": "700px" },
+      { "name": "compact", "value": "640px" },
+      { "name": "narrow", "value": "560px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled control on a strip or panel header; the action the operator came for.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Connect</button>",
+      "css": ".ds-btn { appearance: none; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border-strong, #2f3e56); background: var(--bg-elevated, #0c1729); color: var(--text, #e9eef7); border-radius: 6px; padding: 7px 13px; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); font-size: 13.5px; font-weight: 500; line-height: 1.45; letter-spacing: -0.004em; cursor: pointer; transition: background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease, transform .06s ease; } .ds-btn:active { transform: translateY(1px); } .ds-btn-primary { background: var(--accent, #4d8dff); border-color: var(--accent, #4d8dff); color: var(--accent-contrast, #05101f); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .4), 0 0 0 1px rgb(126 166 255 / .25), 0 4px 16px -4px rgb(77 141 255 / .45); } .ds-btn-primary:hover { background: var(--accent-hover, #6fa3ff); border-color: var(--accent-hover, #6fa3ff); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent, #4d8dff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The console's ordinary control: panel ground, strong hairline, no fill.",
+      "html": "<button class=\"ds-btn2\">Try again</button>",
+      "css": ".ds-btn2 { appearance: none; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong, #2f3e56); background: var(--bg-elevated, #0c1729); color: var(--text, #e9eef7); border-radius: 6px; padding: 7px 13px; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); font-size: 13.5px; font-weight: 500; letter-spacing: -0.004em; cursor: pointer; transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, transform .06s ease; } .ds-btn2:hover { background: var(--bg-muted, #0b1527); } .ds-btn2:active { transform: translateY(1px); } .ds-btn2:focus-visible { outline: 2px solid var(--accent, #4d8dff); outline-offset: 2px; } .ds-btn2:disabled { opacity: .55; cursor: not-allowed; transform: none; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Panel-ground field with a strong hairline; focus raises an accent ring, never a shadow.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Project name</span><input class=\"ds-input\" type=\"text\" placeholder=\"acme-prod\" /><span class=\"ds-field-hint\">Lowercase, hyphen separated.</span></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 5px; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); } .ds-field-label { font-size: 13px; font-weight: 500; letter-spacing: -0.004em; color: var(--text, #e9eef7); } .ds-field-hint { font-size: 12px; color: var(--text-muted, #9aa8bd); } .ds-input { font: inherit; font-size: 14px; color: var(--text, #e9eef7); background: var(--bg-elevated, #0c1729); border: 1px solid var(--border-strong, #2f3e56); border-radius: 6px; padding: 7px 10px; width: 100%; transition: border-color .12s ease, box-shadow .12s ease; } .ds-input::placeholder { color: var(--text-faint, #7d8ba3); } .ds-input:focus { outline: none; border-color: var(--accent, #4d8dff); box-shadow: 0 0 0 3px rgb(77 141 255 / .22); }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-ok",
+      "description": "A machine value reported in mono lowercase on its hue's soft field.",
+      "html": "<span class=\"ds-badge ds-badge-ok\">running</span> <span class=\"ds-badge ds-badge-warn\">provisioning</span> <span class=\"ds-badge ds-badge-bad\">failed</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 11.5px; font-weight: 500; line-height: 1.5; letter-spacing: .01em; text-transform: lowercase; padding: 2px 8px; border-radius: 3px; border: 1px solid rgb(255 255 255 / .06); background: var(--bg-muted, #0b1527); color: var(--text-muted, #9aa8bd); white-space: nowrap; } .ds-badge-ok { background: var(--success-soft, #0c2b21); color: var(--success-ink, #4ed6a0); } .ds-badge-warn { background: var(--warning-soft, #33260d); color: var(--warning-ink, #f8c766); } .ds-badge-bad { background: var(--danger-soft, #38191a); color: var(--danger-ink, #ff8f86); }"
+    },
+    {
+      "name": "Instrument Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A card cut from the ground by a hairline, with a channel-label header band bleeding to its edges.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-head\"><h2>System state</h2></div><p class=\"ds-panel-body\">Every primitive in this project, with its real state.</p></div>",
+      "css": ".ds-panel { position: relative; background: var(--bg-elevated, #0c1729); border: 1px solid var(--border, #1c2738); border-radius: 4px; padding: 14px 16px 16px; box-shadow: none; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); color: var(--text, #e9eef7); transition: border-color .14s ease; } .ds-panel:hover { border-color: var(--border-strong, #2f3e56); } .ds-panel-head { margin: -14px -16px 14px; padding: 10px 16px; border-bottom: 1px solid var(--border, #1c2738); background: var(--bg-muted, #0b1527); border-radius: 4px 4px 0 0; } .ds-panel-head h2 { margin: 0; font-size: 11.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--text-muted, #9aa8bd); } .ds-panel-body { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text-muted, #9aa8bd); }"
+    },
+    {
+      "name": "Alarm Panel",
+      "kind": "card",
+      "refersTo": "panel-alarm",
+      "description": "A panel whose subject is failing wears the alarm on its whole edge and header band.",
+      "html": "<div class=\"ds-panel ds-panel-alarm\" role=\"alert\"><div class=\"ds-panel-head\"><h2>Needs attention</h2></div><p class=\"ds-panel-body\">Database provisioning failed.</p></div>",
+      "css": ".ds-panel-alarm { border-color: var(--danger, #fa7268); border-left-width: 3px; background: color-mix(in srgb, var(--danger, #fa7268) 7%, var(--bg-elevated, #0c1729)); } .ds-panel-alarm .ds-panel-head { background: color-mix(in srgb, var(--danger, #fa7268) 12%, transparent); border-bottom-color: var(--danger, #fa7268); }"
+    },
+    {
+      "name": "State Row",
+      "kind": "custom",
+      "refersTo": "state-row",
+      "description": "The system's core device: a row states its subject's condition on its own 3px edge, with the state spelled out in mono at a fixed column.",
+      "html": "<ul class=\"ds-health\"><li class=\"ds-row ds-row-ok\"><span class=\"ds-grow\"><span class=\"ds-name\">Database</span><div class=\"ds-detail\">postgres 16 · eu-west-1</div></span><span class=\"ds-state ds-state-ok\">running</span></li><li class=\"ds-row ds-row-working\"><span class=\"ds-grow\"><span class=\"ds-name\">Functions</span><div class=\"ds-detail\">3 deploying</div></span><span class=\"ds-state\">deploying</span></li><li class=\"ds-row ds-row-bad\"><span class=\"ds-grow\"><span class=\"ds-name\">Realtime</span><div class=\"ds-detail\">last read 2m ago</div></span><span class=\"ds-state ds-state-bad\">unavailable</span></li></ul>",
+      "css": ".ds-health { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); } .ds-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 10px; border-bottom: 1px solid var(--border, #1c2738); border-left: 3px solid transparent; font-size: 13.5px; color: var(--text, #e9eef7); transition: background-color .1s ease, border-color .1s ease; } .ds-row:last-child { border-bottom: none; } .ds-grow { flex: 1; min-width: 0; } .ds-name { font-weight: 550; letter-spacing: -0.008em; } .ds-detail { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 11.5px; letter-spacing: .005em; color: var(--text-faint, #7d8ba3); font-variant-numeric: tabular-nums; } .ds-state { flex: none; min-width: 96px; text-align: right; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 11.5px; letter-spacing: .02em; text-transform: lowercase; color: var(--text-muted, #9aa8bd); } .ds-state-ok { color: var(--success-ink, #4ed6a0); } .ds-state-bad { color: var(--danger-ink, #ff8f86); } .ds-row-ok { border-left-color: var(--success, #35c88a); } .ds-row-bad { border-left-color: var(--danger, #fa7268); background: color-mix(in srgb, var(--danger, #fa7268) 9%, transparent); } .ds-row-working { border-left-color: var(--accent, #4d8dff); animation: ds-edge-pulse 2.4s ease-in-out infinite; } @keyframes ds-edge-pulse { 0%, 100% { border-left-color: var(--accent, #4d8dff); } 50% { border-left-color: color-mix(in srgb, var(--accent, #4d8dff) 35%, transparent); } } @media (prefers-reduced-motion: reduce) { .ds-row-working { animation: none; } }"
+    },
+    {
+      "name": "Gauge Strip",
+      "kind": "custom",
+      "refersTo": "gauge-cell",
+      "description": "Readouts share one instrument face divided by hairlines, values in tabular figures.",
+      "html": "<div class=\"ds-gauges\"><div class=\"ds-gauge\"><div class=\"ds-gauge-k\">Requests 24h</div><div class=\"ds-gauge-v\">18,402</div></div><div class=\"ds-gauge\"><div class=\"ds-gauge-k\">p95 latency</div><div class=\"ds-gauge-v\">84 ms</div></div><div class=\"ds-gauge\"><div class=\"ds-gauge-k\">Storage</div><div class=\"ds-gauge-v\">2.1 GB</div></div></div>",
+      "css": ".ds-gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; border: 1px solid var(--border, #1c2738); border-radius: 4px; background: var(--bg-elevated, #0c1729); overflow: hidden; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); } .ds-gauge { padding: 12px 14px; border-right: 1px solid var(--border, #1c2738); transition: background .12s ease; } .ds-gauge:last-child { border-right: 0; } .ds-gauge:hover { background: var(--bg-muted, #0b1527); } .ds-gauge-k { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint, #7d8ba3); } .ds-gauge-v { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; color: var(--text, #e9eef7); font-variant-numeric: tabular-nums; } @media (max-width: 720px) { .ds-gauge { border-right: 0; border-bottom: 1px solid var(--border, #1c2738); } .ds-gauge:last-child { border-bottom: 0; } }"
+    },
+    {
+      "name": "Section Rail",
+      "kind": "nav",
+      "refersTo": "section-rail-tab",
+      "description": "Underline tabs on a panel-ground strip, welded to the status strip above it.",
+      "html": "<nav class=\"ds-rail\" aria-label=\"Project sections\"><a href=\"#\" aria-current=\"page\">Overview</a><a href=\"#\">Database</a><a href=\"#\">Auth</a><a href=\"#\">Storage</a><a href=\"#\">Logs</a></nav>",
+      "css": ".ds-rail { display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--bg-elevated, #0c1729); border: 1px solid var(--border, #1c2738); border-radius: 0 0 4px 4px; overflow-x: auto; scrollbar-width: none; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); } .ds-rail::-webkit-scrollbar { display: none; } .ds-rail a { padding: 8px 10px; font-size: 13px; font-weight: 500; letter-spacing: -0.004em; color: var(--text-muted, #9aa8bd); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color .12s ease, border-color .12s ease; } .ds-rail a:hover { color: var(--text, #e9eef7); background: var(--bg-muted, #0b1527); } .ds-rail a[aria-current='page'] { color: var(--text, #e9eef7); border-bottom-color: var(--accent, #4d8dff); font-weight: 600; } .ds-rail a:focus-visible { outline: 2px solid var(--accent, #4d8dff); outline-offset: -2px; }"
+    },
+    {
+      "name": "Status Strip",
+      "kind": "custom",
+      "refersTo": "status-strip",
+      "description": "The project header: identity, live state and the primary action in one dense band, welded to the rail beneath it.",
+      "html": "<div class=\"ds-strip\"><div><h1 class=\"ds-strip-title\">acme-prod</h1><div class=\"ds-strip-meta\">prj_8f2a41 · eu-west-1 · <span class=\"ds-strip-state\">healthy</span></div></div><div class=\"ds-strip-actions\"><button class=\"ds-strip-btn\">Connect</button></div></div>",
+      "css": ".ds-strip { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg-elevated, #0c1729); border: 1px solid var(--border, #1c2738); border-bottom: 0; border-radius: 4px 4px 0 0; font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif); } .ds-strip-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; color: var(--text, #e9eef7); } .ds-strip-meta { margin-top: 4px; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; letter-spacing: .01em; color: var(--text-faint, #7d8ba3); } .ds-strip-state { color: var(--success-ink, #4ed6a0); text-transform: lowercase; } .ds-strip-actions { display: flex; align-items: center; gap: 8px; } .ds-strip-btn { appearance: none; background: var(--accent, #4d8dff); border: 1px solid var(--accent, #4d8dff); color: var(--accent-contrast, #05101f); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .12s ease; } .ds-strip-btn:hover { background: var(--accent-hover, #6fa3ff); } .ds-strip-btn:focus-visible { outline: 2px solid var(--accent, #4d8dff); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Face",
+    "overview": "The console is read the way an operator reads a panel of gauges: the ground is dark and continuous, the panels are cut out of that ground by hairlines rather than floated on top of it, and every reading sits at a fixed position so a scan down a column is one motion. Nothing here is a document. Titles are small, descriptions are short, and the largest thing on most screens is a number or a state word, not a heading.\n\nState is the subject of the whole system, and it owns whole regions. A degraded primitive colours its row's entire left edge and tints the row's ground; an alarming panel wears the alarm on its border and its header band. A coloured dot is never the whole answer. CloudNivo blue is the identity and the action colour only - a blue element is something you press, follow, or are currently on, never something that is \"fine.\"\n\nDark is the designed scene and light is derived from it: :root carries the instrument tokens and [data-theme='light'] restates the same roles in daylight. Geometry, density, type and hairline structure are identical across both; only the ground and the inks invert. The theme provider defaults to dark.",
+    "keyCharacteristics": [
+      "Near-navy ground (#0e1930), never black, with panels one step off it.",
+      "Hairline separation instead of shadow; panels carry no resting shadow at all.",
+      "Square-ish geometry on a 4px grid (4px panels, 3px chips).",
+      "Left-edge state bands on rows, panels and banners, with a mono state word.",
+      "Tabular mono for every measured value: telemetry, IDs, regions, timestamps.",
+      "14px base body; 20px is the largest routine heading. Density over scale."
+    ],
+    "rules": [
+      { "name": "The Blue-Is-Not-A-Status Rule", "body": "accent means act on this or you are here. It may never encode health, severity, or condition. A blue edge on a row means work is in progress under the operator's own action, and nothing else.", "section": "colors" },
+      { "name": "The Ink-On-Soft Rule", "body": "Text drawn on a *-soft surface uses that hue's *-ink token, never the pure hue. The pure hue is for 3px edges, icons, and bar fills, where contrast is carried by mass rather than by stroke.", "section": "colors" },
+      { "name": "The Derived-Daylight Rule", "body": "Light theme changes values, never roles. If a new token is added to :root, it is added to [data-theme='light'] in the same pass, with both scenes measured for AA.", "section": "colors" },
+      { "name": "The Channel-Label Rule", "body": "Uppercase letterspaced type exists only inside panel chrome, where it names a channel: a panel header band, a table head, a gauge key, a nav group label. It never appears above a heading as a kicker or eyebrow, and it is never a standalone line of content.", "section": "typography" },
+      { "name": "The Measured-Value Rule", "body": "Anything read off the backend - state words, regions, identifiers, timestamps, counts, sizes, durations - is mono with font-variant-numeric: tabular-nums, so a column of values aligns and a changing value does not reflow its neighbours.", "section": "typography" },
+      { "name": "The State-In-Words Rule", "body": "Every coloured state band is accompanied by the state spelled out in a mono word, in that state's *-ink colour, at a fixed column width (96px right-aligned in panel rows). Colour alone never carries the meaning.", "section": "typography" },
+      { "name": "The Cut-Not-Floated Rule", "body": "A panel is defined by its hairline and its tonal step, never by a shadow. If a surface needs a shadow to be legible against its ground, the ground relationship is wrong.", "section": "elevation" },
+      { "name": "The Overlay-Only Rule", "body": "Shadow is permission to overlap other content. If an element is in the document flow, it gets no shadow.", "section": "elevation" },
+      { "name": "The Three-Pixel-Edge Rule", "body": "State on a row or panel is a 3px left border in the state's hue, plus a ground tint for warn (7%) and bad (9%). Not a border on all four sides, not a background swap, not a dot alone.", "section": "shapes" },
+      { "name": "The Hairline Divider Rule", "body": "Adjacent readouts share one bordered face and are divided by hairlines (.stat-grid / .stat). They are not separate cards with gaps between them.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do put state on the region: a 3px left edge in the state's hue plus the warn/bad ground tint, paired with the mono state word.",
+      "Do keep blue for action and identity - primary buttons, links, focus, current tab, in-progress.",
+      "Do set every backend-read value in mono with tabular figures.",
+      "Do give a panel a channel-label header band when it reports a channel, and let it bleed to the panel's edges.",
+      "Do build readout groups as one bordered face divided by hairlines.",
+      "Do add new tokens to :root and [data-theme='light'] in the same pass, and measure both scenes for AA.",
+      "Do stay on the 4px grid and on the 4px/3px/6px radius set.",
+      "Do show real state only - an unknown value renders as an em dash or a muted state, never as a plausible placeholder."
+    ],
+    "donts": [
+      "Don't give a resting surface a shadow; hairline and tonal step are the depth system.",
+      "Don't use accent to mean healthy, degraded or failed.",
+      "Don't set text in a status hue's pure value on that hue's soft surface; use the *-ink token.",
+      "Don't put uppercase letterspaced type above a heading as a kicker or eyebrow - uppercase belongs to panel chrome that names a channel.",
+      "Don't let a coloured dot or edge be the only carrier of a state; the state word ships with it.",
+      "Don't float panels on grey with large radii and equal weight - that is the arrangement this console was built against.",
+      "Don't introduce a third font, a display serif, or type above 20px outside the single posture score.",
+      "Don't add inline <style> or <script>, or load a font or script from a third-party origin: the CSP is nonce-based and self-bound."
+    ]
+  }
+}

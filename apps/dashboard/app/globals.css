@@ -109,21 +109,21 @@
   color: #071224;
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.4),
-    0 0 0 1px rgb(126 166 255 / 0.25),
-    0 4px 16px -4px rgb(91 140 255 / 0.45);
+    0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 4px 16px -4px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 [data-theme='dark'] .btn-primary:hover {
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.4),
-    0 0 0 1px rgb(126 166 255 / 0.35),
-    0 6px 20px -4px rgb(91 140 255 / 0.55);
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 6px 20px -4px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 [data-theme='dark'] .nav a[aria-current='page'] {
   background: var(--bg-elevated);
   border-color: var(--border-strong);
 }
 [data-theme='dark'] .nav-child[aria-current='page'] {
-  border-color: rgb(91 140 255 / 0.28);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 [data-theme='dark'] .card:hover {
   border-color: var(--border-strong);
@@ -132,12 +132,9 @@
 [data-theme='dark'] select:focus,
 [data-theme='dark'] textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(91 140 255 / 0.22);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
-[data-theme='dark'] .table thead th {
-  background: var(--bg-inset);
-}
-[data-theme='dark'] .badge.ok,
+[data-theme='dark'] [data-theme='dark'] .badge.ok,
 [data-theme='dark'] .badge.warn,
 [data-theme='dark'] .badge.bad,
 [data-theme='dark'] .badge.info {
@@ -295,7 +292,7 @@ code,
   z-index: 70;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -303,7 +300,6 @@ code,
   border: 1px solid var(--border-strong);
   color: var(--text-muted);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
   transition:
     color 0.15s ease,
     border-color 0.15s ease,
@@ -347,7 +343,7 @@ code,
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--radius);
   background: var(--accent);
   color: #ffffff;
   font-size: 13px;
@@ -406,7 +402,6 @@ code,
   background: var(--bg-elevated);
   color: var(--text);
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
   font-weight: 600;
 }
 .nav-icon {
@@ -515,18 +510,11 @@ code,
   margin: 16px 0 6px;
 }
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
 .stat {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 14px;
-  box-shadow: var(--shadow-sm);
   transition:
     border-color 0.14s ease,
     box-shadow 0.14s ease;
@@ -570,7 +558,7 @@ code,
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
   color: var(--text);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 7px 13px;
   font-weight: 500;
   font-size: 13.5px;
@@ -593,7 +581,6 @@ code,
   border-color: var(--border-strong);
   background: var(--bg-muted);
   text-decoration: none;
-  box-shadow: var(--shadow-sm);
 }
 .btn:active {
   transform: translateY(1px);
@@ -617,7 +604,7 @@ code,
   border-color: var(--accent-hover);
   box-shadow:
     0 1px 2px rgb(16 24 40 / 0.16),
-    0 2px 8px -2px rgb(46 111 232 / 0.4);
+    0 2px 8px -2px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .btn-primary:focus-visible {
   outline-color: var(--accent);
@@ -674,7 +661,7 @@ textarea {
   color: var(--text);
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 7px 10px;
   width: 100%;
   max-width: 100%;
@@ -762,13 +749,7 @@ details > summary::marker {
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
-.table thead th {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
+
 .table thead th {
   font-size: 11px;
   text-transform: uppercase;
@@ -809,7 +790,7 @@ details > summary::marker {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   color: var(--text-faint);
 }
 .table tbody tr:hover .row-open {
@@ -1092,7 +1073,7 @@ details > summary::marker {
 .empty .empty-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg-muted);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -1114,7 +1095,7 @@ details > summary::marker {
 
 .skeleton-row {
   height: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(90deg, var(--border) 25%, var(--bg-muted) 50%, var(--border) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
@@ -1343,7 +1324,7 @@ details > summary::marker {
   background: var(--success-soft);
   border: 1px solid transparent;
   color: var(--success);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 9px 12px;
   font-size: 14px;
   font-weight: 600;
@@ -1445,7 +1426,7 @@ details > summary::marker {
   font-weight: 500;
   letter-spacing: -0.004em;
   color: var(--text);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   text-align: left;
   transition: background 0.1s ease;
@@ -1774,9 +1755,7 @@ details > summary::marker {
   .main {
     padding: 16px 14px 64px;
   }
-  .stat-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  }
+
   h1 {
     font-size: 21px;
   }
@@ -1856,7 +1835,7 @@ details > summary::marker {
   appearance: none;
   background: none;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   width: 24px;
   height: 24px;
   flex: none;
@@ -1903,7 +1882,7 @@ details > summary::marker {
   display: flex;
   align-items: center;
   padding: 4px 10px 4px 35px;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   color: var(--text-muted);
   font-weight: 500;
   font-size: 13px;
@@ -2250,7 +2229,6 @@ kbd,
   border-left-width: 3px;
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-sm);
   padding: 10px 13px;
   font-size: 13.5px;
   letter-spacing: -0.004em;
@@ -2457,7 +2435,7 @@ kbd,
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: pop 0.14s ease;
@@ -2630,7 +2608,7 @@ kbd,
 .modal::-webkit-scrollbar-thumb,
 .cmdk-list::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -2683,7 +2661,7 @@ kbd,
   gap: 2px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 3px;
 }
 .theme-switch button {
@@ -2691,7 +2669,7 @@ kbd,
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 5px 10px;
   display: inline-flex;
   align-items: center;
@@ -2711,7 +2689,6 @@ kbd,
 .theme-switch button.active {
   background: var(--bg-elevated);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
   margin: -1px;
   padding: 5px 9px;
@@ -3346,13 +3323,7 @@ summary code,
 /* Readouts belong on one instrument face, not on separate floating cards:
    a single bordered strip, cells divided by hairlines, values in tabular
    figures so a row of numbers aligns down the column. */
-.stat-grid {
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  overflow: hidden;
-}
+
 .stat {
   border: 0;
   border-right: 1px solid var(--border);
@@ -3377,7 +3348,6 @@ summary code,
 }
 .stat:hover {
   background: var(--bg-muted);
-  transform: none;
 }
 @media (max-width: 720px) {
   .stat {
@@ -3448,7 +3418,14 @@ summary code,
    across the leftover track, which made one gauge look twice as important
    as its neighbours. */
 .stat-grid {
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  overflow: hidden;
 }
 /* An empty panel states the absence and stops; it does not reserve a
    screenful for content that is not there. */

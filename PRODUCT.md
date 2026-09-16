@@ -59,9 +59,11 @@ Two claims together, neither of which a neighboring BaaS can truthfully copy:
   functions, AI builder, automations, agents, billing/usage, metrics, logs.
 - Strict CSP and security headers in `apps/dashboard/middleware.ts` bound the UI:
   no inline scripts, `connect-src` limited to self plus the API origin.
-- Design tokens already exist in `apps/dashboard/app/globals.css` (`--accent:
-  #2e6fe8` and a full neutral/semantic scale). Class names there are stable and
-  referenced directly by components.
+- The design system lives in `apps/dashboard/app/globals.css`, documented in
+  `apps/dashboard/DESIGN.md`. It is dark-first: the dark instrument scene is
+  canonical and the light scene is derived from it. Class names there are
+  stable and referenced directly by components. Exact token values belong to
+  DESIGN.md, not here — this file records product truth, not colours.
 - The dashboard must degrade honestly when the API is unreachable or the session
   has expired — it must not show invented state.
 
