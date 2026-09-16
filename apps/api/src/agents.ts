@@ -24,6 +24,7 @@ import {
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { rateLimitIp } from './client-ip.js';
 
 /**
  * Agent access tokens (Phase 13): dedicated `cn_agent_…` credentials for
@@ -65,12 +66,8 @@ function toAgentError(err: unknown, requestId: string): { status: number; body: 
   return toPublicError(err, requestId);
 }
 
-function clientIp(req: IncomingMessage): string {
-  return (
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown'
-  );
+function clientIp(req: IncomingMessage, ctx?: ApiContext): string {
+  return rateLimitIp(req, ctx?.config.TRUSTED_PROXY_HOPS ?? 1);
 }
 
 // ── Enforcement helpers (used by every plane) ───────────────
@@ -82,7 +79,7 @@ export async function agentFromRequest(
 ): Promise<AgentToken | null> {
   const raw = bearerFromHeader(req.headers.authorization);
   if (!raw || !looksLikeAgentToken(raw)) return null;
-  return agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req) });
+  return agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req, ctx) });
 }
 
 /** Session-shaped identity for agent bearers (planes add scope checks). */
@@ -91,12 +88,12 @@ export async function agentSessionFor(
   req: IncomingMessage,
   raw: string,
 ): Promise<{ sub: string; email: string; agent: AgentToken }> {
-  const token = await agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req) });
+  const token = await agentServiceFor(ctx).verifyToken(raw, { ip: clientIp(req, ctx) });
   return { sub: token.userId, email: '', agent: token };
 }
 
 async function agentRateLimit(ctx: ApiContext, req: IncomingMessage, token: AgentToken): Promise<void> {
-  const rl = await checkRateLimit(ctx.rateLimitStore, `agent:${token.id}:${clientIp(req)}`, {
+  const rl = await checkRateLimit(ctx.rateLimitStore, `agent:${token.id}:${clientIp(req, ctx)}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.AGENT_RATE_MAX,
     keyPrefix: 'agent',
@@ -128,7 +125,7 @@ export function auditAgent(
     reason?: string;
   },
 ): void {
-  const ip = clientIp(req);
+  const ip = clientIp(req, ctx);
   void agentServiceFor(ctx)
     .log({
       tokenId: entry.token ? entry.token.id : null,
@@ -176,7 +173,7 @@ export async function verifyAgentAccess(
         resource: '',
         result: 'denied',
         reason: `${code}: ${reason}`.slice(0, 300),
-        ip: clientIp(req),
+        ip: clientIp(req, ctx),
       })
       .catch(() => undefined);
     throw err;
@@ -212,7 +209,7 @@ export async function requireAgentScope(
         resource: opts.resource ?? '',
         result: 'denied',
         reason: `${code}: ${reason}`.slice(0, 300),
-        ip: clientIp(req),
+        ip: clientIp(req, ctx),
       })
       .catch(() => undefined);
     throw err;
@@ -249,7 +246,7 @@ export async function requireAgent(
         resource: opts.resource ?? '',
         result: 'denied',
         reason: `${code}: ${reason}`.slice(0, 300),
-        ip: clientIp(req),
+        ip: clientIp(req, ctx),
       })
       .catch(() => undefined);
     throw err;

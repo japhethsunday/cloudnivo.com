@@ -39,6 +39,7 @@ import { functionsFor } from './functions.js';
 import { emitAutomationEvent } from './automation.js';
 import { ensureProjectFeed, realtimeFor } from './realtime.js';
 import { meterUsage, requireSpendAllowed } from './billing.js';
+import { rateLimitIp } from './client-ip.js';
 
 /** Process-local high-water marks for AI token metering deltas. */
 const aiTokenHighWater = new Map<string, number>();
@@ -156,9 +157,7 @@ function requireAdmin(role: string): void {
 
 async function aiLimit(ctx: ApiContext, req: IncomingMessage, scope: string): Promise<void> {
   const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown';
+    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const rl = await checkRateLimit(ctx.rateLimitStore, `ai:${scope}:${ip}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.AI_RATE_MAX,

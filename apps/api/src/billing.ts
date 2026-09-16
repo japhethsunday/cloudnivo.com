@@ -19,6 +19,7 @@ import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
 import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
 import type { UsageMetric, UsageService } from '@cloudnivo/billing';
+import { rateLimitIp } from './client-ip.js';
 
 /**
  * Fire-and-forget usage metering. Metering must never break the request it
@@ -163,9 +164,7 @@ function requireOwnerOrAdmin(role: string): void {
 
 async function billingLimit(ctx: ApiContext, req: IncomingMessage, scope: string): Promise<void> {
   const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown';
+    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const rl = await checkRateLimit(ctx.rateLimitStore, `billing:${scope}:${ip}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.BILLING_RATE_MAX,

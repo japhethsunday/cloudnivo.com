@@ -40,6 +40,7 @@ import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
 import { emitAutomationEvent } from './automation.js';
 import { meterUsage } from './billing.js';
+import { clientIpOf } from './client-ip.js';
 
 /** Auth hook: fan out to project webhooks (never breaks auth on failure). */
 function emitAuthHook(
@@ -393,10 +394,7 @@ async function checkCaptcha(
   req: IncomingMessage,
   token: unknown,
 ): Promise<void> {
-  const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
-    req.socket.remoteAddress ??
-    null;
+  const ip = clientIpOf(req, ctx.config.TRUSTED_PROXY_HOPS);
   let result: { ok: boolean; enforced: boolean };
   try {
     result = await verifyCaptcha(
@@ -412,10 +410,11 @@ async function checkCaptcha(
   }
 }
 
-function clientMeta(req: IncomingMessage): { ip: string | null; agent: string | null } {
-  const fwd = req.headers['x-forwarded-for'];
-  const ip =
-    (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null;
+function clientMeta(
+  req: IncomingMessage,
+  trustedProxyHops = 1,
+): { ip: string | null; agent: string | null } {
+  const ip = clientIpOf(req, trustedProxyHops);
   const agent = req.headers['user-agent'];
   return { ip, agent: typeof agent === 'string' ? agent.slice(0, 300) : null };
 }
@@ -514,7 +513,7 @@ export async function handleCustomerAuthRoutes(
     const project = await ctx.registry.getProject(projectId);
     if (!project) throw new ApiError('NOT_FOUND', 'Project not found', 404);
     const { service, email } = await authServiceFor(ctx, project);
-    const meta = clientMeta(req);
+    const meta = clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS);
     const [head, tail] = action;
 
     // ── Public endpoints (strict rate limits) ──

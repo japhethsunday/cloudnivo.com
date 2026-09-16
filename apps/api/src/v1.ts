@@ -58,6 +58,7 @@ import { handleRealtimeRoutes, isRealtimeRoute } from './realtime.js';
 import { handleFunctionRoutes, isFunctionRoute } from './functions.js';
 import { handleAiRoutes, isAiRoute } from './ai.js';
 import { handleAutomationRoutes, isAutomationRoute } from './automation.js';
+import { rateLimitIp } from './client-ip.js';
 import { handleMetricsRoutes, isMetricsRoute } from './metrics.js';
 import { handlePlatformOpsRoutes, isPlatformOpsRoute } from './platform-ops.js';
 import { handleBillingRoutes, isBillingRoute } from './billing.js';
@@ -194,6 +195,19 @@ export async function initControlPlane(ctx: ApiContext): Promise<void> {
     throw new Error(`Control database unreachable: ${health.error ?? 'unknown'} (run db:migrate)`);
   }
   ctx.controlDb = svc;
+  // Databases provisioned before the PUBLIC-grant lockdown let any project
+  // role open any other project's database, and the control database itself.
+  // Repair them once per boot; the call is idempotent and never blocks start.
+  if (ctx.provider instanceof ManagedPostgresProvider) {
+    void ctx.provider
+      .hardenExistingDatabases()
+      .then(r => ctx.logger.info('provision.harden', r))
+      .catch(err =>
+        ctx.logger.warn('provision.harden_failed', {
+          error: err instanceof Error ? err.message.slice(0, 160) : 'unknown',
+        }),
+      );
+  }
   const drizzleRegistry = new DrizzleRegistry(svc.db);
   drizzleRegistry.setCredentialKeyFromSecret(ctx.config.VAULT_KEY);
   ctx.registry = drizzleRegistry;
@@ -325,9 +339,7 @@ export async function handleRequest(
 
   // Rate limit: 120/min per IP by default (in-memory; Redis-backed in prod).
   const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown';
+    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const rl = await checkRateLimit(ctx.rateLimitStore, `ip:${ip}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.RATE_LIMIT_MAX_REQUESTS,

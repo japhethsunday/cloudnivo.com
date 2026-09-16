@@ -44,6 +44,10 @@ const EnvSchema = z.object({
   JWT_EXPIRES_IN: z.coerce.number().int().positive().default(3600),
 
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  // How many reverse proxies run in front of this service (Railway/Vercel: 1).
+  // Only that many right-hand X-Forwarded-For entries are trusted; 0 ignores
+  // the header entirely. See apps/api/src/client-ip.ts.
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),

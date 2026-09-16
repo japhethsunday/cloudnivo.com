@@ -104,6 +104,25 @@ export class SqlRejectedError extends Error {
   }
 }
 
+/**
+ * A statement the caller's own database refused (syntax error, permission
+ * denied, missing relation). It carries the SQLSTATE so the API can answer
+ * 400 with the database's own words: wrapping these in a bare Error erased
+ * the code and every user mistake surfaced as "500 Internal server error",
+ * which hides real permission denials from operators and makes abuse
+ * indistinguishable from server faults. The message is redacted first.
+ */
+export class SqlExecutionError extends Error {
+  readonly code = 'SQL_ERROR';
+  constructor(
+    message: string,
+    readonly sqlState: string | null,
+  ) {
+    super(message);
+    this.name = 'SqlExecutionError';
+  }
+}
+
 const READ_LIKE = /^\s*(select|with|values|table|explain)\b/i;
 
 /** Pure guard: single statement, bounded length. Throws SqlRejectedError. */
@@ -161,7 +180,11 @@ export async function executeProjectSql(
     };
   } catch (err) {
     if (err instanceof SqlRejectedError) throw err;
-    throw new Error(`SQL execution failed: ${redactError(err)}`);
+    const state = (err as { code?: unknown }).code;
+    throw new SqlExecutionError(
+      redactError(err),
+      typeof state === 'string' && /^[0-9A-Z]{5}$/.test(state) ? state : null,
+    );
   } finally {
     await sql.end({ timeout: 2 }).catch(() => undefined);
   }

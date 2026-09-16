@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@cloudnivo/database": "0.1.0",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "@cloudnivo/api-core": "*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0"

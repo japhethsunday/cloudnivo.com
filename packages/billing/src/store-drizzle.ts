@@ -1,4 +1,5 @@
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
+import { isUniqueViolation } from '@cloudnivo/api-core';
 import {
   billingBudgets,
   billingCredits,
@@ -329,7 +330,7 @@ export class DrizzleBillingStore implements BillingStore {
       if (!row) throw new Error('Payment insert failed');
       return rowToPayment(row);
     } catch (err) {
-      if (String((err as { code?: unknown }).code) === '23505' && input.providerPaymentId) {
+      if (isUniqueViolation(err) && input.providerPaymentId) {
         const dup = await this.findPaymentByProviderId(input.provider, input.providerPaymentId);
         if (dup) return dup;
       }
@@ -447,7 +448,7 @@ export class DrizzleBillingStore implements BillingStore {
         processedAt: iso(row.processedAt) ?? new Date().toISOString(),
       };
     } catch (err) {
-      if (String((err as { code?: unknown }).code) === '23505') {
+      if (isUniqueViolation(err)) {
         const dup = await this.findWebhookEvent(input.provider, input.eventId);
         if (dup) return dup;
       }

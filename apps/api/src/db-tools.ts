@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { ApiError, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import { ApiError, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
   projectSecrets,
   projectBranches,
@@ -312,7 +312,7 @@ export function envServiceFor(ctx: ApiContext): {
           createdAt: iso(row.createdAt),
         };
       } catch (err) {
-        if (String((err as { code?: unknown }).code) === '23505') {
+        if (isUniqueViolation(err)) {
           throw new ApiError('CONFLICT', 'Environment slug taken', 409);
         }
         throw err;

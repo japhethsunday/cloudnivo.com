@@ -3,7 +3,8 @@ import { resolveTxt } from 'node:dns/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { desc, eq } from 'drizzle-orm';
-import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import { resolvesToPublicAddress } from './ssrf.js';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import {
   customDomains,
@@ -14,6 +15,7 @@ import {
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { rateLimitIp } from './client-ip.js';
 
 /**
  * Platform operations: public status/incidents, custom domains (DNS
@@ -338,7 +340,7 @@ export class DrizzleDomains implements DomainStore {
       if (!row) throw new Error('Domain insert failed');
       return domainToPublic(row);
     } catch (err) {
-      if (String((err as { code?: unknown }).code) === '23505') {
+      if (isUniqueViolation(err)) {
         const taken = new Error('Domain already registered') as Error & { code: string };
         taken.code = 'DOMAIN_TAKEN';
         throw taken;
@@ -454,7 +456,12 @@ export function assertDrainUrl(url: string): URL {
   if (parsed.protocol !== 'https:') {
     throw new ApiError('VALIDATION_ERROR', 'Drain URL must be https', 400);
   }
-  const host = parsed.hostname.toLowerCase();
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // A non-dotted numeric host (decimal or hex, e.g. 2130706433 / 0x7f000001)
+  // is another spelling of a literal address and never a real drain endpoint.
+  if (/^(0x[0-9a-f]+|\d+)$/.test(host)) {
+    throw new ApiError('VALIDATION_ERROR', 'Drain URL must be publicly reachable', 400);
+  }
   if (
     host === 'localhost' ||
     host.endsWith('.localhost') ||
@@ -706,9 +713,7 @@ export async function handlePlatformOpsRoutes(
   };
   const strictLimit = async (): Promise<void> => {
     const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown';
+      rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
     const rl = await checkRateLimit(ctx.rateLimitStore, `ops:${ip}`, {
       windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
       max: ctx.config.AUTH_RATE_MAX,
@@ -903,6 +908,12 @@ export async function deliverDrain(
     assertDrainUrl(drain.url);
   } catch {
     return { ok: false, error: 'Drain URL is not publicly reachable' };
+  }
+  // Resolve before delivering: the stored hostname passed a string check when
+  // it was saved, but what it points at now is a different question (DNS
+  // rebinding, or a name that always pointed inside). Fail closed.
+  if (!(await resolvesToPublicAddress(new URL(drain.url).hostname))) {
+    return { ok: false, error: 'Drain URL resolves to a blocked address' };
   }
   const body = JSON.stringify({ source: 'cloudnivo-log-drain', entries });
   const signature = signDrainPayload(secret, body);

@@ -11,7 +11,7 @@ import {
   type DatabaseStatus,
 } from '@cloudnivo/database';
 import { assertSameTenant } from '@cloudnivo/database';
-import { ApiError } from '@cloudnivo/api-core';
+import { ApiError, isUniqueViolation } from '@cloudnivo/api-core';
 import { credentialKeyFromSecret, decryptCredential, encryptCredential } from './credential-crypto.js';
 import type {
   AuditRecord,
@@ -41,7 +41,7 @@ function slugOk(slug: string): boolean {
 }
 
 function isConflict(err: unknown): boolean {
-  return String((err as { code?: unknown }).code) === '23505';
+  return isUniqueViolation(err);
 }
 
 function iso(value: Date | string): string {

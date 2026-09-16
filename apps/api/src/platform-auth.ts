@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
   bearerFromHeader,
   buildAuthorizeUrl,
@@ -12,7 +12,7 @@ import {
   generateBackupCodes,
   generateTotpSecret,
   hashPassword,
-  LEGACY_PASSWORD_POLICY,
+  PLATFORM_BASELINE_PASSWORD_POLICY,
   mergePasswordPolicy,
   pkcePair,
   revokeSession,
@@ -39,6 +39,7 @@ import type { ApiContext } from './v1.js';
 import { sendSignupWelcome } from './platform-mail.js';
 import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
+import { clientIpOf, rateLimitIp } from './client-ip.js';
 
 /**
  * Platform control-plane auth: developer signup/login, session identity
@@ -222,7 +223,7 @@ export class DrizzlePlatformUsers implements PlatformUserStore {
       if (!stored) throw new Error('User insert failed');
       return stored;
     } catch (err) {
-      if (String((err as { code?: unknown }).code) === '23505') {
+      if (isUniqueViolation(err)) {
         throw new ApiError('CONFLICT', 'Email already registered', 409);
       }
       throw err;
@@ -811,10 +812,7 @@ async function checkPlatformCaptcha(
   req: IncomingMessage,
   raw: unknown,
 ): Promise<void> {
-  const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    null;
+  const ip = clientIpOf(req, ctx.config.TRUSTED_PROXY_HOPS);
   const token = (raw as { captcha_token?: unknown } | undefined)?.captcha_token;
   let result: { ok: boolean; enforced: boolean };
   try {
@@ -840,7 +838,8 @@ async function effectivePasswordPolicy(
   store: PlatformAuth,
   userId: string | null,
 ): Promise<PasswordPolicy> {
-  if (!userId) return { ...LEGACY_PASSWORD_POLICY };
+  // The baseline applies to everyone, including signup (no user yet).
+  if (!userId) return { ...PLATFORM_BASELINE_PASSWORD_POLICY };
   try {
     const memberships = await ctx.registry.membershipsFor(userId);
     let minLength = 0;
@@ -855,10 +854,16 @@ async function effectivePasswordPolicy(
         minClasses = Math.max(minClasses, policy.passwordMinClasses);
       }
     }
-    if (minLength <= 8 && minClasses <= 0) return { ...LEGACY_PASSWORD_POLICY };
-    return mergePasswordPolicy({ minLength: Math.max(minLength, 8), minClasses });
+    // Organization policy can only tighten the baseline, never loosen it.
+    const base = PLATFORM_BASELINE_PASSWORD_POLICY;
+    return mergePasswordPolicy({
+      ...base,
+      minLength: Math.max(minLength, base.minLength),
+      minClasses: Math.max(minClasses, base.minClasses),
+    });
   } catch {
-    return { ...LEGACY_PASSWORD_POLICY };
+    // Registry unreachable: fail closed on the baseline, never below it.
+    return { ...PLATFORM_BASELINE_PASSWORD_POLICY };
   }
 }
 
@@ -884,10 +889,11 @@ async function orgRequiresMfa(
   return false;
 }
 
-function clientMeta(req: IncomingMessage): { ip: string | null; agent: string | null } {
-  const fwd = req.headers['x-forwarded-for'];
-  const ip =
-    (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null;
+function clientMeta(
+  req: IncomingMessage,
+  trustedProxyHops = 1,
+): { ip: string | null; agent: string | null } {
+  const ip = clientIpOf(req, trustedProxyHops);
   const agent = req.headers['user-agent'];
   return { ip, agent: Array.isArray(agent) ? (agent[0] ?? null) : (agent ?? null) };
 }
@@ -1008,7 +1014,7 @@ async function renamePlatformEmail(
     await store.users.updateUser(userId, { email: newEmail.toLowerCase() });
   } catch (err) {
     // Drizzle unique violation surfaces as a driver error — normalize it.
-    if (String((err as { code?: unknown }).code) === '23505') {
+    if (isUniqueViolation(err)) {
       throw new ApiError('CONFLICT', 'Email already registered', 409);
     }
     throw err;
@@ -1108,9 +1114,7 @@ export async function handlePlatformAuthRoutes(
   };
   const strictLimit = async (): Promise<void> => {
     const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown';
+      rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
     const rl = await checkRateLimit(ctx.rateLimitStore, `platform-auth:${ip}`, {
       windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
       max: ctx.config.AUTH_RATE_MAX,
@@ -1122,9 +1126,7 @@ export async function handlePlatformAuthRoutes(
   // with a tighter per-code budget but no starvation of legit setup flows.
   const mfaLimit = async (): Promise<void> => {
     const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown';
+      rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
     const rl = await checkRateLimit(ctx.rateLimitStore, `platform-mfa:${ip}`, {
       windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
       max: ctx.config.AUTH_RATE_MAX * 3,
@@ -1161,7 +1163,7 @@ export async function handlePlatformAuthRoutes(
         passwordHash,
         displayName: parsed.displayName ?? null,
       });
-      const { token, cookie } = await issueSession(ctx, user, clientMeta(req));
+      const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.signup', { userId: user.id });
       // Welcome email is best-effort and centralized in platform-mail.ts: it
       // never throws, never blocks signup, and fires exactly once per
@@ -1207,7 +1209,7 @@ export async function handlePlatformAuthRoutes(
           ok({ mfaSetupRequired: true, setupTicket: ticket }, requestId),
         );
       }
-      const { token, cookie } = await issueSession(ctx, user, clientMeta(req));
+      const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.login', { userId: user.id });
       return finish(200, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
     }
@@ -1239,7 +1241,7 @@ export async function handlePlatformAuthRoutes(
         throw new ApiError('UNAUTHORIZED', 'Incorrect code', 401);
       }
       await ctx.sessionRevocations.del(`platform-mfa:${parsed.mfaTicket}`).catch(() => undefined);
-      const { token, cookie } = await issueSession(ctx, user, clientMeta(req));
+      const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.login', { userId: user.id });
       return finish(200, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
     }
@@ -1378,7 +1380,7 @@ export async function handlePlatformAuthRoutes(
         await ctx.sessionRevocations.del(`platform-mfa-setup:${setupTicket}`).catch(() => undefined);
         const fresh = await store.users.findById(user.id);
         if (!fresh) throw new ApiError('UNAUTHORIZED', 'Unknown session', 401);
-        const { token, cookie } = await issueSession(ctx, fresh, clientMeta(req));
+        const { token, cookie } = await issueSession(ctx, fresh, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
         await ctx.registry.recordAudit('platform.login', { userId: user.id });
         return finish(200, ok({ user: expose(fresh), token, backupCodes: codes }, requestId), {
           'Set-Cookie': cookie,
@@ -1865,7 +1867,7 @@ export async function handlePlatformAuthRoutes(
         await ctx.sessionRevocations.set(`platform-mfa-setup:${ticket}`, user.id, 600).catch(() => undefined);
         return finish(200, ok({ mfaSetupRequired: true, setupTicket: ticket }, requestId));
       }
-      const { token, cookie } = await issueSession(ctx, user, clientMeta(req));
+      const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.login', { userId: user.id });
       return finish(200, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
     }

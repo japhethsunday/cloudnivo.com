@@ -12,6 +12,10 @@ on:
         type: choice
         options: [staging, production]
 
+# Least privilege: nothing in this workflow writes to the repository.
+permissions:
+  contents: read
+
 # Staging deploys automatically on main. Production deploys ONLY via manual
 # dispatch against the `production` environment (required reviewers configured
 # in repo settings). Tokens live in GitHub secrets — never in this file.

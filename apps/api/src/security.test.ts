@@ -294,3 +294,80 @@ describe('phase 10 security regression (fake provider)', () => {
     expect(big.status).toBe(413);
   });
 });
+
+/**
+ * Regressions from the 2026-09 security audit. Each test names the behaviour
+ * that was actually reproduced against a running API before the fix.
+ */
+describe('security audit regressions', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  const strong = 'Str0ng-Passw0rd!x';
+
+  it('refuses weak passwords at signup', async () => {
+    // Reproduced: "password", "12345678" and "aaaaaaaa" all returned 201.
+    for (const weak of ['password', '12345678', 'aaaaaaaa']) {
+      const r = await api(base, 'POST', '/api/v1/auth/signup', null, {
+        email: `weak-${weak}-${Date.now()}@example.com`,
+        password: weak,
+      });
+      expect(r.status).toBe(400);
+    }
+  });
+
+  it('answers a duplicate signup with 409, not 500', async () => {
+    // Reproduced: the unique-violation check missed the wrapped driver error
+    // and a duplicate email surfaced as "500 Internal server error".
+    const email = `dup-${Date.now()}@example.com`;
+    const first = await api(base, 'POST', '/api/v1/auth/signup', null, { email, password: strong });
+    expect(first.status).toBe(201);
+    const second = await api(base, 'POST', '/api/v1/auth/signup', null, { email, password: strong });
+    expect(second.status).toBe(409);
+  });
+
+  it('does not distinguish a wrong password from an unknown account', async () => {
+    const email = `enum-${Date.now()}@example.com`;
+    await api(base, 'POST', '/api/v1/auth/signup', null, { email, password: strong });
+    const wrong = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email,
+      password: 'Wr0ng-Passw0rd!x',
+    });
+    const missing = await api(base, 'POST', '/api/v1/auth/login', null, {
+      email: `nobody-${Date.now()}@example.com`,
+      password: 'Wr0ng-Passw0rd!x',
+    });
+    expect(wrong.status).toBe(missing.status);
+    expect((wrong.json['error'] as { message: string }).message).toBe(
+      (missing.json['error'] as { message: string }).message,
+    );
+  });
+
+  it('rate-limits failed logins even when the client rotates X-Forwarded-For', async () => {
+    // Reproduced: a fresh X-Forwarded-For per request gave each attempt its own
+    // bucket, so 12 failed logins produced zero 429s.
+    const statuses: number[] = [];
+    for (let i = 0; i < 24; i += 1) {
+      const r = await api(
+        base,
+        'POST',
+        '/api/v1/auth/login',
+        null,
+        { email: `spray-${Date.now()}@example.com`, password: 'Wr0ng-Passw0rd!x' },
+        { 'X-Forwarded-For': `203.0.113.${i}` },
+      );
+      statuses.push(r.status);
+      if (r.status === 429) break;
+    }
+    expect(statuses).toContain(429);
+  });
+});

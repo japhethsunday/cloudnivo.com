@@ -157,6 +157,69 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
     }
   }
 
+  /**
+   * Close a freshly created database to everyone except its owner.
+   *
+   * Postgres grants CONNECT on every new database to PUBLIC, and a grant held
+   * through PUBLIC is not removed by revoking from a role — which is why the
+   * previous `REVOKE ALL ... FROM "<role>"` left every project role able to
+   * open every other project's database and the control database. Revoke from
+   * PUBLIC, then grant back only the owner (and the admin connection, so the
+   * control plane never locks itself out).
+   */
+  private async lockDownDatabase(dbName: string, owner: string): Promise<void> {
+    await this.adminQuery(`REVOKE ALL ON DATABASE "${dbName}" FROM PUBLIC`);
+    await this.adminQuery(`GRANT ALL ON DATABASE "${dbName}" TO "${owner}"`);
+    await this.adminQuery(
+      `GRANT CONNECT ON DATABASE "${dbName}" TO CURRENT_USER`,
+    ).catch(() => undefined);
+  }
+
+  /**
+   * Same treatment for the control database: PUBLIC must not hold CONNECT on
+   * the database that stores platform users, sessions and SSO secrets.
+   * Idempotent, and the admin role keeps its own access explicitly.
+   */
+  private async lockDownControlDb(): Promise<void> {
+    await this.adminQuery(
+      `GRANT CONNECT ON DATABASE "${this.controlDb}" TO CURRENT_USER`,
+    ).catch(() => undefined);
+    await this.adminQuery(`REVOKE CONNECT ON DATABASE "${this.controlDb}" FROM PUBLIC`).catch(
+      () => undefined,
+    );
+  }
+
+  /**
+   * Repair databases provisioned before the PUBLIC-grant lockdown existed.
+   *
+   * Idempotent and safe to run on every boot: it only revokes the PUBLIC
+   * grants Postgres adds by default and re-grants the database to its own
+   * owner, so a correctly locked database is left exactly as it is.
+   */
+  async hardenExistingDatabases(): Promise<{ checked: number; hardened: number }> {
+    await this.lockDownControlDb().catch(() => undefined);
+    const rows = await this.adminQuery<{ datname: string; owner: string }>(
+      `SELECT d.datname AS datname, pg_get_userbyid(d.datdba) AS owner
+         FROM pg_database d
+        WHERE NOT d.datistemplate
+          AND d.datname <> $1
+          AND has_database_privilege('public', d.datname, 'CONNECT')`,
+      [this.controlDb],
+    ).catch(() => []);
+    let hardened = 0;
+    for (const row of rows) {
+      // Only databases this provisioner owns follow the managed handle shape.
+      if (!/^[a-z][a-z0-9_]*$/.test(row.datname) || !/^[a-z][a-z0-9_]*$/.test(row.owner)) continue;
+      if (!row.datname.startsWith('cn_')) continue;
+      await this.lockDownDatabase(row.datname, row.owner)
+        .then(() => {
+          hardened += 1;
+        })
+        .catch(() => undefined);
+    }
+    return { checked: rows.length, hardened };
+  }
+
   async createDatabase(req: ProvisionRequest): Promise<ProvisionedDatabase> {
     await this.requireAvailable();
     assertSlug(req.slug);
@@ -181,6 +244,8 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
     }
     // Lockdown: the project role sees ONLY its own database.
     await this.adminQuery(`REVOKE ALL ON DATABASE "${this.controlDb}" FROM "${dbUser}"`);
+    await this.lockDownDatabase(dbName, dbUser);
+    await this.lockDownControlDb();
 
     const conn = this.projectConn(dbName, dbUser, req.password);
     const deadline = Date.now() + this.healthTimeoutMs;
@@ -234,6 +299,8 @@ export class ManagedPostgresProvider implements DatabaseProvisioner {
       throw this.classify(err);
     }
     await this.adminQuery(`REVOKE ALL ON DATABASE "${this.controlDb}" FROM "${dbUser}"`).catch(() => undefined);
+    await this.lockDownDatabase(branchDb, dbUser).catch(() => undefined);
+    await this.lockDownControlDb();
     const conn = this.projectConn(branchDb, dbUser, req.target.password);
     const deadline = Date.now() + this.healthTimeoutMs;
     for (;;) {

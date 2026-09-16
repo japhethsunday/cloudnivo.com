@@ -9,6 +9,7 @@ import {
   inspectProjectSchema,
   maskConnectionInfo,
   simulateRlsQuery,
+  SqlExecutionError,
   SqlRejectedError,
   toConnectionString,
 } from '@cloudnivo/database';
@@ -208,6 +209,25 @@ export function mapInfraError(err: unknown): ApiError {
   }
   const tenant = toTenantError(err);
   if (tenant) return tenant;
+  // A Postgres error raised by the caller's OWN statement is their result, not
+  // an internal fault: returning 500 "Internal server error" hid every
+  // permission denial and syntax error behind a server-fault status, which
+  // both misleads the operator and makes abuse indistinguishable from bugs.
+  // Connection-class failures (08xxx) stay infrastructure.
+  if (err instanceof SqlExecutionError) {
+    if (err.sqlState && (err.sqlState.startsWith('08') || err.sqlState === '57P03')) {
+      return new ApiError('INFRA_UNAVAILABLE', 'Database infrastructure is unavailable', 503);
+    }
+    return new ApiError('SQL_ERROR', err.message.slice(0, 300), 400);
+  }
+  const sqlState = (err as { code?: unknown }).code;
+  if (typeof sqlState === 'string' && /^[0-9A-Z]{5}$/.test(sqlState)) {
+    if (sqlState.startsWith('08') || sqlState === '57P03') {
+      return new ApiError('INFRA_UNAVAILABLE', 'Database infrastructure is unavailable', 503);
+    }
+    const message = err instanceof Error ? err.message.slice(0, 300) : 'Statement failed';
+    return new ApiError('SQL_ERROR', message, 400);
+  }
   throw err;
 }
 

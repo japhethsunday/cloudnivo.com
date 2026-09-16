@@ -225,3 +225,22 @@ export async function checkRateLimit(
 }
 
 export * from './metrics.js';
+
+// ── Postgres error classification ─────────────────────────
+
+/**
+ * True when an error is a Postgres unique-constraint violation (SQLSTATE
+ * 23505), including one wrapped by a query builder.
+ *
+ * Drizzle wraps driver errors, so the raw `err.code` check that this replaces
+ * silently missed every real violation: duplicate signups surfaced as 500s,
+ * and the idempotency keys that dedupe provisioning jobs, storage objects and
+ * billing payments stopped deduping. Walk the cause chain instead.
+ */
+export function isUniqueViolation(err: unknown): boolean {
+  for (let cur: unknown = err, depth = 0; cur && depth < 5; depth += 1) {
+    if (String((cur as { code?: unknown }).code) === '23505') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}

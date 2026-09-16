@@ -27,6 +27,26 @@ export const DEFAULT_PASSWORD_POLICY: PasswordPolicy = {
   denyCommon: true,
 };
 
+/**
+ * Minimum floor for CloudNivo platform accounts.
+ *
+ * Platform accounts hold the keys to every tenant's infrastructure, so signup
+ * and password change never fall below this, whatever an organization
+ * configures. It replaces the legacy policy on those paths, which accepted
+ * "password" and "12345678" verbatim. Organizations can still tighten it;
+ * they cannot loosen it.
+ */
+export const PLATFORM_BASELINE_PASSWORD_POLICY: PasswordPolicy = {
+  minLength: 12,
+  maxLength: 128,
+  requireLowercase: false,
+  requireUppercase: false,
+  requireDigit: false,
+  requireSymbol: false,
+  minClasses: 3,
+  denyCommon: true,
+};
+
 export const LEGACY_PASSWORD_POLICY: PasswordPolicy = {
   minLength: 8,
   maxLength: 128,

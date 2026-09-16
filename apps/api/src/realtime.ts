@@ -24,6 +24,7 @@ import { sendJson } from './projects.js';
 import { verifyCustomerCaller } from './customer-auth.js';
 import type { AgentToken } from '@cloudnivo/agents';
 import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
+import { rateLimitIp } from './client-ip.js';
 
 /**
  * Realtime HTTP + WebSocket wiring.
@@ -211,9 +212,7 @@ async function upgradeAuth(
   projectId: string,
 ): Promise<AuthContext> {
   const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown';
+    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const rl = await checkRateLimit(ctx.rateLimitStore, `rt-conn:${ip}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.AUTH_RATE_MAX,
@@ -272,9 +271,7 @@ async function upgradeAuth(
           result: 'denied',
           reason: 'FORBIDDEN_SCOPE: token lacks realtime.read',
           ip:
-            (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-            req.socket.remoteAddress ||
-            'unknown',
+            rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS),
         })
         .catch(() => undefined);
       throw new ApiError('FORBIDDEN', 'Agent token lacks required scope: realtime.read', 403);

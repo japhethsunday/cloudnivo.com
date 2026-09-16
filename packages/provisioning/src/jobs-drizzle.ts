@@ -1,4 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
+import { isUniqueViolation } from '@cloudnivo/api-core';
 import { provisioningJobs, type Database } from '@cloudnivo/database';
 import type { JobStatus, JobStore, ProvisioningJob } from './jobs.js';
 
@@ -60,7 +61,7 @@ export class DrizzleJobStore implements JobStore {
       return rowToJob(saved);
     } catch (err) {
       // Lost the unique race: return the live winner like memory does.
-      if (job.idempotencyKey && String((err as { code?: unknown }).code) === '23505') {
+      if (job.idempotencyKey && isUniqueViolation(err)) {
         const existing = await this.findByKey(job.organizationId, job.idempotencyKey);
         if (existing) return existing;
       }

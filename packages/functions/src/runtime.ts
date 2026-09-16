@@ -92,10 +92,10 @@ function toText(value) {
   const started = Date.now();
   const { source, entrypoint, request, auth, env } = workerData;
   const logs = [];
-  const push = (level, args) => {
+  const push = (level, text) => {
     if (logs.length >= 200) return;
-    const message = args.map(a => toText(a)).join(' ').slice(0, 4000);
-    logs.push({ level, message });
+    const allowed = level === 'warn' || level === 'error' ? level : 'log';
+    logs.push({ level: allowed, message: String(text).slice(0, 4000) });
   };
   // Capability channel: SDK calls round-trip to the control plane, which
   // enforces project scope. The isolate can only ask; the server decides.
@@ -125,24 +125,104 @@ function toText(value) {
   const sdkPublish = hasSdk
     ? async (channel, event, data) => { await callSdk('realtime', 'publish', [channel, event, data]); }
     : deny('realtime.publish');
-  const cloudnivo = {
-    auth: frozen({ userId: auth.userId, email: auth.email, role: auth.role }),
-    project: frozen({ id: auth.projectId }),
-    env: frozen(env),
-    database: { projectId: auth.projectId, query: sdkQuery },
-    storage: { projectId: auth.projectId, read: sdkRead, write: deny('storage.write') },
-    realtime: { projectId: auth.projectId, publish: sdkPublish },
+  // Host objects must NEVER become globals of the customer context. Any host
+  // function or intrinsic placed there hands over the HOST realm's Function
+  // constructor: \`Date.constructor('return process')()\` reached the worker's
+  // real process (every environment variable: DATABASE_URL, JWT_SECRET,
+  // VAULT_KEY) and \`require\`. Verified before this change.
+  //
+  // So exactly one host function crosses the boundary — a bridge — and the
+  // bootstrap below deletes it from the global object after closing over it.
+  // Everything the handler sees (cloudnivo, console, timers) is then built
+  // from the context's OWN intrinsics, whose Function constructor only ever
+  // reaches this context.
+  // Results cross back as JSON TEXT and are revived by the context's own JSON:
+  // handing a worker-realm object to the sandbox would re-open the same hole.
+  const encode = v => { try { return JSON.stringify(v === undefined ? null : v); } catch { return 'null'; } };
+  const bridge = (op, args) => {
+    if (op === 'log') { push(args[0], args[1]); return undefined; }
+    if (op === 'sleep') {
+      const ms = Math.max(0, Math.min(Number(args[0]) || 0, workerData.timeoutMs));
+      return new Promise(resolve => { const t = setTimeout(() => resolve('null'), ms); if (t.unref) t.unref(); });
+    }
+    if (op === 'database.query') return sdkQuery(args[0], args[1]).then(encode);
+    if (op === 'storage.read') return sdkRead(args[0], args[1]).then(encode);
+    if (op === 'realtime.publish') return sdkPublish(args[0], args[1], args[2]).then(encode);
+    throw new Error('unknown capability');
   };
-  Object.freeze(cloudnivo);
-  const sandbox = {
-    cloudnivo,
-    env: cloudnivo.env,
-    console: { log: (...a) => push('log', a), warn: (...a) => push('warn', a), error: (...a) => push('error', a) },
-    setTimeout, clearTimeout, setInterval, clearInterval, URL, URLSearchParams,
-    TextEncoder, TextDecoder, JSON, Math, Date, Promise,
-  };
+  const sandbox = { __cnBridge: bridge, __cnData: null };
   try {
     const context = vm.createContext(sandbox, { name: 'function' });
+    // Data crosses as JSON text and is revived by the context's own JSON, so
+    // not even a plain host object survives into the sandbox.
+    context.__cnData = JSON.stringify({
+      auth: { userId: auth.userId, email: auth.email, role: auth.role, projectId: auth.projectId },
+      env,
+      hasSdk,
+    });
+    new vm.Script(
+      \`"use strict";
+      (() => {
+        const bridge = globalThis.__cnBridge;
+        const data = JSON.parse(globalThis.__cnData);
+        delete globalThis.__cnBridge;
+        delete globalThis.__cnData;
+        const deny = op => async () => { throw new Error('cloudnivo data-plane access is not enabled for ' + op); };
+        const call = (op, args) => Promise.resolve(bridge(op, args)).then(text => JSON.parse(text == null ? 'null' : text));
+        const freeze = o => Object.freeze(o);
+        const cloudnivo = freeze({
+          auth: freeze({ userId: data.auth.userId, email: data.auth.email, role: data.auth.role }),
+          project: freeze({ id: data.auth.projectId }),
+          env: freeze(data.env),
+          database: freeze({
+            projectId: data.auth.projectId,
+            query: data.hasSdk ? (sql, params) => call('database.query', [sql, params]) : deny('database.query'),
+          }),
+          storage: freeze({
+            projectId: data.auth.projectId,
+            read: data.hasSdk ? (bucket, path) => call('storage.read', [bucket, path]) : deny('storage.read'),
+            write: deny('storage.write'),
+          }),
+          realtime: freeze({
+            projectId: data.auth.projectId,
+            publish: data.hasSdk
+              ? (channel, event, payload) => call('realtime.publish', [channel, event, payload]).then(() => undefined)
+              : deny('realtime.publish'),
+          }),
+        });
+        globalThis.cloudnivo = cloudnivo;
+        globalThis.env = cloudnivo.env;
+        const emit = level => (...a) => {
+          const text = a.map(v => { try { return typeof v === 'string' ? v : JSON.stringify(v) ?? String(v); } catch { return '[unprintable]'; } }).join(' ');
+          bridge('log', [level, text]);
+        };
+        globalThis.console = freeze({ log: emit('log'), warn: emit('warn'), error: emit('error') });
+        // Timers, rebuilt inside the context. The host schedules the delay;
+        // the callback runs here, so no host function is ever exposed.
+        const live = new Set();
+        let nextTimer = 0;
+        const schedule = (fn, ms, repeat) => {
+          const id = ++nextTimer;
+          live.add(id);
+          const tick = () => {
+            if (!live.has(id)) return;
+            call('sleep', [ms]).then(() => {
+              if (!live.has(id)) return;
+              if (!repeat) live.delete(id);
+              try { fn(); } catch (err) { bridge('log', ['error', 'timer callback failed: ' + String(err && err.message)]); }
+              if (repeat) tick();
+            });
+          };
+          tick();
+          return id;
+        };
+        globalThis.setTimeout = (fn, ms) => schedule(fn, Number(ms) || 0, false);
+        globalThis.setInterval = (fn, ms) => schedule(fn, Number(ms) || 0, true);
+        globalThis.clearTimeout = id => { live.delete(id); };
+        globalThis.clearInterval = globalThis.clearTimeout;
+      })();\`,
+      { filename: 'cloudnivo-bootstrap.js' },
+    ).runInContext(context, { timeout: 2000 });
     const factory = new vm.Script(
       '"use strict";\\nconst module = { exports: {} };\\n' + source + '\\nmodule.exports;',
       { filename: 'function.js' },
@@ -157,7 +237,15 @@ function toText(value) {
       parentPort.postMessage({ ok: false, code: 'ENTRYPOINT_NOT_FOUND', message: 'Handler export not found: ' + entrypoint.slice(0, 80), logs, executionTimeMs: Date.now() - started });
       return;
     }
-    const fullRequest = { ...request, auth: { userId: auth.userId, email: auth.email, role: auth.role } };
+    // The request must be a CONTEXT object too: handing the handler a host
+    // object would give back the host realm through its own constructor.
+    const requestJson = JSON.stringify({
+      ...request,
+      auth: { userId: auth.userId, email: auth.email, role: auth.role },
+    });
+    const fullRequest = new vm.Script('JSON.parse(' + JSON.stringify(requestJson) + ')', {
+      filename: 'cloudnivo-request.js',
+    }).runInContext(context, { timeout: 2000 });
     const returned = await target(fullRequest);
     let status = 200; let headers = {}; let body = returned;
     if (returned !== null && typeof returned === 'object' && !Array.isArray(returned) &&
@@ -225,6 +313,10 @@ export class NodeWorkerRuntime implements FunctionRuntime {
           !!input.sdk &&
           (!!input.sdk.databaseQuery || !!input.sdk.storageRead || !!input.sdk.realtimePublish),
       },
+      // Defense in depth: the isolate must not inherit the API process
+      // environment (DATABASE_URL, JWT_SECRET, VAULT_KEY, provider keys).
+      // The function's own env is passed through workerData, not here.
+      env: {},
       resourceLimits: { maxOldGenerationSizeMb: input.memoryMb },
     });
     try {

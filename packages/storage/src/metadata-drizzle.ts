@@ -1,4 +1,5 @@
 import { and, count, eq, lt, sql } from 'drizzle-orm';
+import { isUniqueViolation } from '@cloudnivo/api-core';
 import {
   projects,
   storageBuckets,
@@ -55,7 +56,7 @@ function rowToObject(row: typeof storageObjects.$inferSelect): StoredObject {
 }
 
 function duplicate(err: unknown): boolean {
-  return String((err as { code?: unknown }).code) === '23505';
+  return isUniqueViolation(err);
 }
 
 export class DrizzleStorageMetadataStore implements StorageMetadataStore {

@@ -18,6 +18,7 @@ import { meterUsage } from './billing.js';
 import { sendJson } from './projects.js';
 import type { AgentToken } from '@cloudnivo/agents';
 import { auditAgent, gateDestructive, requireAgentScope, sendApprovalRequired } from './agents.js';
+import { rateLimitIp } from './client-ip.js';
 
 /**
  * Customer storage plane: buckets + objects under
@@ -251,9 +252,7 @@ export async function handleStorageRoutes(
   if (!projectId) return false;
   const start = Date.now();
   const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    'unknown';
+    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const finish = (status: number, body: unknown, fields: Record<string, unknown> = {}): true => {
     logger.info('storage.request', {
       project: projectId,
