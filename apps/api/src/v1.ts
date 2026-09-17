@@ -64,6 +64,7 @@ import { handlePlatformOpsRoutes, isPlatformOpsRoute } from './platform-ops.js';
 import { handleBillingRoutes, isBillingRoute } from './billing.js';
 import { agentSessionFor, handleAgentRoutes, isAgentRoute, looksLikeAgentToken } from './agents.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
+import { handleAdminRoutes, isAdminRoute } from './admin.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -428,6 +429,12 @@ export async function handleRequest(
     // Request metrics (org-scoped reads over the process-local ring).
     if (isMetricsRoute(url.pathname, req.method ?? 'GET')) {
       const handled = await handleMetricsRoutes(req, res, ctx, logger, baseHeaders, requestId);
+      if (handled) return;
+    }
+
+    // Platform operator console (staff only; the one cross-tenant reader).
+    if (isAdminRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handleAdminRoutes(req, res, ctx, logger, baseHeaders, requestId);
       if (handled) return;
     }
 

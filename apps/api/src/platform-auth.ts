@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { eq } from 'drizzle-orm';
+import { and, count, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
@@ -37,6 +37,7 @@ import {
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendSignupWelcome } from './platform-mail.js';
+import { applyStaffAllowlist } from './admin.js';
 import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
 import { clientIpOf, rateLimitIp } from './client-ip.js';
@@ -60,6 +61,8 @@ export interface PlatformUser {
   displayName: string | null;
   createdAt: string;
   totpEnabled: boolean;
+  /** Platform staff (see users.isPlatformAdmin). Drives the operator console. */
+  isPlatformAdmin: boolean;
 }
 
 interface StoredPlatformUser extends PlatformUser {
@@ -90,6 +93,18 @@ export interface PlatformUserStore {
       email?: string;
     },
   ): Promise<StoredPlatformUser | null>;
+  /**
+   * Cross-tenant enumeration for the operator console. Bounded by `limit`,
+   * newest first. Only ever reached through the staff gate in admin.ts.
+   */
+  listAll(limit: number): Promise<StoredPlatformUser[]>;
+  /** Total user count (cheap on durable stores; used by the operator KPIs). */
+  countAll(): Promise<number>;
+  /**
+   * Bootstrap grant from PLATFORM_ADMIN_EMAILS. Grants only — never demotes —
+   * and returns true when this call changed the row.
+   */
+  grantPlatformAdmin(email: string): Promise<boolean>;
 }
 
 export class MemoryPlatformUsers implements PlatformUserStore {
@@ -116,6 +131,7 @@ export class MemoryPlatformUsers implements PlatformUserStore {
       totpSecret: null,
       totpEnabled: false,
       backupCodeHashes: [],
+      isPlatformAdmin: false,
     };
     this.users.set(user.id, user);
     return stripSecrets(user);
@@ -167,6 +183,28 @@ export class MemoryPlatformUsers implements PlatformUserStore {
     this.users.set(id, next);
     return stripSecrets(next);
   }
+
+  async listAll(limit: number): Promise<StoredPlatformUser[]> {
+    return [...this.users.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, Math.max(0, limit))
+      .map(stripSecrets);
+  }
+
+  async countAll(): Promise<number> {
+    return this.users.size;
+  }
+
+  async grantPlatformAdmin(email: string): Promise<boolean> {
+    const want = email.toLowerCase();
+    for (const u of this.users.values()) {
+      if (u.email !== want) continue;
+      if (u.isPlatformAdmin) return false;
+      this.users.set(u.id, { ...u, isPlatformAdmin: true });
+      return true;
+    }
+    return false;
+  }
 }
 
 /** Copy without secret material (totp secrets stay server-side). */
@@ -187,6 +225,7 @@ function rowToStored(row: {
   totpSecret?: string | null;
   totpEnabled?: boolean | null;
   backupCodeHashes?: string[] | null;
+  isPlatformAdmin?: boolean | null;
 }): StoredPlatformUser | null {
   if (!row.passwordHash) return null;
   return {
@@ -198,6 +237,7 @@ function rowToStored(row: {
     totpSecret: row.totpSecret ?? null,
     totpEnabled: row.totpEnabled ?? false,
     backupCodeHashes: Array.isArray(row.backupCodeHashes) ? [...row.backupCodeHashes] : [],
+    isPlatformAdmin: row.isPlatformAdmin ?? false,
   };
 }
 
@@ -270,6 +310,31 @@ export class DrizzlePlatformUsers implements PlatformUserStore {
     const rows = await this.db.update(users).set(set).where(eq(users.id, id)).returning();
     const row = rows[0];
     return row ? rowToStored(row as unknown as Parameters<typeof rowToStored>[0]) : null;
+  }
+
+  async listAll(limit: number): Promise<StoredPlatformUser[]> {
+    const rows = await this.db
+      .select()
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(Math.max(0, limit));
+    return rows
+      .map(r => rowToStored(r as unknown as Parameters<typeof rowToStored>[0]))
+      .filter((u): u is StoredPlatformUser => u !== null);
+  }
+
+  async countAll(): Promise<number> {
+    const rows = await this.db.select({ n: count() }).from(users);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async grantPlatformAdmin(email: string): Promise<boolean> {
+    const rows = await this.db
+      .update(users)
+      .set({ isPlatformAdmin: true })
+      .where(and(eq(users.email, email.toLowerCase()), eq(users.isPlatformAdmin, false)))
+      .returning({ id: users.id });
+    return rows.length > 0;
   }
 }
 
@@ -751,6 +816,7 @@ function expose(user: StoredPlatformUser): PlatformUser {
     displayName: user.displayName,
     createdAt: user.createdAt,
     totpEnabled: user.totpEnabled,
+    isPlatformAdmin: user.isPlatformAdmin,
   };
 }
 
@@ -1163,6 +1229,13 @@ export async function handlePlatformAuthRoutes(
         passwordHash,
         displayName: parsed.displayName ?? null,
       });
+      /**
+       * Staff allowlist also applies at signup, not only at boot: the first
+       * operator usually signs up AFTER the env var is set, and a bootstrap
+       * that only ran at boot would silently skip them forever.
+       */
+      const promoted = await applyStaffAllowlist(ctx, user.email);
+      const withStaff = promoted ? { ...user, isPlatformAdmin: true } : user;
       const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.signup', { userId: user.id });
       // Welcome email is best-effort and centralized in platform-mail.ts: it
@@ -1173,7 +1246,7 @@ export async function handlePlatformAuthRoutes(
         displayName: user.displayName,
         userId: user.id,
       }).catch(() => undefined);
-      return finish(201, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
+      return finish(201, ok({ user: expose(withStaff), token }, requestId), { 'Set-Cookie': cookie });
     }
 
     if (url.pathname === '/api/v1/auth/login' && req.method === 'POST') {

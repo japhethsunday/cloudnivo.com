@@ -118,6 +118,14 @@ const EnvSchema = z.object({
   DATA_API_PROJECT_MAX: z.coerce.number().int().min(1).max(100_000).default(1000),
   INTROSPECTION_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(30_000),
 
+  /**
+   * Platform staff bootstrap: comma-separated emails promoted to
+   * users.is_platform_admin on boot. It only ever GRANTS — removing an
+   * address here does not demote anyone, because demotion must be a
+   * deliberate, audited act rather than a side effect of editing an env var.
+   */
+  PLATFORM_ADMIN_EMAILS: z.string().default(''),
+
   // ── Customer auth (Phase 4: per-project application users) ──
   AUTH_ACCESS_TTL_S: z.coerce.number().int().min(60).max(86_400).default(900),
   AUTH_REFRESH_TTL_S: z.coerce.number().int().min(3600).max(7_776_000).default(2_592_000),

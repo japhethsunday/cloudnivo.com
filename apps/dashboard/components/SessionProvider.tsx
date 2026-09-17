@@ -7,6 +7,8 @@ export interface SessionUser {
   id: string;
   email: string;
   displayName?: string | null;
+  /** Platform staff. Gates the operator console in the sidebar and at /admin. */
+  isPlatformAdmin?: boolean;
 }
 
 export interface OrgMembership {

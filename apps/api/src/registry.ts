@@ -142,6 +142,32 @@ export class MemoryRegistry implements Registry {
     this.credentialKey = secret ? credentialKeyFromSecret(secret) : null;
   }
 
+  /**
+   * Cross-tenant snapshots for the operator console (apps/api/src/admin.ts).
+   *
+   * Deliberately NOT on the `Registry` interface: every other caller in the
+   * API is tenant-scoped, and widening the shared contract with "give me
+   * everyone's rows" would put that power one autocomplete away in routes
+   * that must never have it. The durable path uses SQL in DrizzleAdminStore
+   * instead, so these exist only for the memory store that dev and tests run
+   * on. Reads are copies; callers cannot mutate the store through them.
+   */
+  adminOrganizations(): OrganizationRecord[] {
+    return [...this.orgs.values()];
+  }
+
+  adminMemberships(): MembershipRecord[] {
+    return [...this.memberships];
+  }
+
+  adminProjects(): ProjectRecord[] {
+    return [...this.projects.values()];
+  }
+
+  adminDatabases(): ProjectDbRecord[] {
+    return [...this.databases.values()];
+  }
+
   async createOrganization(userId: string, name: string, slug: string): Promise<ProjectOrg> {
     if (!slugOk(slug)) throw new ApiError('VALIDATION_ERROR', 'Invalid organization slug', 400);
     for (const o of this.orgs.values()) {

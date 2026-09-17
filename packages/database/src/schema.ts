@@ -35,6 +35,15 @@ export const users = pgTable('users', {
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').notNull().default(false),
   backupCodeHashes: jsonb('backup_code_hashes').notNull().default([]),
+  /**
+   * Platform staff. A staff user reads ACROSS tenants through /api/v1/admin,
+   * which is the one place in CloudNivo that steps outside the per-tenant
+   * boundary every other route enforces — so it is a stored, auditable fact
+   * rather than a role claim in a token, and it is revocable without a
+   * deploy. PLATFORM_ADMIN_EMAILS seeds it on boot so the first operator
+   * exists without hand-written SQL; see apps/api/src/admin.ts.
+   */
+  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

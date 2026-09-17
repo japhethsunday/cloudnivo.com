@@ -552,6 +552,27 @@ function ShellBody({
               </Link>
             ))}
           </div>
+          {/*
+            Platform group. Rendered only for staff — not as a security
+            control (the API answers 404 to everyone else) but because a
+            sidebar entry that leads to "not available" is worse than no
+            entry. The flag comes from /api/v1/me, re-read each session.
+          */}
+          {user?.isPlatformAdmin ? (
+            <div className="nav-group">
+              <p className="nav-context">Platform</p>
+              <Link
+                href="/admin"
+                aria-current={pathname === '/admin' ? 'page' : undefined}
+                aria-label="Operator console"
+              >
+                <span className="nav-icon" aria-hidden>
+                  <IconShield size={16} />
+                </span>
+                <span className="nav-text">Operator console</span>
+              </Link>
+            </div>
+          ) : null}
         </nav>
 
         <div className="sidebar-foot">

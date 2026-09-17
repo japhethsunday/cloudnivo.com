@@ -43,6 +43,13 @@
   --info-soft: #0d2639;
   --info-ink: #6fbcff;
 
+  /* Chart series. Two categorical slots, stepped for THIS scene's surface and
+     validated against it (lightness band, chroma floor, CVD separation,
+     contrast) rather than flipped from the light values. Status colours are
+     reserved for state and are never reused as a series. */
+  --viz-users: #4d8dff;
+  --viz-projects: #199e70;
+
   /* Instrument geometry: square-ish, on a 4px grid. */
   --radius: 4px;
   --radius-sm: 3px;
@@ -97,6 +104,9 @@
   --shadow-md: 0 8px 24px -14px rgb(12 22 36 / 0.3);
   --shadow-lg: 0 18px 48px -20px rgb(12 22 36 / 0.34);
   color-scheme: light;
+  --viz-users: #1f5fd0;
+  --viz-projects: #1baf7a;
+
 }
 
 /* ── Dark theme refinements: confident controls, quiet depth ── */
@@ -3597,4 +3607,137 @@ summary code,
 .ws-meta .state-word {
   min-width: 0;
   text-align: left;
+}
+
+/* ── Operator console + chart figure ──────────────────────────────────
+   The console reuses the existing panel/table/stat vocabulary; only the
+   two-column split, the chart figure and the row sub-labels are new. */
+
+.admin-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-name {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.admin-name + .muted {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-error {
+  max-width: 34ch;
+  overflow-wrap: anywhere;
+  color: var(--danger-ink);
+  font-size: 13px;
+}
+
+.admin-asof {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.viz {
+  min-width: 0;
+}
+
+/* A stat strip is a list of facts, so it is marked up as one — but a list
+   marker in a KPI tile is noise, and the shared .stat-grid is used with
+   plain divs elsewhere. Scoped to the list form so nothing else moves. */
+ul.stat-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.viz-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.viz-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.viz-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A round swatch carries the series identity; the label beside it keeps the
+   text in text ink, never in the series colour. */
+.viz-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.viz-figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.viz-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Grid and axis recede: they are scaffolding, not data. */
+.viz-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.viz-tick {
+  fill: var(--text-faint);
+  font-size: 11px;
+}
+
+.viz-endlabel {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.viz-crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.viz-caption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-height: 1.4em;
+}
+
+/* On a phone the end-labels would collide with the plot, so the series names
+   fall back to the legend alone and the plot takes the full width. */
+@media (max-width: 720px) {
+  .admin-error {
+    max-width: 22ch;
+  }
 }

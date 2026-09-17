@@ -5,6 +5,7 @@ import { loadConfig, loadDotEnv } from '@cloudnivo/config';
 import { runControlMigrations, seedDatabase } from '@cloudnivo/database';
 import { createLogger } from '@cloudnivo/logging';
 import { createContext, handleRequest, initControlPlane, type ApiContext } from './v1.js';
+import { bootstrapPlatformAdmins } from './admin.js';
 import { assertProductionSafety, assertSharedCache } from './prod-guards.js';
 import { resolveListenPort } from './platform-port.js';
 import { realtimeFor } from './realtime.js';
@@ -32,6 +33,9 @@ export async function start(
   assertProductionSafety(config, logger);
   await assertSharedCache(config, ctx.cache, logger);
   await initControlPlane(ctx);
+  // Staff bootstrap runs AFTER the control plane is up: the grant is a write
+  // against the users table, and it must never keep the API from booting.
+  await bootstrapPlatformAdmins(ctx, logger);
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx).catch(err => {
       logger.error('unhandled request error', { error: String(err) });
