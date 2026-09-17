@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { resolveApiOrigin } from './lib/api-origin';
 
 /**
  * Edge-safe middleware: request IDs + strict security headers.
@@ -23,7 +24,7 @@ import { NextResponse } from 'next/server';
 function cspHeader(nonce: string): string {
   const connect = ["'self'"];
   // Local dev API/realtime origins (never in production builds).
-  if (process.env.VERCEL_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     connect.push(
       'http://localhost:3001',
       'http://localhost:3002',
@@ -31,28 +32,27 @@ function cspHeader(nonce: string): string {
       'ws://localhost:3002',
     );
   }
-  const raw = process.env.NEXT_PUBLIC_API_URL;
-  if (raw) {
-    try {
-      const origin = new URL(raw).origin;
-      if (
-        (origin.startsWith('https://') || origin.startsWith('http://')) &&
-        !connect.includes(origin)
-      ) {
-        connect.push(origin);
-        /**
-         * The WebSocket origin has to be listed separately. CSP matches
-         * `wss://host` against `https://host` as a DIFFERENT scheme — only
-         * http→https and ws→wss are treated as equivalent — so realtime
-         * sockets were blocked by the very policy meant to allow the API
-         * they share a host with.
-         */
-        const wsOrigin = origin.replace(/^http/, 'ws');
-        if (!connect.includes(wsOrigin)) connect.push(wsOrigin);
-      }
-    } catch {
-      // Misconfigured env: fall back to 'self'-only (fail closed, no injection).
-    }
+  /**
+   * resolveApiOrigin validates the configured value and, in a production
+   * build, refuses a hosting provider's generated hostname in favour of the
+   * canonical API domain. A malformed or non-http value can therefore never
+   * reach the policy below.
+   */
+  const { origin } = resolveApiOrigin(
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.NODE_ENV === 'production',
+  );
+  if (!connect.includes(origin)) {
+    connect.push(origin);
+    /**
+     * The WebSocket origin has to be listed separately. CSP matches
+     * `wss://host` against `https://host` as a DIFFERENT scheme — only
+     * http→https and ws→wss are treated as equivalent — so realtime
+     * sockets were blocked by the very policy meant to allow the API
+     * they share a host with.
+     */
+    const wsOrigin = origin.replace(/^http/, 'ws');
+    if (!connect.includes(wsOrigin)) connect.push(wsOrigin);
   }
   // `'self'` stays alongside the nonce: statically prerendered pages emit
   // their `<script src>` tags at build time, before any request exists to

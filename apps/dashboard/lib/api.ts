@@ -5,11 +5,20 @@
  * lives in localStorage (dev) — never in source code.
  */
 
+import { apiOrigin } from './api-origin';
+
 export function apiBase(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  return 'http://localhost:3001';
+  /**
+   * Shares one resolver with middleware.ts so the origin the client CALLS and
+   * the origin the CSP ALLOWS can never disagree — if they drift apart, every
+   * request is blocked by the policy meant to permit it.
+   */
+  const raw = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
+  // NODE_ENV, not VERCEL_ENV: middleware.ts reads the same flag, and the two
+  // must agree or a build calls one origin while its CSP allows another.
+  // NODE_ENV also needs no "system environment variables" opt-in to exist.
+  const isProduction = typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
+  return apiOrigin(raw, isProduction);
 }
 
 export function getToken(): string {
