@@ -60,7 +60,9 @@ describe('signup triggers welcome email', () => {
     expect(body['to']).toEqual(['welc@example.com']);
     expect(body['subject']).toBe('Welcome to CloudNivo');
     expect(String(body['html'])).toContain('Hi Welc,');
-    expect(String(body['html'])).toContain('https://app.example.com/icon.svg');
+    // PNG, not SVG: most mail clients refuse to render SVG, which left the
+    // brand slot showing a broken image.
+    expect(String(body['html'])).toContain('https://app.example.com/email-logo.png');
     expect(String(body['html'])).toContain('href="https://app.example.com"');
     expect(body['text']).toBeDefined();
   });

@@ -47,6 +47,26 @@ function emailServiceFor(ctx: ApiContext): EmailService {
   return new MemoryEmailService();
 }
 
+/**
+ * Brand context for every PLATFORM email.
+ *
+ * Passing this is what makes an email render the branded HTML template —
+ * without it the providers fall back to a bare text body (see
+ * packages/auth/src/customer/email.ts). The platform password reset shipped
+ * without it and arrived as plain text, which is why this is a shared helper
+ * now rather than an argument each call site remembers on its own.
+ */
+function platformBrand(ctx: ApiContext): { appUrl: string; logoUrl: string } {
+  const appUrl = (ctx.config.APP_URL ?? '').replace(/\/+$/, '') || 'http://localhost:3000';
+  /**
+   * PNG, not the app's SVG favicon: Gmail, Outlook and most mail clients
+   * refuse to render SVG in an email, so /icon.svg arrived as a broken-image
+   * box in the brand slot of every template. apps/dashboard/public/email-logo.png
+   * is the same mark rasterised.
+   */
+  return { appUrl, logoUrl: `${appUrl}/email-logo.png` };
+}
+
 function recipientHash(email: string): string {
   return createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 32);
 }
@@ -79,11 +99,11 @@ export async function sendSignupWelcome(
     if (email instanceof MemoryEmailService) {
       return fail('no sender configured (set EMAIL_DRIVER=resend with RESEND_API_KEY/RESEND_FROM)');
     }
-    const appUrl = (ctx.config.APP_URL ?? '').replace(/\/$/, '') || 'http://localhost:3000';
+    const brand = platformBrand(ctx);
     const receipt = await email.sendWelcomeEmail(input.to, {
       displayName: input.displayName ?? null,
-      appUrl,
-      logoUrl: `${appUrl}/icon.svg`,
+      appUrl: brand.appUrl,
+      logoUrl: brand.logoUrl,
     });
     ctx.logger.info('platform.welcome_email', {
       type: 'welcome',
@@ -151,7 +171,11 @@ export async function sendPlatformPasswordReset(
     if (email instanceof MemoryEmailService) {
       return report(false, 'none', null, 'no sender configured');
     }
-    const receipt = await email.sendPasswordResetEmail(input.to, input.resetUrl);
+    const receipt = await email.sendPasswordResetEmail(
+      input.to,
+      input.resetUrl,
+      platformBrand(ctx),
+    );
     await ctx.registry
       .recordAudit('platform.password_reset_email', { userId: input.userId })
       .catch(() => undefined);

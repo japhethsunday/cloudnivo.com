@@ -73,11 +73,30 @@ interface ActionContent {
  * Shared premium shell for transactional emails: light card, brand blue,
  * logo header, single CTA, real-link footer. Email-safe table HTML, no JS.
  */
+/**
+ * Intro and closing paragraphs are authored as HTML fragments (a builder may
+ * bold an organization name), and the same strings feed the plain-text part.
+ * Without this, a text-only client received "<strong>Northwind</strong>"
+ * literally. Tags go, entities come back to their characters.
+ */
+function toPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
 export function buildActionEmail(content: ActionContent, brand: BrandContext): WelcomeContent {
   const { subject } = content;
-  const text: string[] = [subject, '', ...content.intro, ''];
+  const text: string[] = [subject, '', ...content.intro.map(toPlainText), ''];
   if (content.bullets) {
-    text.push(...content.bullets.map(b => `• ${b}`), '');
+    text.push(...content.bullets.map(b => `• ${toPlainText(b)}`), '');
   }
   if (content.code) {
     text.push(`Code: ${content.code}`, '');
@@ -86,7 +105,7 @@ export function buildActionEmail(content: ActionContent, brand: BrandContext): W
     text.push(`${content.action.label}: ${content.action.url}`, '');
   }
   if (content.closing) {
-    text.push(...content.closing, '');
+    text.push(...content.closing.map(toPlainText), '');
   }
   text.push(...brandFooterText(brand.appUrl));
   const bullets = content.bullets

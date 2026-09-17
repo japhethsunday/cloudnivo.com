@@ -200,7 +200,7 @@ class SmtpConversation {
 export class SmtpEmailService implements EmailService {
   readonly driver = 'smtp';
   constructor(private readonly config: SmtpConfig) {}
-  private async sendRaw(to: string, subject: string, text: string): Promise<void> {
+  private async sendRaw(to: string, subject: string, text: string, html?: string): Promise<void> {
     const { host, port, username, password, from, secure = 'starttls', timeoutMs = 15000 } = this.config;
     if (!host || !from) throw new Error('SMTP is not configured (host/from required)');
     const initialTls = secure === 'tls';
@@ -229,12 +229,31 @@ export class SmtpEmailService implements EmailService {
       await convo.command(`RCPT TO:<${to}>`, 250, timeoutMs);
       await convo.command('DATA', 354, timeoutMs);
       const date = new Date().toUTCString();
-      const safeText = text.replace(/\r?\n\./g, '\n..');
-      await convo.command(
-        `From: ${from}\r\nTo: ${to}\r\nSubject: ${subject}\r\nDate: ${date}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${safeText}\r\n.`,
-        250,
-        timeoutMs,
-      );
+      /**
+       * Dot-stuffing: a line that begins with "." would end the DATA section
+       * early, so each one is doubled (RFC 5321 §4.5.2). This applies to the
+       * HTML part too, which is why the escaping is a helper now.
+       */
+      const stuff = (body: string): string => body.replace(/\r?\n\./g, '\n..');
+      const headers = `From: ${from}\r\nTo: ${to}\r\nSubject: ${subject}\r\nDate: ${date}\r\nMIME-Version: 1.0\r\n`;
+      /**
+       * With HTML, send multipart/alternative so the branded template renders
+       * where the client supports it and the plain text stands in where it
+       * does not. Without it, SMTP dropped every template on the floor and
+       * delivered bare text.
+       */
+      const body = html
+        ? (() => {
+            const boundary = `cn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            return (
+              `${headers}Content-Type: multipart/alternative; boundary="${boundary}"\r\n\r\n` +
+              `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${stuff(text)}\r\n` +
+              `--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${stuff(html)}\r\n` +
+              `--${boundary}--`
+            );
+          })()
+        : `${headers}Content-Type: text/plain; charset=utf-8\r\n\r\n${stuff(text)}`;
+      await convo.command(`${body}\r\n.`, 250, timeoutMs);
       await convo.command('QUIT', 221, timeoutMs).catch(() => undefined);
     } finally {
       done();
@@ -245,25 +264,41 @@ export class SmtpEmailService implements EmailService {
     await this.sendRaw(to, subject, text);
     return { delivered: true, queued: true, id: `smtp_${Date.now()}` };
   }
-  sendVerificationEmail(to: string, verifyUrl: string): Promise<EmailReceipt> {
+  sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) return this.sendBuilt(buildVerifyEmail(verifyUrl, brand), to);
     return this.send(to, 'verify', { url: verifyUrl });
   }
-  sendPasswordResetEmail(to: string, resetUrl: string): Promise<EmailReceipt> {
+  sendPasswordResetEmail(to: string, resetUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) return this.sendBuilt(buildResetEmail(resetUrl, brand), to);
     return this.send(to, 'reset', { url: resetUrl });
   }
-  sendSecurityNotification(to: string, text: string): Promise<EmailReceipt> {
+  sendSecurityNotification(to: string, text: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) return this.sendBuilt(buildSecurityEmail(text, brand), to);
     return this.send(to, 'security', { text });
   }
-  sendMagicLink(to: string, url: string): Promise<EmailReceipt> {
+  sendMagicLink(to: string, url: string, brand?: BrandContext): Promise<EmailReceipt> {
+    if (brand) return this.sendBuilt(buildMagicLinkEmail(url, brand), to);
     return this.send(to, 'magic', { url });
   }
-  sendOtpEmail(to: string, code: string, purpose: string): Promise<EmailReceipt> {
+  sendOtpEmail(
+    to: string,
+    code: string,
+    purpose: string,
+    brand?: BrandContext,
+  ): Promise<EmailReceipt> {
+    if (brand) return this.sendBuilt(buildOtpEmailContent(code, purpose, brand), to);
     return this.send(to, 'otp', { code, purpose });
   }
   async sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt> {
-    // SMTP carries the text rendering (same content, no HTML multipart).
-    const { subject, text } = buildWelcomeEmail(input);
-    await this.sendRaw(to, subject, text);
+    return this.sendBuilt(buildWelcomeEmail(input), to);
+  }
+
+  /** One place where a built template becomes an SMTP message. */
+  private async sendBuilt(
+    built: { subject: string; text: string; html?: string },
+    to: string,
+  ): Promise<EmailReceipt> {
+    await this.sendRaw(to, built.subject, built.text, built.html);
     return { delivered: true, queued: true, id: `smtp_${Date.now()}` };
   }
 }

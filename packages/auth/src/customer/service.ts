@@ -96,7 +96,13 @@ export class CustomerAuthService {
   /** Branding for transactional emails (logo + real product links). */
   private brand(): { appUrl: string; logoUrl: string } {
     const appUrl = this.appOrigin;
-    return { appUrl, logoUrl: `${appUrl}/icon.svg` };
+    /**
+     * PNG, not the app's SVG favicon: Gmail, Outlook and most mail clients
+     * refuse to render SVG in an email, so /icon.svg arrived as a
+     * broken-image box in the brand slot of every template.
+     * apps/dashboard/public/email-logo.png is the same mark rasterised.
+     */
+    return { appUrl, logoUrl: `${appUrl}/email-logo.png` };
   }
 
   /**
