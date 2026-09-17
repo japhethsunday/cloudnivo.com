@@ -32,7 +32,7 @@ test('account center manages profile and password', async ({ page }) => {
   await page.getByRole('button', { name: /^log out$/i }).first().click();
   await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible({ timeout: 15_000 });
   await page.getByLabel(/email/i).fill(`acct-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('acct-password-222');
+  await page.getByLabel('Password', { exact: true }).fill('acct-password-222');
   await page.getByRole('button', { name: /^sign in$/i }).click();
   // Login returns to the pre-logout page via ?next= — either way the session is back.
   await expect(page.getByRole('button', { name: new RegExp(`Account: acct-${stamp}@example.com`, 'i') })).toBeVisible({

@@ -4,10 +4,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { apiFetch } from '../../lib/api';
-import { AuthLayout } from '../../components/AuthLayout';
-import { ErrorState } from '../../components/States';
+import { AuthGlass } from '../../components/AuthGlass';
 import { PasswordField, passwordMeetsRules } from '../../components/PasswordField';
-import styles from '../marketing.module.css';
+import styles from '../auth-glass.module.css';
 
 /**
  * Spend a reset link.
@@ -50,42 +49,42 @@ function ResetForm(): React.JSX.Element {
 
   if (!token) {
     return (
-      <AuthLayout title="That link is incomplete" sub="No reset token was in the address.">
-        <p className="muted">
+      <AuthGlass title="That link is incomplete" sub="No reset token was in the address.">
+        <p className={styles.hint}>
           Open the link straight from the email — copying only part of it leaves the token behind.
         </p>
-        <p className={styles.authAlt} style={{ marginTop: 16 }}>
+        <p className={styles.alt}>
           <Link href="/forgot-password">Request a new link</Link>
         </p>
-      </AuthLayout>
+      </AuthGlass>
     );
   }
 
   if (done) {
     return (
-      <AuthLayout title="Password changed" sub="Every other session has been signed out.">
-        <p className="muted">
+      <AuthGlass title="Password changed" sub="Every other session has been signed out.">
+        <p className={styles.hint}>
           Your new password is active. Any device that was still signed in has been signed out, so
           sign in again to continue.
         </p>
         <button
           type="button"
-          className="btn btn-primary btn-block"
+          className={styles.submit}
           style={{ marginTop: 16 }}
           onClick={() => router.replace('/login')}
         >
           Sign in
         </button>
-      </AuthLayout>
+      </AuthGlass>
     );
   }
 
   return (
-    <AuthLayout
+    <AuthGlass
       title="Choose a new password"
       sub="This link works once, and signs out every other session."
     >
-      <form onSubmit={submit} aria-label="Set a new password" className={styles.authForm}>
+      <form onSubmit={submit} aria-label="Set a new password" className={styles.form}>
         <PasswordField
           id="reset-password"
           label="New password"
@@ -100,10 +99,14 @@ function ResetForm(): React.JSX.Element {
           onChange={setConfirm}
           hint={mismatch ? 'These two do not match yet.' : undefined}
         />
-        {error ? <ErrorState title="Couldn't reset your password" message={error} /> : null}
+        {error ? (
+          <p className={`${styles.alert} ${styles.alertError}`} role="alert">
+            {error}
+          </p>
+        ) : null}
         <button
           type="submit"
-          className="btn btn-primary btn-block"
+          className={styles.submit}
           disabled={busy || !ready}
           aria-busy={busy}
         >
@@ -117,10 +120,10 @@ function ResetForm(): React.JSX.Element {
           )}
         </button>
       </form>
-      <p className={styles.authAlt} style={{ marginTop: 16 }}>
+      <p className={styles.alt}>
         <Link href="/login">Back to sign in</Link>
       </p>
-    </AuthLayout>
+    </AuthGlass>
   );
 }
 

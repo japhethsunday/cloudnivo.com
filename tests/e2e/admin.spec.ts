@@ -36,7 +36,7 @@ test('the operator console is invisible to an ordinary developer', async ({ page
 
   await page.goto('/login');
   await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
 

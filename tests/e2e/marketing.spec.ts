@@ -52,7 +52,7 @@ test('mobile menu opens and navigates', async ({ page }) => {
 test('failed login explains the problem without internals', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel(/email/i).fill('nobody@example.com');
-  await page.getByLabel(/password/i).fill('wrong-password-123');
+  await page.getByLabel('Password', { exact: true }).fill('wrong-password-123');
   await page.getByRole('button', { name: /^sign in$/i }).click();
   const alert = page.getByRole('alert');
   await expect(alert).toBeVisible({ timeout: 15_000 });
@@ -68,7 +68,7 @@ test('login honors next and sidebar collapse persists', async ({ page, request }
   await page.goto('/projects/new');
   await expect(page).toHaveURL(/\/login\?next=/, { timeout: 15_000 });
   await page.getByLabel(/email/i).fill(`mkt-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('marketing-journey-1');
+  await page.getByLabel('Password', { exact: true }).fill('marketing-journey-1');
   await page.getByRole('button', { name: /^sign in$/i }).click();
   await expect(page).toHaveURL(/\/projects\/new$/, { timeout: 15_000 });
 

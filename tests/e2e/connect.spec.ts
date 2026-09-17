@@ -65,7 +65,7 @@ async function project(
 async function login(page: Page, email: string): Promise<void> {
   await page.goto('/login');
   await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: /^sign in$/i }).click();
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
 }

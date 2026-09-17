@@ -54,7 +54,7 @@ test('create → open → leave → return → refresh → open keeps working', 
 
   await page.goto('/login');
   await page.getByLabel(/email/i).fill(`scope-${stamp}@example.com`);
-  await page.getByLabel(/password/i).fill('scope-regression-1');
+  await page.getByLabel('Password', { exact: true }).fill('scope-regression-1');
   await page.getByRole('button', { name: /^sign in$/i }).click();
   await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible({ timeout: 15_000 });
 

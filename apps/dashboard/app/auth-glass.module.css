@@ -1,0 +1,643 @@
+/* ── CloudNivo authentication: the front door ──────────────────────────
+   A deliberate departure from the console's instrument grammar, pinned by
+   the user: a glass card floating on a dark field lit by the brand blue.
+
+   Two rules hold it to the product rather than to a template:
+
+   1. The accent is CloudNivo blue and nothing else. No amber, no red, no
+      gradient text — the one saturated thing on screen is the control you
+      are meant to press.
+   2. The scene is dark regardless of the app's theme. This surface is
+      signed-out, so there is no user preference to honour yet, and the
+      glass depends on a dark field to read at all. Tokens are therefore
+      scoped here rather than inherited.
+
+   Every colour pair below is measured against its own surface, not assumed
+   — the muted inks sit on the card, not on the page. */
+
+.scene {
+  --g-ink: #f4f7fc;
+  --g-ink-muted: #a7b3c6;
+  --g-ink-faint: #8290a5;
+  --g-card: rgb(255 255 255 / 0.07);
+  --g-card-solid: #0c1424;
+  --g-line: rgb(255 255 255 / 0.13);
+  --g-line-strong: rgb(255 255 255 / 0.22);
+  --g-field: rgb(255 255 255 / 0.05);
+  --g-accent: #4d8dff;
+  --g-accent-hover: #74a5ff;
+  --g-accent-ink: #051021;
+  --g-danger: #fa7268;
+  --g-danger-ink: #ff9b93;
+  --g-success: #35c88a;
+  --g-success-ink: #5cd6a3;
+
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #060911;
+  color: var(--g-ink);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The light. Two offset blue pools rather than one centred halo — a single
+   symmetrical glow behind a centred card is the template look. */
+.scene::before,
+.scene::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+}
+.scene::before {
+  width: 1100px;
+  height: 820px;
+  top: -320px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at center,
+    rgb(77 141 255 / 0.55) 0%,
+    rgb(77 141 255 / 0.22) 38%,
+    rgb(69 120 220 / 0.07) 60%,
+    transparent 74%
+  );
+  filter: blur(14px);
+}
+.scene::after {
+  width: 820px;
+  height: 560px;
+  bottom: -280px;
+  right: -180px;
+  background: radial-gradient(
+    ellipse at center,
+    rgb(69 165 245 / 0.26) 0%,
+    rgb(69 165 245 / 0.08) 45%,
+    transparent 70%
+  );
+  filter: blur(10px);
+}
+
+/* A faint grid, masked to fade out. It gives the glass something to refract
+   instead of flat colour, which is what separates real depth from a blur. */
+.grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 35%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 35%, #000 0%, transparent 78%);
+}
+
+.shell {
+  position: relative;
+  width: 100%;
+  max-width: 424px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── The card ── */
+
+.card {
+  background: var(--g-card);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid var(--g-line);
+  border-radius: 18px;
+  padding: 30px 28px 26px;
+  box-shadow:
+    0 30px 70px -22px rgb(0 0 0 / 0.8),
+    0 0 0 1px rgb(77 141 255 / 0.07),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14);
+  animation: cardIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Browsers without backdrop-filter get a solid card, not a transparent one
+   that would leave the text unreadable over the glow. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card {
+    background: var(--g-card-solid);
+  }
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--g-ink);
+  margin-bottom: 20px;
+}
+.mark:hover {
+  text-decoration: none;
+}
+.markBadge {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, var(--g-accent-hover), var(--g-accent));
+  color: #fff;
+  box-shadow: 0 6px 18px -8px rgb(77 141 255 / 0.9);
+  flex: none;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  text-wrap: balance;
+  margin: 0 0 6px;
+  text-align: center;
+  color: var(--g-ink);
+}
+.sub {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--g-ink-muted);
+  margin: 0 0 24px;
+  text-align: center;
+  text-wrap: pretty;
+}
+
+/* ── Fields ── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.field label {
+  font-size: 12.5px;
+  font-weight: 550;
+  letter-spacing: -0.004em;
+  color: var(--g-ink-muted);
+}
+.asideLink {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--g-accent);
+}
+.asideLink:hover {
+  color: var(--g-accent-hover);
+}
+
+.input,
+.scene input[type='text'],
+.scene input[type='email'],
+.scene input[type='password'] {
+  width: 100%;
+  font: inherit;
+  font-size: 14.5px;
+  color: var(--g-ink);
+  background: var(--g-field);
+  border: 1px solid var(--g-line);
+  border-radius: 11px;
+  padding: 11px 13px;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+.scene input::placeholder {
+  color: var(--g-ink-faint);
+}
+.scene input:hover:not(:focus) {
+  border-color: var(--g-line-strong);
+}
+.scene input:focus,
+.scene input:focus-visible {
+  outline: none;
+  border-color: var(--g-accent);
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: 0 0 0 3px rgb(77 141 255 / 0.22);
+}
+.scene input:disabled {
+  opacity: 0.55;
+}
+
+/* The reveal toggle sits inside the field, so the field owns the position. */
+.pwWrap {
+  position: relative;
+}
+.pwWrap input {
+  padding-right: 62px;
+}
+.reveal {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--g-ink-faint);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.reveal:hover {
+  color: var(--g-ink);
+  background: rgb(255 255 255 / 0.07);
+}
+.reveal:focus-visible {
+  outline: 2px solid var(--g-accent);
+  outline-offset: 1px;
+}
+
+/* ── Password rules ── */
+
+.rules {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--g-ink-faint);
+}
+.rules li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  transition: color 0.18s ease;
+}
+.rules li[data-met='true'] {
+  color: var(--g-success-ink);
+}
+.ruleTick {
+  flex: none;
+  width: 13px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ── Primary action ── */
+
+.submit {
+  width: 100%;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  color: var(--g-accent-ink);
+  background: var(--g-accent);
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 12px 16px;
+  margin-top: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition:
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.1s ease;
+  box-shadow: 0 10px 26px -12px rgb(77 141 255 / 0.95);
+}
+.submit:hover:not(:disabled) {
+  background: var(--g-accent-hover);
+}
+.submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.submit:focus-visible {
+  outline: 2px solid var(--g-accent-hover);
+  outline-offset: 2px;
+}
+/* Not-ready must read as a button that is waiting, never as a dead field:
+   it keeps its shape and a legible label, and loses only the fill. */
+.submit:disabled {
+  background: rgb(255 255 255 / 0.05);
+  border-color: var(--g-line-strong);
+  color: var(--g-ink-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 0.65s linear infinite;
+  flex: none;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Messages ── */
+
+.alert {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid;
+}
+.alertError {
+  color: var(--g-danger-ink);
+  background: rgb(250 114 104 / 0.1);
+  border-color: rgb(250 114 104 / 0.34);
+}
+.alertOk {
+  color: var(--g-success-ink);
+  background: rgb(53 200 138 / 0.1);
+  border-color: rgb(53 200 138 / 0.32);
+}
+.hint {
+  font-size: 12px;
+  color: var(--g-ink-faint);
+  margin: 0;
+}
+.hintWarn {
+  color: var(--g-danger-ink);
+}
+
+.alt {
+  margin: 20px 0 0;
+  font-size: 13px;
+  color: var(--g-ink-muted);
+  text-align: center;
+}
+.alt a,
+.linkBtn {
+  color: var(--g-accent);
+  font-weight: 550;
+}
+.alt a:hover,
+.linkBtn:hover {
+  color: var(--g-accent-hover);
+}
+.linkBtn {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkBtn:disabled {
+  color: var(--g-ink-faint);
+  cursor: default;
+  text-decoration: none;
+}
+.linkBtn:focus-visible {
+  outline: 2px solid var(--g-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* A quiet line under the card: context that is true but not the task. */
+.foot {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--g-ink-faint);
+  text-align: center;
+  margin: 0;
+  padding: 0 8px;
+}
+.footPoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--g-ink-faint);
+}
+.footPoints li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.footDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--g-success);
+  flex: none;
+}
+
+/* ── One-time code ── */
+
+.otpRow {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.otpBox {
+  width: 46px;
+  height: 54px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--g-ink);
+  background: var(--g-field);
+  border: 1px solid var(--g-line);
+  border-radius: 12px;
+  padding: 0;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.otpBox[data-filled='true'] {
+  border-color: var(--g-line-strong);
+  background: rgb(255 255 255 / 0.07);
+}
+.scene .otpBox:focus,
+.scene .otpBox:focus-visible {
+  outline: none;
+  border-color: var(--g-accent);
+  background: rgb(255 255 255 / 0.08);
+  box-shadow: 0 0 0 3px rgb(77 141 255 / 0.26);
+  transform: translateY(-2px);
+}
+.otpMeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--g-ink-faint);
+}
+.otpClock {
+  font-variant-numeric: tabular-nums;
+}
+.otpClockLow {
+  color: var(--g-danger-ink);
+}
+
+@media (max-width: 420px) {
+  .card {
+    padding: 26px 20px 22px;
+  }
+  .otpRow {
+    gap: 6px;
+  }
+  .otpBox {
+    width: 100%;
+    max-width: 46px;
+    height: 50px;
+    font-size: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .spinner {
+    animation: none;
+  }
+  .scene *,
+  .scene *::before,
+  .scene *::after {
+    transition-duration: 0.01ms;
+  }
+  .scene .otpBox:focus {
+    transform: none;
+  }
+}
+
+/* ── Adopting the shared PasswordField ─────────────────────────────────
+   PasswordField carries the aria contract the e2e suite drives (the
+   Show/Hide toggle's accessible name, the aria-describedby link to the
+   rules, the data-met state). It is restyled from here rather than edited,
+   so the glass scene owns the appearance and the component keeps owning the
+   behaviour. */
+
+.scene :global(.field) {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+}
+.scene :global(.field) > label {
+  font-size: 12.5px;
+  font-weight: 550;
+  letter-spacing: -0.004em;
+  color: var(--g-ink-muted);
+  margin: 0;
+}
+.scene :global(.password-input) {
+  position: relative;
+  display: block;
+}
+.scene :global(.password-input) input {
+  padding-right: 64px;
+}
+.scene :global(.password-reveal) {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--g-ink-faint);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  padding: 6px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.scene :global(.password-reveal):hover {
+  color: var(--g-ink);
+  background: rgb(255 255 255 / 0.07);
+}
+.scene :global(.password-reveal):focus-visible {
+  outline: 2px solid var(--g-accent);
+  outline-offset: 1px;
+}
+.scene :global(.password-rules) {
+  list-style: none;
+  margin: 3px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--g-ink-faint);
+}
+.scene :global(.password-rules) li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  transition: color 0.18s ease;
+}
+.scene :global(.password-rules) li > span {
+  flex: none;
+  width: 11px;
+  text-align: center;
+}
+.scene :global(.password-rules) li[data-met='true'] {
+  color: var(--g-success-ink);
+}
+.scene :global(.field-hint) {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--g-danger-ink);
+  margin: 1px 0 0;
+}

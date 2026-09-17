@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
-import { AuthLayout } from '../../components/AuthLayout';
-import { ErrorState } from '../../components/States';
-import styles from '../marketing.module.css';
+import { AuthGlass } from '../../components/AuthGlass';
+import styles from '../auth-glass.module.css';
 
 /**
  * Request a password reset link.
@@ -41,30 +40,30 @@ export default function ForgotPasswordPage(): React.JSX.Element {
 
   if (sent) {
     return (
-      <AuthLayout
+      <AuthGlass
         title="Check your inbox"
         sub="If that address has a CloudNivo account, a reset link is on its way."
-        asideNote="Reset links expire, and using one signs out every other session on the account."
+        foot="Reset links expire, and using one signs out every other session on the account."
       >
-        <p className="muted">
+        <p className={styles.hint}>
           The link is single-use and expires. If it does not arrive within a few minutes, check
           spam, then try again — requesting a new link cancels the previous one.
         </p>
-        <p className={styles.authAlt} style={{ marginTop: 16 }}>
+        <p className={styles.alt}>
           <Link href="/login">Back to sign in</Link>
         </p>
-      </AuthLayout>
+      </AuthGlass>
     );
   }
 
   return (
-    <AuthLayout
+    <AuthGlass
       title="Reset your password"
       sub="We'll email you a link to choose a new one."
-      asideNote="Reset links expire, and using one signs out every other session on the account."
+      foot="Reset links expire, and using one signs out every other session on the account."
     >
-      <form onSubmit={submit} aria-label="Request password reset" className={styles.authForm}>
-        <div className="field">
+      <form onSubmit={submit} aria-label="Request password reset" className={styles.form}>
+        <div className={styles.field}>
           <label htmlFor="forgot-email">Email</label>
           <input
             id="forgot-email"
@@ -76,8 +75,12 @@ export default function ForgotPasswordPage(): React.JSX.Element {
             onChange={e => setEmail(e.target.value)}
           />
         </div>
-        {error ? <ErrorState title="Couldn't send the link" message={error} /> : null}
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy} aria-busy={busy}>
+        {error ? (
+          <p className={`${styles.alert} ${styles.alertError}`} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <button type="submit" className={styles.submit} disabled={busy} aria-busy={busy}>
           {busy ? (
             <>
               <span className={styles.spinner} aria-hidden />
@@ -88,9 +91,9 @@ export default function ForgotPasswordPage(): React.JSX.Element {
           )}
         </button>
       </form>
-      <p className={styles.authAlt} style={{ marginTop: 16 }}>
+      <p className={styles.alt}>
         Remembered it? <Link href="/login">Sign in</Link>
       </p>
-    </AuthLayout>
+    </AuthGlass>
   );
 }
