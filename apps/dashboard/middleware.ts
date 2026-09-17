@@ -24,7 +24,12 @@ function cspHeader(nonce: string): string {
   const connect = ["'self'"];
   // Local dev API/realtime origins (never in production builds).
   if (process.env.VERCEL_ENV !== 'production') {
-    connect.push('http://localhost:3001', 'http://localhost:3002');
+    connect.push(
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'ws://localhost:3001',
+      'ws://localhost:3002',
+    );
   }
   const raw = process.env.NEXT_PUBLIC_API_URL;
   if (raw) {
@@ -35,6 +40,15 @@ function cspHeader(nonce: string): string {
         !connect.includes(origin)
       ) {
         connect.push(origin);
+        /**
+         * The WebSocket origin has to be listed separately. CSP matches
+         * `wss://host` against `https://host` as a DIFFERENT scheme — only
+         * http→https and ws→wss are treated as equivalent — so realtime
+         * sockets were blocked by the very policy meant to allow the API
+         * they share a host with.
+         */
+        const wsOrigin = origin.replace(/^http/, 'ws');
+        if (!connect.includes(wsOrigin)) connect.push(wsOrigin);
       }
     } catch {
       // Misconfigured env: fall back to 'self'-only (fail closed, no injection).
