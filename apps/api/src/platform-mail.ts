@@ -118,3 +118,51 @@ export async function sendSignupWelcome(
     return { delivered: false, provider: 'unknown', providerId: null, skipped: true, reason };
   }
 }
+
+/**
+ * Password reset link. Unlike the welcome mail, a failure here MATTERS: the
+ * caller needs to know whether the link actually went out, because the API's
+ * answer to the user ("check your inbox") is only true if it did. The result
+ * is still never thrown — the route decides what to tell the user, and it
+ * must never reveal whether the address exists.
+ */
+export async function sendPlatformPasswordReset(
+  ctx: ApiContext,
+  input: { to: string; resetUrl: string; userId: string },
+): Promise<WelcomeResult> {
+  const report = (
+    delivered: boolean,
+    provider: string,
+    providerId: string | null,
+    reason: string | null,
+  ): WelcomeResult => {
+    ctx.logger.info('platform.password_reset_email', {
+      type: 'password_reset',
+      recipient: recipientHash(input.to),
+      provider,
+      providerId,
+      delivered,
+      reason,
+    });
+    return { delivered, provider, providerId, skipped: !delivered, reason };
+  };
+  try {
+    const email = emailServiceFor(ctx);
+    if (email instanceof MemoryEmailService) {
+      return report(false, 'none', null, 'no sender configured');
+    }
+    const receipt = await email.sendPasswordResetEmail(input.to, input.resetUrl);
+    await ctx.registry
+      .recordAudit('platform.password_reset_email', { userId: input.userId })
+      .catch(() => undefined);
+    return report(
+      receipt.delivered,
+      email.driver,
+      receipt.id,
+      receipt.delivered ? null : 'provider did not confirm delivery',
+    );
+  } catch (err) {
+    const reason = err instanceof Error ? err.message.slice(0, 160) : 'unknown send failure';
+    return report(false, 'unknown', null, reason);
+  }
+}

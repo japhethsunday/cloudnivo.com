@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useSession } from '../../components/SessionProvider';
 import { AuthLayout } from '../../components/AuthLayout';
 import { ErrorState } from '../../components/States';
+import { PasswordField, passwordMeetsRules } from '../../components/PasswordField';
 import styles from '../marketing.module.css';
 
 export default function SignupPage(): React.JSX.Element {
@@ -18,9 +19,14 @@ export default function SignupPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The submit button stays disabled until the form can actually succeed, so
+  // the common failure is prevented rather than reported after a round trip.
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const ready = email.trim().length > 3 && passwordMeetsRules(password) && confirm === password;
+
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !ready) return;
     if (password !== confirm) {
       setError('Passwords do not match. Re-enter them to continue.');
       return;
@@ -65,34 +71,27 @@ export default function SignupPage(): React.JSX.Element {
             onChange={e => setEmail(e.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor="signup-password">Password (min 12 characters)</label>
-          <input
-            id="signup-password"
-            type="password"
-            required
-            minLength={12}
-            maxLength={128}
-            autoComplete="new-password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="signup-confirm">Confirm password</label>
-          <input
-            id="signup-confirm"
-            type="password"
-            required
-            minLength={12}
-            maxLength={128}
-            autoComplete="new-password"
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-          />
-        </div>
+        <PasswordField
+          id="signup-password"
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          showRules
+        />
+        <PasswordField
+          id="signup-confirm"
+          label="Confirm password"
+          value={confirm}
+          onChange={setConfirm}
+          hint={mismatch ? 'These two do not match yet.' : undefined}
+        />
         {error ? <ErrorState title="Couldn't create your account" message={error} /> : null}
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy} aria-busy={busy}>
+        <button
+          type="submit"
+          className="btn btn-primary btn-block"
+          disabled={busy || !ready}
+          aria-busy={busy}
+        >
           {busy ? (
             <>
               <span className={styles.spinner} aria-hidden />
@@ -105,7 +104,8 @@ export default function SignupPage(): React.JSX.Element {
       </form>
       <p className={styles.authAlt}>By creating an account you agree to use CloudNivo responsibly.</p>
       <p className={styles.authAlt} style={{ marginTop: 8 }}>
-        Already have an account? <Link href="/login">Sign in</Link>
+        Already have an account? <Link href="/login">Sign in</Link> ·{' '}
+        <Link href="/forgot-password">Forgot your password?</Link>
       </p>
     </AuthLayout>
   );

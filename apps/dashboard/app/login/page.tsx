@@ -48,7 +48,12 @@ function LoginForm(): React.JSX.Element {
           />
         </div>
         <div className="field">
-          <label htmlFor="login-password">Password</label>
+          <div className="field-label-row">
+            <label htmlFor="login-password">Password</label>
+            <Link className="field-aside-link" href="/forgot-password">
+              Forgot password?
+            </Link>
+          </div>
           <input
             id="login-password"
             type="password"

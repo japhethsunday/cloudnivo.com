@@ -55,7 +55,7 @@ export function AuthLayout({
         </div>
       </div>
       <main className={styles.authMain}>
-        <div className={styles.authCard}>
+        <div className={styles.authCard} data-testid="auth-card">
           <Link className="brand brand-sm" href="/" aria-label="CloudNivo home">
             <span className="brand-mark">
               <LogoMark size={14} />

@@ -48,6 +48,31 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Platform password resets.
+ *
+ * Mirrors the per-project customer reset contract exactly (hashed opaque
+ * token, TTL, consume-once) so both halves of the product behave the same
+ * way. Durable rather than cached: a deploy in the middle of someone's
+ * reset must not silently invalidate the link in their inbox.
+ *
+ * Only the HASH is stored. A dump of this table cannot reset anyone's
+ * password, because the value that was emailed is not in it.
+ */
+export const platformPasswordResets = pgTable(
+  'platform_password_resets',
+  {
+    tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [index('platform_password_resets_user_idx').on(t.userId)],
+);
+
 export const organizations = pgTable(
   'organizations',
   {

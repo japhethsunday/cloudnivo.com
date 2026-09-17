@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
 import {
@@ -12,6 +12,8 @@ import {
   generateBackupCodes,
   generateTotpSecret,
   hashPassword,
+  hashToken,
+  newOpaqueToken,
   PLATFORM_BASELINE_PASSWORD_POLICY,
   mergePasswordPolicy,
   pkcePair,
@@ -30,13 +32,14 @@ import {
 import {
   organizationInvites,
   organizationPolicies,
+  platformPasswordResets,
   ssoConnections,
   users,
   type Database,
 } from '@cloudnivo/database';
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
-import { sendSignupWelcome } from './platform-mail.js';
+import { sendPlatformPasswordReset, sendSignupWelcome } from './platform-mail.js';
 import { applyStaffAllowlist } from './admin.js';
 import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
@@ -335,6 +338,101 @@ export class DrizzlePlatformUsers implements PlatformUserStore {
       .where(and(eq(users.email, email.toLowerCase()), eq(users.isPlatformAdmin, false)))
       .returning({ id: users.id });
     return rows.length > 0;
+  }
+}
+
+/**
+ * Platform password resets.
+ *
+ * Same contract as the per-project customer flow: an opaque token is emailed,
+ * only its hash is stored, it expires, and it can be spent exactly once. The
+ * store never sees the raw token, so a leak of this table resets nothing.
+ */
+export interface PasswordResetRecord {
+  tokenHash: string;
+  userId: string;
+  expiresAt: string;
+  consumedAt: string | null;
+}
+
+export interface PasswordResetStore {
+  save(rec: PasswordResetRecord): Promise<void>;
+  /** Unconsumed and unexpired only — an old token is simply not found. */
+  findUsable(tokenHash: string, now: Date): Promise<PasswordResetRecord | null>;
+  consume(tokenHash: string): Promise<void>;
+  /** Invalidate every outstanding token for a user (after a successful reset). */
+  deleteForUser(userId: string): Promise<void>;
+}
+
+export class MemoryPasswordResets implements PasswordResetStore {
+  private readonly rows = new Map<string, PasswordResetRecord>();
+
+  async save(rec: PasswordResetRecord): Promise<void> {
+    this.rows.set(rec.tokenHash, { ...rec });
+  }
+
+  async findUsable(tokenHash: string, now: Date): Promise<PasswordResetRecord | null> {
+    const rec = this.rows.get(tokenHash);
+    if (!rec || rec.consumedAt) return null;
+    if (new Date(rec.expiresAt).getTime() <= now.getTime()) return null;
+    return { ...rec };
+  }
+
+  async consume(tokenHash: string): Promise<void> {
+    const rec = this.rows.get(tokenHash);
+    if (rec) this.rows.set(tokenHash, { ...rec, consumedAt: new Date().toISOString() });
+  }
+
+  async deleteForUser(userId: string): Promise<void> {
+    for (const [hash, rec] of this.rows) {
+      if (rec.userId === userId) this.rows.delete(hash);
+    }
+  }
+}
+
+export class DrizzlePasswordResets implements PasswordResetStore {
+  constructor(private readonly db: Database) {}
+
+  async save(rec: PasswordResetRecord): Promise<void> {
+    await this.db.insert(platformPasswordResets).values({
+      tokenHash: rec.tokenHash,
+      userId: rec.userId,
+      expiresAt: new Date(rec.expiresAt),
+      consumedAt: rec.consumedAt ? new Date(rec.consumedAt) : null,
+    });
+  }
+
+  async findUsable(tokenHash: string, now: Date): Promise<PasswordResetRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(platformPasswordResets)
+      .where(
+        and(
+          eq(platformPasswordResets.tokenHash, tokenHash),
+          isNull(platformPasswordResets.consumedAt),
+          gt(platformPasswordResets.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      tokenHash: row.tokenHash,
+      userId: row.userId,
+      expiresAt: row.expiresAt.toISOString(),
+      consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
+    };
+  }
+
+  async consume(tokenHash: string): Promise<void> {
+    await this.db
+      .update(platformPasswordResets)
+      .set({ consumedAt: new Date() })
+      .where(eq(platformPasswordResets.tokenHash, tokenHash));
+  }
+
+  async deleteForUser(userId: string): Promise<void> {
+    await this.db.delete(platformPasswordResets).where(eq(platformPasswordResets.userId, userId));
   }
 }
 
@@ -784,6 +882,7 @@ export interface PlatformAuth {
   invites: InviteStore;
   policies: OrgPolicyStore;
   sso: SsoStore;
+  resets: PasswordResetStore;
 }
 
 export function platformAuthFor(ctx: ApiContext): PlatformAuth {
@@ -798,12 +897,14 @@ export function platformAuthFor(ctx: ApiContext): PlatformAuth {
           invites: new DrizzleInvites(controlDb.db),
           policies: new DrizzleOrgPolicies(controlDb.db),
           sso: new DrizzleSsoStore(controlDb.db),
+          resets: new DrizzlePasswordResets(controlDb.db),
         }
       : {
           users: new MemoryPlatformUsers(),
           invites: new MemoryInvites(),
           policies: new MemoryOrgPolicies(),
           sso: new MemorySsoStore(),
+          resets: new MemoryPasswordResets(),
         };
   (ctx as unknown as { __platform?: PlatformAuth }).__platform = auth;
   return auth;
@@ -1128,6 +1229,8 @@ export function isPlatformAuthRoute(pathname: string, method: string): boolean {
     pathname === '/api/v1/auth/login' ||
     pathname === '/api/v1/auth/logout' ||
     pathname === '/api/v1/auth/password' ||
+    pathname === '/api/v1/auth/password/forgot' ||
+    pathname === '/api/v1/auth/password/reset' ||
     pathname === '/api/v1/auth/mfa-verify' ||
     pathname === '/api/v1/auth/sso/callback' ||
     pathname.startsWith('/api/v1/auth/sso/') ||
@@ -1285,6 +1388,71 @@ export async function handlePlatformAuthRoutes(
       const { token, cookie } = await issueSession(ctx, user, clientMeta(req, ctx.config.TRUSTED_PROXY_HOPS));
       await ctx.registry.recordAudit('platform.login', { userId: user.id });
       return finish(200, ok({ user: expose(user), token }, requestId), { 'Set-Cookie': cookie });
+    }
+
+    /**
+     * Request a reset link. The answer is ALWAYS the same, whether or not the
+     * address belongs to an account: anything else turns this endpoint into a
+     * way to test which emails are registered. Rate-limited like login.
+     */
+    if (url.pathname === '/api/v1/auth/password/forgot' && req.method === 'POST') {
+      await strictLimit();
+      const parsed = parseBody(
+        z.object({ email: z.string().email().max(320) }),
+        await readJson(),
+      );
+      const user = await store.users.findByEmail(parsed.email);
+      if (user) {
+        const raw = newOpaqueToken();
+        await store.resets.save({
+          tokenHash: hashToken(raw),
+          userId: user.id,
+          expiresAt: new Date(Date.now() + ctx.config.AUTH_RESET_TTL_S * 1000).toISOString(),
+          consumedAt: null,
+        });
+        const appOrigin = (ctx.config.APP_URL ?? '').replace(/\/+$/, '') || 'http://localhost:3000';
+        void sendPlatformPasswordReset(ctx, {
+          to: user.email,
+          resetUrl: `${appOrigin}/reset-password?token=${raw}`,
+          userId: user.id,
+        }).catch(() => undefined);
+      }
+      await ctx.registry.recordAudit('platform.password_reset_requested', {}).catch(() => undefined);
+      return finish(202, ok({ sent: true }, requestId));
+    }
+
+    /**
+     * Spend the token. The token is consumed before the password is written,
+     * every other outstanding token for that user is dropped, and every live
+     * session is revoked — a reset is what you do when you fear someone else
+     * is in the account, so it has to end their sessions too.
+     */
+    if (url.pathname === '/api/v1/auth/password/reset' && req.method === 'POST') {
+      await strictLimit();
+      const parsed = parseBody(
+        z.object({ token: z.string().min(16).max(200), password: z.string().min(1).max(200) }),
+        await readJson(),
+      );
+      const rec = await store.resets.findUsable(hashToken(parsed.token), new Date());
+      if (!rec) throw new ApiError('INVALID_TOKEN', 'This reset link is invalid or has expired', 400);
+      const user = await store.users.findById(rec.userId);
+      if (!user) throw new ApiError('INVALID_TOKEN', 'This reset link is invalid or has expired', 400);
+      const policy = await effectivePasswordPolicy(ctx, store, null);
+      const verdict = checkPasswordPolicy(parsed.password, policy);
+      if (!verdict.ok) {
+        throw new ApiError('WEAK_PASSWORD', verdict.reasons[0] ?? 'Password too weak', 400);
+      }
+      await store.resets.consume(rec.tokenHash);
+      await store.users.updateUser(user.id, { passwordHash: await hashPassword(parsed.password) });
+      await store.resets.deleteForUser(user.id);
+      for (const jti of await sessionJtisFor(ctx, user.id)) {
+        await revokeSessionByJti(ctx, jti);
+      }
+      await ctx.registry
+        .recordAudit('platform.password_reset_completed', { userId: user.id })
+        .catch(() => undefined);
+      logger.info('platform.password_reset_completed', { user: user.id });
+      return finish(200, ok({ reset: true }, requestId));
     }
 
     if (url.pathname === '/api/v1/auth/mfa-verify' && req.method === 'POST') {

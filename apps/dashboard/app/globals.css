@@ -3893,3 +3893,111 @@ ul.stat-grid {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ── Password field + auth affordances ────────────────────────────────
+   A password you cannot see is a password you retype. The reveal control
+   sits inside the field so it reads as part of it, and the rules below say
+   what the SERVER will accept — they are the same two checks it runs. */
+
+.password-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.password-input input {
+  width: 100%;
+  padding-right: 68px;
+}
+
+.password-reveal {
+  position: absolute;
+  right: 6px;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.password-reveal:hover {
+  color: var(--text);
+  background: var(--bg-inset);
+}
+
+.password-reveal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.password-rules {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.password-rules li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+}
+
+/* Met is stated in the text colour AND the mark, never colour alone. */
+.password-rules li[data-met='true'] {
+  color: var(--success-ink);
+}
+
+.password-rules li span {
+  width: 12px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warning-ink);
+}
+
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field-label-row label {
+  margin: 0;
+}
+
+.field-aside-link {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.field-aside-link:hover {
+  color: var(--accent-ink);
+}
+
+/* A disabled primary must not read as a live button. Opacity alone leaves
+   the accent vivid enough to invite a click; the inert state drops the fill
+   entirely so "not yet" is visible before it is discovered by clicking. */
+.btn-primary:disabled,
+.btn-primary:disabled:hover {
+  background: var(--bg-inset);
+  border-color: var(--border);
+  color: var(--text-faint);
+  opacity: 1;
+  box-shadow: none;
+}

@@ -23,7 +23,13 @@ export function InfraVisual({ compact = false }: { compact?: boolean }): React.J
   const coreY = 118;
   const rowY = 232;
   const cx = W / 2;
-  const gap = (W - 40) / (SERVICES.length - 1);
+  /**
+   * Inset by half a node, not by 20: the nodes are 60 wide and centred on
+   * these points, so a 20 inset put the first and last box half outside the
+   * viewBox, where the SVG clipped them.
+   */
+  const inset = 34;
+  const gap = (W - inset * 2) / (SERVICES.length - 1);
   return (
     <figure className={styles.infra} style={{ margin: 0 }} aria-label="CloudNivo infrastructure illustration">
       <div className={styles.infraBar} aria-hidden="true">
@@ -58,7 +64,7 @@ export function InfraVisual({ compact = false }: { compact?: boolean }): React.J
         <circle className={styles.pulse} cx={cx + 96} cy={coreY - 12} r={4} />
         {/* Branches */}
         {SERVICES.map((s, i) => {
-          const x = 20 + i * gap;
+          const x = inset + i * gap;
           return (
             <g key={s.name}>
               <line className={styles.wire} x1={cx} y1={coreY + 22} x2={x} y2={rowY - 24} />
@@ -75,9 +81,17 @@ export function InfraVisual({ compact = false }: { compact?: boolean }): React.J
               <text className={styles.label} x={x} y={rowY + 2} textAnchor="middle" style={{ fontSize: 10 }}>
                 {s.name}
               </text>
-              <text className={styles.sub} x={x} y={rowY + 15} textAnchor="middle" style={{ fontSize: 8 }}>
-                {s.sub}
-              </text>
+              {/*
+                The compact aside is a piece of context beside a form, not a
+                data display. At eight nodes across 460 units the sub-labels
+                are wider than the space between them and run into each
+                other, so the compact variant keeps the names only.
+              */}
+              {compact ? null : (
+                <text className={styles.sub} x={x} y={rowY + 15} textAnchor="middle" style={{ fontSize: 8 }}>
+                  {s.sub}
+                </text>
+              )}
             </g>
           );
         })}
