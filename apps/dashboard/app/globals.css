@@ -4007,3 +4007,172 @@ ul.stat-grid {
   opacity: 1;
   box-shadow: none;
 }
+
+/* ── Console chrome: breadcrumb bar, scoped rail, project strip ─────────
+   The shell used to carry the same information three times: two bordered
+   dropdowns in the top bar, a project tag in the rail, and a full project
+   header with the name again plus its own tab strip. One line now says
+   where you are, the rail says what is in here, and the page keeps only
+   what neither can show — the project's live state. */
+
+.topbar {
+  gap: 6px;
+  padding: 0 14px;
+  height: 48px;
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* The trail. Menus inside it are quiet until hovered — they are a location
+   first and a control second. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.crumb-sep {
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 0 2px;
+  user-select: none;
+}
+.crumb-name {
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+.crumbs .switcher-btn,
+.crumbs .menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.crumbs .switcher-btn:hover,
+.crumbs .menu-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+.topbar-connect {
+  margin-left: 6px;
+  flex: none;
+}
+.topbar .search-text {
+  flex: 1;
+  text-align: left;
+}
+.topbar-search {
+  max-width: 260px;
+}
+.topbar .avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 11.5px;
+}
+/* The account trigger is the avatar alone: an email repeated in the chrome
+   was the widest element in the bar and told a signed-in user nothing. */
+.topbar .account .menu-btn,
+.topbar .account .switcher-btn {
+  padding: 3px;
+  border-radius: 999px;
+  background: transparent;
+  border-color: transparent;
+}
+.menu-head {
+  margin: 0;
+  padding: 7px 10px 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Back out of a project, in the place the project tag used to sit. */
+.nav-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  margin-bottom: 2px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.nav-back:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Denser rail: this is a working surface, not a marketing menu. */
+.sidebar {
+  padding: 10px 8px;
+}
+.nav a {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.nav-icon {
+  width: 16px;
+  height: 16px;
+}
+.nav-context {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  padding: 12px 9px 5px;
+}
+
+/* The project strip: one dense line of live state and the actions that
+   belong to the project rather than to the page. */
+.ws-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.ws-strip .grow {
+  flex: 1;
+  min-width: 0;
+}
+.ws-strip-sep {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.icon-btn-sm {
+  width: 28px;
+  height: 28px;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    padding: 0 10px;
+    height: 46px;
+  }
+  .topbar-search {
+    max-width: 44px;
+  }
+  .topbar .search-text,
+  .topbar .kbd-inline {
+    display: none;
+  }
+}

@@ -7,6 +7,7 @@ import { apiFetch } from '../lib/api';
 import { getSectionTab, setSectionTab, subscribeSectionTab } from '../lib/sectiontab';
 import { getSelectedOrg, getSelectedProject, setSelectedOrg, setSelectedProject } from '../lib/selection';
 import { CommandPalette } from './CommandPalette';
+import { ConnectDialog } from './ConnectDialog';
 import { LogoMark } from './LogoMark';
 import { Notifications } from './Notifications';
 import { useSession } from './SessionProvider';
@@ -136,7 +137,22 @@ const PROJECT_NAV: ProjectNavEntry[] = [
   },
   { suffix: '/functions', label: 'Functions', icon: <IconFunctions size={16} /> },
   { suffix: '/automations', label: 'Automations', icon: <IconWorkflows size={16} /> },
+];
+
+/**
+ * The rest of a project's sections. These used to live behind the project
+ * header's "More" dropdown; the header is gone, so they live here where the
+ * rest of the project's navigation already is.
+ */
+const PROJECT_CONFIG: { suffix: string; label: string; icon: React.ReactNode }[] = [
   { suffix: '/metrics', label: 'Metrics', icon: <IconUsage size={16} /> },
+  { suffix: '/logs', label: 'Observability', icon: <IconActivity size={16} /> },
+  { suffix: '/security', label: 'Security', icon: <IconShield size={16} /> },
+  { suffix: '/environments', label: 'Environments', icon: <IconOverview size={16} /> },
+  { suffix: '/deployments', label: 'Deployments', icon: <IconWorkflows size={16} /> },
+  { suffix: '/integrations', label: 'Integrations', icon: <IconAgents size={16} /> },
+  { suffix: '/usage', label: 'Usage', icon: <IconBilling size={16} /> },
+  { suffix: '/settings', label: 'Project settings', icon: <IconSettings size={16} /> },
 ];
 
 const DEVELOPMENT: { suffix: string | null; label: string; icon: React.ReactNode }[] = [
@@ -216,6 +232,7 @@ function ShellBody({
   });
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -306,7 +323,8 @@ function ShellBody({
     const href = `/projects/${scopeProject.id}${suffix}`;
     return pathname === href || pathname.startsWith(`${href}/`) ? true : undefined;
   };
-  const usageHref = scopeProject ? `/projects/${scopeProject.id}/usage` : '/projects';
+  /** True while the route is inside a project: decides which sidebar shows. */
+  const inProject = projectIdFromPath(pathname) !== null;
 
   /* Nested-nav signals: shared tab (?tab=) + location hash (#anchor). */
   const sectionTab = useSyncExternalStore(subscribeSectionTab, getSectionTab, () => null);
@@ -415,186 +433,187 @@ function ShellBody({
           <ProjectMenu project={project} projects={orgProjects} onPick={pickProject} />
         </div>
 
-        {viewingProject ? (
-          <div className="nav-project-tag" aria-label={`Current project: ${viewingProject.name}`}>
-            <span className="dot ok" aria-hidden />
-            <span className="grow">{viewingProject.name}</span>
-            <Link href="/projects">All</Link>
-          </div>
+        {inProject ? (
+          <Link className="nav-back" href="/projects" aria-label="Back to all projects">
+            <span aria-hidden>←</span>
+            <span className="nav-text">All projects</span>
+          </Link>
         ) : null}
 
         <nav className="nav" aria-label="Primary">
           {/*
-            Platform sits FIRST, above Workspace. It shipped last in the nav,
-            below Management, which on a laptop put it under the fold — the
-            one entry a staff user is looking for was the one they had to
-            scroll to find. It is also the widest scope on the page, so it
-            reads correctly above the workspace it contains.
-
-            Rendered only for staff. Not as a security control — the API
-            answers 404 to everyone else — but because an entry that leads to
-            "not available" is worse than no entry. The flag comes from
-            /api/v1/me and is re-read on every session load.
+            The sidebar is scoped, not universal. It used to render every
+            group at once: inside a project you saw workspace navigation you
+            did not need, and outside one you saw a Resources group whose
+            links all fell back to /projects — twenty entries, several of
+            which went nowhere. It now shows the sections of whatever you are
+            actually inside.
           */}
-          {user?.isPlatformAdmin ? (
-            <div className="nav-group">
-              <p className="nav-context">Platform</p>
-              <Link
-                href="/admin"
-                aria-current={pathname === '/admin' ? 'page' : undefined}
-                aria-label="Operator console"
-              >
-                <span className="nav-icon" aria-hidden>
-                  <IconShield size={16} />
-                </span>
-                <span className="nav-text">Operator console</span>
-              </Link>
-            </div>
-          ) : null}
-          <div className="nav-group">
-            <p className="nav-context">Workspace</p>
-            {WORKSPACE_NAV.map(l => (
-              <Link
-                key={l.href}
-                href={l.href}
-                aria-current={l.match(pathname) ? 'page' : undefined}
-                aria-label={l.label}
-              >
-                <span className="nav-icon" aria-hidden>
-                  {l.icon}
-                </span>
-                <span className="nav-text">{l.label}</span>
-              </Link>
-            ))}
-          </div>
-          <div className="nav-group">
-            <p className="nav-context">Resources</p>
-            {PROJECT_NAV.map(r => {
-              const hasKids = !!r.children && !!scopeProject;
-              const active = projActive(r.suffix);
-              const open = hasKids && isOpen(r);
-              if (!hasKids) {
-                return (
-                  <Link key={r.suffix} href={projHref(r.suffix)} aria-current={active} aria-label={r.label}>
-                    <span className="nav-icon" aria-hidden>
-                      {r.icon}
-                    </span>
-                    <span className="nav-text">{r.label}</span>
-                  </Link>
-                );
-              }
-              const hasTabs = r.children?.some(c => c.suffix.startsWith('?tab=')) ?? false;
-              return (
-                <div key={r.suffix} className="nav-parent" data-open={open ? 'true' : 'false'}>
-                  <div className="nav-parent-row">
-                    <Link
-                      href={projHref(r.suffix)}
-                      aria-current={active}
-                      aria-label={r.label}
-                      onClick={hasTabs ? () => setSectionTab(null) : undefined}
-                    >
-                      <span className="nav-icon" aria-hidden>
-                        {r.icon}
-                      </span>
-                      <span className="nav-text">{r.label}</span>
-                    </Link>
-                    <button
-                      type="button"
-                      className="nav-toggle"
-                      aria-expanded={open}
-                      aria-label={`${open ? 'Collapse' : 'Expand'} ${r.label} submenu`}
-                      onClick={() => toggleGroup(r)}
-                    >
-                      <IconChevronDown size={14} />
-                    </button>
-                  </div>
-                  <div className="nav-children">
-                    <div className="nav-children-inner">
-                      {groupNavChildren(r.children ?? []).map((g, gi) => (
-                        <Fragment key={g.label ?? `top-${gi}`}>
-                          {g.label ? (
-                            <p className="nav-sublabel" aria-hidden>
-                              {g.label}
-                            </p>
-                          ) : null}
-                          {g.items.map(c => (
-                            <Link
-                              key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}
-                              className="nav-child"
-                              href={`${projHref(r.suffix)}${c.suffix}`}
-                              aria-current={childActive(r, c) ? 'page' : undefined}
-                              onClick={
-                                c.suffix.startsWith('?tab=')
-                                  ? () => setSectionTab(c.suffix.slice('?tab='.length))
-                                  : undefined
-                              }
-                            >
-                              <span className="nav-text">{c.label}</span>
-                            </Link>
+          {inProject && scopeProject ? (
+            <>
+              <div className="nav-group">
+                <p className="nav-context">Manage</p>
+                {PROJECT_NAV.map(r => {
+                  const hasKids = !!r.children;
+                  const active = projActive(r.suffix);
+                  const open = hasKids && isOpen(r);
+                  if (!hasKids) {
+                    return (
+                      <Link key={r.suffix} href={projHref(r.suffix)} aria-current={active} aria-label={r.label}>
+                        <span className="nav-icon" aria-hidden>
+                          {r.icon}
+                        </span>
+                        <span className="nav-text">{r.label}</span>
+                      </Link>
+                    );
+                  }
+                  const hasTabs = r.children?.some(c => c.suffix.startsWith('?tab=')) ?? false;
+                  return (
+                    <div key={r.suffix} className="nav-parent" data-open={open ? 'true' : 'false'}>
+                      <div className="nav-parent-row">
+                        <Link
+                          href={projHref(r.suffix)}
+                          aria-current={active}
+                          aria-label={r.label}
+                          onClick={hasTabs ? () => setSectionTab(null) : undefined}
+                        >
+                          <span className="nav-icon" aria-hidden>
+                            {r.icon}
+                          </span>
+                          <span className="nav-text">{r.label}</span>
+                        </Link>
+                        <button
+                          type="button"
+                          className="nav-toggle"
+                          aria-expanded={open}
+                          aria-label={`${open ? 'Collapse' : 'Expand'} ${r.label} submenu`}
+                          onClick={() => toggleGroup(r)}
+                        >
+                          <IconChevronDown size={14} />
+                        </button>
+                      </div>
+                      <div className="nav-children">
+                        <div className="nav-children-inner">
+                          {groupNavChildren(r.children ?? []).map((g, gi) => (
+                            <Fragment key={g.label ?? `top-${gi}`}>
+                              {g.label ? (
+                                <p className="nav-sublabel" aria-hidden>
+                                  {g.label}
+                                </p>
+                              ) : null}
+                              {g.items.map(c => (
+                                <Link
+                                  key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}
+                                  className="nav-child"
+                                  href={`${projHref(r.suffix)}${c.suffix}`}
+                                  aria-current={childActive(r, c) ? 'page' : undefined}
+                                  onClick={
+                                    c.suffix.startsWith('?tab=')
+                                      ? () => setSectionTab(c.suffix.slice('?tab='.length))
+                                      : undefined
+                                  }
+                                >
+                                  <span className="nav-text">{c.label}</span>
+                                </Link>
+                              ))}
+                            </Fragment>
                           ))}
-                        </Fragment>
-                      ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+              <div className="nav-group">
+                <p className="nav-context">Build</p>
+                {DEVELOPMENT.filter(d => d.suffix !== null).map(d => (
+                  <Link key={d.suffix} href={projHref(d.suffix as string)} aria-current={projActive(d.suffix as string)} aria-label={d.label}>
+                    <span className="nav-icon" aria-hidden>
+                      {d.icon}
+                    </span>
+                    <span className="nav-text">{d.label}</span>
+                  </Link>
+                ))}
+                <Link href="/developer" aria-current={pathname === '/developer' ? 'page' : undefined} aria-label="CLI & SDK">
+                  <span className="nav-icon" aria-hidden>
+                    <IconCLI size={16} />
+                  </span>
+                  <span className="nav-text">CLI &amp; SDK</span>
+                </Link>
+              </div>
+              <div className="nav-group">
+                <p className="nav-context">Configuration</p>
+                {PROJECT_CONFIG.map(c => (
+                  <Link key={c.suffix} href={projHref(c.suffix)} aria-current={projActive(c.suffix)} aria-label={c.label}>
+                    <span className="nav-icon" aria-hidden>
+                      {c.icon}
+                    </span>
+                    <span className="nav-text">{c.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {user?.isPlatformAdmin ? (
+                <div className="nav-group">
+                  <p className="nav-context">Platform</p>
+                  <Link
+                    href="/admin"
+                    aria-current={pathname === '/admin' ? 'page' : undefined}
+                    aria-label="Operator console"
+                  >
+                    <span className="nav-icon" aria-hidden>
+                      <IconShield size={16} />
+                    </span>
+                    <span className="nav-text">Operator console</span>
+                  </Link>
                 </div>
-              );
-            })}
-          </div>
-          <div className="nav-group">
-            <p className="nav-context">Development</p>
-            {DEVELOPMENT.map(d =>
-              d.suffix === null ? (
+              ) : null}
+              <div className="nav-group">
+                <p className="nav-context">Workspace</p>
+                {WORKSPACE_NAV.map(l => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    aria-current={l.match(pathname) ? 'page' : undefined}
+                    aria-label={l.label}
+                  >
+                    <span className="nav-icon" aria-hidden>
+                      {l.icon}
+                    </span>
+                    <span className="nav-text">{l.label}</span>
+                  </Link>
+                ))}
+              </div>
+              <div className="nav-group">
+                <p className="nav-context">Management</p>
+                {MANAGE_NAV.map(l => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    aria-current={l.match(pathname) ? 'page' : undefined}
+                    aria-label={l.label}
+                  >
+                    <span className="nav-icon" aria-hidden>
+                      {l.icon}
+                    </span>
+                    <span className="nav-text">{l.label}</span>
+                  </Link>
+                ))}
                 <Link
-                  key="cli"
                   href="/developer"
                   aria-current={pathname === '/developer' ? 'page' : undefined}
-                  aria-label={d.label}
+                  aria-label="CLI & SDK"
                 >
                   <span className="nav-icon" aria-hidden>
-                    {d.icon}
+                    <IconCLI size={16} />
                   </span>
-                  <span className="nav-text">{d.label}</span>
+                  <span className="nav-text">CLI &amp; SDK</span>
                 </Link>
-              ) : (
-                <Link key={d.suffix} href={projHref(d.suffix)} aria-current={projActive(d.suffix)} aria-label={d.label}>
-                  <span className="nav-icon" aria-hidden>
-                    {d.icon}
-                  </span>
-                  <span className="nav-text">{d.label}</span>
-                </Link>
-              ),
-            )}
-          </div>
-          <div className="nav-group">
-            <p className="nav-context">Management</p>
-            <Link
-              href={usageHref}
-              aria-label="Usage"
-              aria-current={
-                scopeProject && (pathname === usageHref || pathname.startsWith(`${usageHref}/`))
-                  ? 'page'
-                  : undefined
-              }
-            >
-              <span className="nav-icon" aria-hidden>
-                <IconUsage size={16} />
-              </span>
-              <span className="nav-text">Usage</span>
-            </Link>
-            {MANAGE_NAV.map(l => (
-              <Link
-                key={l.href}
-                href={l.href}
-                aria-current={l.match(pathname) ? 'page' : undefined}
-                aria-label={l.label}
-              >
-                <span className="nav-icon" aria-hidden>
-                  {l.icon}
-                </span>
-                <span className="nav-text">{l.label}</span>
-              </Link>
-            ))}
-          </div>
+              </div>
+            </>
+          )}
         </nav>
 
         <div className="sidebar-foot">
@@ -612,10 +631,31 @@ function ShellBody({
           >
             <IconMenu size={18} />
           </button>
-          <div className="topbar-switchers only-desktop">
+          {/*
+            Breadcrumb, not two bordered dropdowns floating at the left edge.
+            The trail is the location: organization, then project when you
+            are inside one, then the primary action for that scope.
+          */}
+          <nav className="crumbs only-desktop" aria-label="Location">
             <OrgMenu org={org} orgs={orgs} onPick={pickOrg} />
-            <ProjectMenu project={project} projects={orgProjects} onPick={pickProject} />
-          </div>
+            {inProject && viewingProject ? (
+              <>
+                <span className="crumb-sep" aria-hidden>
+                  /
+                </span>
+                <ProjectMenu project={viewingProject} projects={orgProjects} onPick={pickProject} />
+              </>
+            ) : null}
+          </nav>
+          {inProject && viewingProject ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm topbar-connect"
+              onClick={() => setConnectOpen(true)}
+            >
+              Connect
+            </button>
+          ) : null}
           <span className="spacer" />
           <button
             type="button"
@@ -623,10 +663,8 @@ function ShellBody({
             onClick={openPalette}
             aria-label="Open command palette"
           >
-            <IconSearch size={16} />
-            <span className="search-text" style={{ flex: 1, textAlign: 'left' }}>
-              Search…
-            </span>
+            <IconSearch size={15} />
+            <span className="search-text">Search…</span>
             <span className="kbd-inline">⌘K</span>
           </button>
           <Notifications />
@@ -636,6 +674,13 @@ function ShellBody({
             onAccount={() => router.push('/account')}
           />
         </header>
+        {connectOpen && viewingProject ? (
+          <ConnectDialog
+            projectId={viewingProject.id}
+            projectName={viewingProject.name}
+            onClose={() => setConnectOpen(false)}
+          />
+        ) : null}
         <main id="main" className="main" tabIndex={-1}>
           {children}
         </main>
@@ -666,11 +711,8 @@ function OrgMenu({
       label="Switch organization"
       button={
         <>
-          <span className="grow">
-            {org.name}
-            <span className="sub">{org.slug}</span>
-          </span>
-          <IconChevronDown size={14} />
+          <span className="crumb-name">{org.name}</span>
+          <IconChevronDown size={13} />
         </>
       }
     >
@@ -729,11 +771,8 @@ function ProjectMenu({
       label="Switch project"
       button={
         <>
-          <span className="grow">
-            {project.name}
-            <span className="sub">{project.slug}</span>
-          </span>
-          <IconChevronDown size={14} />
+          <span className="crumb-name">{project.name}</span>
+          <IconChevronDown size={13} />
         </>
       }
     >
@@ -775,16 +814,14 @@ function AccountMenu({
     <Menu
       label={`Account: ${email}`}
       button={
-        <>
-          <span className="avatar" aria-hidden>
-            {email.slice(0, 1)}
-          </span>
-          <span className="grow account-email">
-            {email}
-          </span>
-        </>
+        <span className="avatar" aria-hidden>
+          {email.slice(0, 1).toUpperCase()}
+        </span>
       }
     >
+      <p className="menu-head" role="none">
+        {email}
+      </p>
       <button type="button" role="menuitem" onClick={onAccount}>
         <IconAccount size={14} aria-hidden />
         Account settings
