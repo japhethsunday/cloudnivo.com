@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { InfraVisual } from './InfraVisual';
+import { HeroBoard } from './HeroBoard';
 import { LogoMark } from './LogoMark';
 import { IconCheck } from './icons';
 import styles from '../app/marketing.module.css';
@@ -50,8 +50,8 @@ export function AuthLayout({
             </li>
           ))}
         </ul>
-        <div className={styles.hideSmall}>
-          <InfraVisual compact />
+        <div className={`${styles.hideSmall} ${styles.authVisual}`}>
+          <HeroBoard compact />
         </div>
       </div>
       <main className={styles.authMain}>

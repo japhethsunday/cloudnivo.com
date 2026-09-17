@@ -1095,3 +1095,395 @@
   padding: 2px 6px;
   white-space: nowrap;
 }
+
+/* ── Hero board: the console's project board as marketing evidence ──────
+   Built on the console's own grammar (DESIGN.md): panels cut from the
+   ground by hairlines, no resting shadow, state as a 3px left edge plus a
+   mono state word, measured names in tabular mono. */
+
+.board {
+  margin: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 0;
+}
+.boardStrip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.boardTitle {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.018em;
+  color: var(--text);
+}
+.boardMeta {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.boardEnv {
+  margin-left: auto;
+  flex: none;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 3px;
+  color: var(--danger-ink, var(--danger));
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+}
+/* Channel label: names what the region below reports. Panel chrome only. */
+.boardHead {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg-muted);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.boardHead + .boardHead,
+.boardRows + .boardHead {
+  border-top: 1px solid var(--border);
+}
+.boardRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.boardRow {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) 88px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 14px 9px 11px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+}
+.boardRows li:last-child {
+  border-bottom: none;
+}
+.boardRow[data-state='running'] {
+  border-left-color: var(--success);
+}
+.boardRow[data-state='provisioning'] {
+  border-left-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+}
+.boardName {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text);
+  white-space: nowrap;
+}
+.boardDetail,
+.boardState,
+.boardMeter {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.boardDetail {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* The state word ships with the colour: colour alone never carries meaning. */
+.boardState {
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+.boardRow[data-state='running'] .boardState {
+  color: var(--success-ink, var(--success));
+}
+.boardRow[data-state='provisioning'] .boardState {
+  color: var(--warning-ink, var(--warning));
+}
+.boardMeters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+}
+.boardMeter {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+}
+.boardCap {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-muted);
+}
+.boardCompact .boardCap {
+  padding: 9px 12px;
+}
+
+@media (max-width: 560px) {
+  .boardRow {
+    grid-template-columns: minmax(0, 1fr) 80px;
+  }
+  .boardDetail {
+    display: none;
+  }
+}
+
+/* ── Composition rebuild ───────────────────────────────────────────────
+   The page previously ran eleven sections in one identical rhythm —
+   heading, one line, a panel — at one width and one density, so nothing
+   owned the page and the hero was the weakest thing on it. These rules
+   replace that rhythm: a wider shell, a real display step at the top,
+   alternating ground bands to group the argument, and readout groups
+   built as one hairline-divided face instead of rows of equal cards. */
+
+.navInner,
+.stripInner,
+.section,
+.footerInner {
+  max-width: 1200px;
+}
+
+/* Hero: the display moment. Asymmetric so the board leads the eye out of
+   the copy rather than sitting beside it as a matched pair. */
+.hero {
+  max-width: 1200px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.06fr);
+  gap: 56px;
+  align-items: center;
+  padding: 72px 24px 64px;
+}
+.hero h1 {
+  font-size: clamp(38px, 5vw, 58px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  margin: 0 0 20px;
+  max-width: 15ch;
+}
+.hero .lede {
+  font-size: 16.5px;
+  line-height: 1.6;
+  max-width: 46ch;
+  margin: 0 0 30px;
+}
+
+/* Section heads get a real step above body, and sections breathe more
+   above than below their own heading. */
+.sectionHead h2 {
+  font-size: clamp(25px, 2.7vw, 34px);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  margin: 0 0 12px;
+}
+.section {
+  padding: 88px 24px 0;
+}
+
+/* A band groups consecutive sections onto their own ground so the page
+   reads as chapters rather than one uninterrupted list. */
+.band {
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-top: 88px;
+  padding-bottom: 88px;
+}
+.band .section {
+  padding-top: 72px;
+}
+
+/* No resting shadows: hairline and tonal step are the depth system. */
+.cap,
+.step,
+.ctaInner,
+.infra {
+  box-shadow: none;
+}
+
+/* Lifecycle: one bordered face divided by hairlines, not seven cards.
+   The step numbers are gone — the left-to-right order already carries the
+   sequence, so numbering it was decoration. */
+.steps {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.step {
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  padding: 16px 14px;
+  transition: background 0.14s ease;
+}
+.steps .step:last-child {
+  border-right: none;
+}
+.step:hover {
+  background: var(--bg-muted);
+}
+.step .t {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent-ink, var(--accent));
+  margin-top: 0;
+}
+.step .d {
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 7px;
+}
+
+.cta {
+  max-width: 1200px;
+  margin-top: 88px;
+}
+.ctaInner {
+  padding: 64px 32px;
+}
+.ctaInner h2 {
+  font-size: clamp(26px, 3vw, 36px);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+@media (max-width: 980px) {
+  .hero {
+    /* minmax(0,1fr), not 1fr: a bare 1fr track is minmax(auto,1fr), so the
+       board's min-content width (nowrap mono detail lines) pushed the whole
+       hero 8px past the viewport at 390. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding: 56px 24px 48px;
+  }
+  .hero h1 {
+    max-width: 18ch;
+  }
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .step {
+    border-bottom: 1px solid var(--border);
+  }
+  .steps .step:nth-child(2n) {
+    border-right: none;
+  }
+  .section {
+    padding-top: 64px;
+  }
+  .band {
+    margin-top: 64px;
+    padding-bottom: 64px;
+  }
+}
+@media (max-width: 560px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+  .step {
+    border-right: none;
+  }
+  .ctaInner {
+    padding: 44px 20px;
+  }
+}
+
+/* ── Authentication rebuild ────────────────────────────────────────────
+   The split was 45/55 with a 420px card adrift in the wider half, so the
+   form — the only thing on the page with a job — was the smallest and
+   least anchored element on screen. The aside now yields width to the
+   form, the form column gets a real measure, and the aside's visual is
+   pushed to the foot of the column so it has a base instead of trailing
+   off into empty ground. */
+
+.authPage {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr);
+}
+.authAside {
+  padding: 44px 40px;
+  gap: 22px;
+}
+.authAside h2 {
+  font-size: 23px;
+  letter-spacing: -0.026em;
+  line-height: 1.22;
+  text-wrap: balance;
+  max-width: 19ch;
+}
+/* Flows directly under the points. An earlier version pushed this to the
+   foot of the column with margin-top:auto, which opened a 250px hole in the
+   middle of the aside — worse than trailing space at the bottom. */
+.authVisual {
+  padding-top: 4px;
+}
+.authMain {
+  padding: 48px 32px;
+}
+.authCard {
+  max-width: 452px;
+}
+.authCard h1 {
+  font-size: 25px;
+  letter-spacing: -0.028em;
+  line-height: 1.18;
+  text-wrap: balance;
+  margin: 18px 0 6px;
+}
+.authCard .sub {
+  margin: 0 0 26px;
+}
+
+/* The rules list read as grey dots at 12px. It is the one piece of copy on
+   this form that has to be legible while typing, so it gets contrast and a
+   live met/unmet state rather than decoration. */
+.authForm :global(.password-rules) {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.authForm :global(.password-rules li[data-met='true']) {
+  color: var(--success-ink, var(--success));
+}
+
+@media (max-width: 900px) {
+  .authAside {
+    padding: 28px 22px;
+    gap: 18px;
+  }
+  .authAside h2 {
+    font-size: 20px;
+  }
+  .authMain {
+    padding: 36px 22px 56px;
+  }
+  .authVisual {
+    padding-top: 0;
+  }
+}

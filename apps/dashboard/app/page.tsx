@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { InfraVisual } from '../components/InfraVisual';
+import { HeroBoard } from '../components/HeroBoard';
 import { LogoMark } from '../components/LogoMark';
 import { ThemeToggle } from '../components/ThemeToggle';
 import {
@@ -296,7 +296,7 @@ export default function HomePage(): React.JSX.Element {
             </div>
           </div>
           <div className={styles.rise2}>
-            <InfraVisual />
+            <HeroBoard />
           </div>
         </section>
 
@@ -432,6 +432,7 @@ export default function HomePage(): React.JSX.Element {
           </div>
         </section>
 
+        <div className={styles.band}>
         <section className={styles.section} aria-labelledby="caps-h">
           <div className={styles.sectionHead}>
             <h2 id="caps-h">Everything a backend needs</h2>
@@ -461,15 +462,16 @@ export default function HomePage(): React.JSX.Element {
             <p>CloudNivo carries the backend lifecycle so application code stays the focus.</p>
           </div>
           <div className={styles.steps}>
-            {WORKFLOW.map(([t, d], i) => (
+            {WORKFLOW.map(([t, d]) => (
               <div key={t} className={styles.step}>
-                <div className={styles.n}>0{i + 1}</div>
                 <div className={styles.t}>{t}</div>
                 <div className={styles.d}>{d}</div>
               </div>
             ))}
           </div>
         </section>
+
+        </div>
 
         <section className={styles.section} id="developers" aria-labelledby="dx-h">
           <div className={styles.sectionHead}>
@@ -509,6 +511,7 @@ export default function HomePage(): React.JSX.Element {
           </div>
         </section>
 
+        <div className={styles.band}>
         <section className={styles.section} id="security" aria-labelledby="sec-h">
           <div className={styles.sectionHead}>
             <h2 id="sec-h">Protection is a feature</h2>
@@ -560,6 +563,8 @@ export default function HomePage(): React.JSX.Element {
             </dl>
           </div>
         </section>
+
+        </div>
 
         <section className={styles.section} id="pricing" aria-labelledby="price-h">
           <div className={styles.sectionHead}>

@@ -3992,12 +3992,18 @@ ul.stat-grid {
 
 /* A disabled primary must not read as a live button. Opacity alone leaves
    the accent vivid enough to invite a click; the inert state drops the fill
-   entirely so "not yet" is visible before it is discovered by clicking. */
+   entirely so "not yet" is visible before it is discovered by clicking.
+
+   It must still read as a BUTTON, though. An earlier version used bg-inset
+   with faint ink, which made it darker and lower-contrast than the inputs
+   above it on the signup form — the submit control read as one more empty
+   field. The strong hairline and muted ink keep it unmistakably a control
+   that is waiting, not a field. */
 .btn-primary:disabled,
 .btn-primary:disabled:hover {
   background: var(--bg-inset);
-  border-color: var(--border);
-  color: var(--text-faint);
+  border-color: var(--border-strong);
+  color: var(--text-muted);
   opacity: 1;
   box-shadow: none;
 }
