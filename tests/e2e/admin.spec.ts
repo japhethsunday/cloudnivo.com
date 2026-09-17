@@ -43,6 +43,8 @@ test('the operator console is invisible to an ordinary developer', async ({ page
   // No Platform group, no console link.
   await expect(page.locator('.sidebar').getByText('Platform', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /operator console/i })).toHaveCount(0);
+  // The first nav group a non-staff user sees is still their workspace.
+  await expect(page.locator('.sidebar .nav-context').first()).toHaveText(/workspace/i);
 
   // Typing the URL says so plainly rather than rendering empty chrome.
   await page.goto('/admin');

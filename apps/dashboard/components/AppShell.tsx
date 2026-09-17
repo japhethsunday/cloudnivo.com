@@ -424,6 +424,33 @@ function ShellBody({
         ) : null}
 
         <nav className="nav" aria-label="Primary">
+          {/*
+            Platform sits FIRST, above Workspace. It shipped last in the nav,
+            below Management, which on a laptop put it under the fold — the
+            one entry a staff user is looking for was the one they had to
+            scroll to find. It is also the widest scope on the page, so it
+            reads correctly above the workspace it contains.
+
+            Rendered only for staff. Not as a security control — the API
+            answers 404 to everyone else — but because an entry that leads to
+            "not available" is worse than no entry. The flag comes from
+            /api/v1/me and is re-read on every session load.
+          */}
+          {user?.isPlatformAdmin ? (
+            <div className="nav-group">
+              <p className="nav-context">Platform</p>
+              <Link
+                href="/admin"
+                aria-current={pathname === '/admin' ? 'page' : undefined}
+                aria-label="Operator console"
+              >
+                <span className="nav-icon" aria-hidden>
+                  <IconShield size={16} />
+                </span>
+                <span className="nav-text">Operator console</span>
+              </Link>
+            </div>
+          ) : null}
           <div className="nav-group">
             <p className="nav-context">Workspace</p>
             {WORKSPACE_NAV.map(l => (
@@ -568,27 +595,6 @@ function ShellBody({
               </Link>
             ))}
           </div>
-          {/*
-            Platform group. Rendered only for staff — not as a security
-            control (the API answers 404 to everyone else) but because a
-            sidebar entry that leads to "not available" is worse than no
-            entry. The flag comes from /api/v1/me, re-read each session.
-          */}
-          {user?.isPlatformAdmin ? (
-            <div className="nav-group">
-              <p className="nav-context">Platform</p>
-              <Link
-                href="/admin"
-                aria-current={pathname === '/admin' ? 'page' : undefined}
-                aria-label="Operator console"
-              >
-                <span className="nav-icon" aria-hidden>
-                  <IconShield size={16} />
-                </span>
-                <span className="nav-text">Operator console</span>
-              </Link>
-            </div>
-          ) : null}
         </nav>
 
         <div className="sidebar-foot">
