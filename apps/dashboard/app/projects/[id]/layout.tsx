@@ -11,6 +11,7 @@ import { ErrorState, LoadingSkeleton } from '../../../components/States';
 import { Badge, Breadcrumbs, CopyField, Menu, statusTone } from '../../../components/ui';
 import { databaseState, type ProvisionJobLike } from '../../../lib/dbstate';
 import { IconChevronDown, IconSettings } from '../../../components/icons';
+import { ConnectDialog } from '../../../components/ConnectDialog';
 
 interface Project {
   id: string;
@@ -73,6 +74,7 @@ export default function ProjectLayout({
 
 function Workspace({ id, children }: { id: string; children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();
+  const [connectOpen, setConnectOpen] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [database, setDatabase] = useState<ProjectDatabase | null>(null);
   const [job, setJob] = useState<ProvisionJobLike | null>(null);
@@ -172,11 +174,28 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
           >
             <IconSettings size={16} />
           </Link>
-          <Link className="btn btn-primary btn-sm" href={`${base}/database#connection`}>
+          {/*
+            The primary action of a project header. It used to be a link to
+            the database page's connection anchor, which meant "connect"
+            really meant "go read four pages". It now opens the one place
+            that holds every value a client needs.
+          */}
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setConnectOpen(true)}
+          >
             Connect
-          </Link>
+          </button>
         </div>
       </div>
+      {connectOpen && project ? (
+        <ConnectDialog
+          projectId={project.id}
+          projectName={project.name}
+          onClose={() => setConnectOpen(false)}
+        />
+      ) : null}
       <nav className="tabs-row" aria-label="Project sections">
         <div className="tabs">
           {PRIMARY_TABS.map(t => {

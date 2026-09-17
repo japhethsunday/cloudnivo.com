@@ -3741,3 +3741,155 @@ ul.stat-grid {
     max-width: 22ch;
   }
 }
+
+/* ── Connect dialog ───────────────────────────────────────────────────
+   The project's front door: one dialog holding every value a client needs.
+   It is wider than a confirm-style modal because a connection string and a
+   snippet both have to be readable without wrapping mid-token. */
+
+.modal:has(.connect) {
+  max-width: 680px;
+}
+
+.connect-tabs,
+.connect-langs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.connect-langs {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.connect-tabs button,
+.connect-langs button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.connect-tabs button:hover,
+.connect-langs button:hover {
+  color: var(--text);
+  background: var(--bg-inset);
+}
+
+.connect-tabs button.active,
+.connect-langs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.connect-tabs button:focus-visible,
+.connect-langs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.connect-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.connect-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connect-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.connect-k {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.connect-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* A warning about a credential has to read as a warning before it is read as
+   a sentence, so it carries the danger ink and a rule, not just italics. */
+.connect-warn {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger-ink);
+  background: var(--danger-soft);
+  border-left: 2px solid var(--danger);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 8px 10px;
+}
+
+.connect-notice {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--accent-ink);
+  background: var(--accent-faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.connect-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.connect-snippet {
+  margin: 10px 0 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  min-width: 0;
+}
+
+.connect-row .btn {
+  align-self: flex-start;
+}
+
+@media (max-width: 720px) {
+  /* On a phone the field, its Show control and its Copy control cannot share
+     a line without the value shrinking to a few characters. */
+  .connect .copy-field {
+    flex-wrap: wrap;
+  }
+  .connect .copy-field code {
+    flex: 1 0 100%;
+  }
+}
+
+.connect-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
