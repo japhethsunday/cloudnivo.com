@@ -116,6 +116,24 @@ test('a stale or tampered reset link is refused, and an empty one is explained',
   await expect(page.getByText(/invalid or has expired/i)).toBeVisible({ timeout: 20_000 });
 });
 
+test('the signed-out auth pages never render the workspace shell', async ({ page }) => {
+  /**
+   * The regression this pins: /forgot-password and /reset-password shipped
+   * missing from AppShell's bare-route list, so both rendered their auth
+   * card inside the signed-in sidebar and top bar — a signed-out visitor was
+   * shown the dashboard chrome around a login form.
+   */
+  for (const path of ['/login', '/signup', '/forgot-password', `/reset-password?token=${'a'.repeat(43)}`]) {
+    await page.goto(path);
+    await expect(page.getByTestId('auth-card')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.sidebar'), `${path} must not render the sidebar`).toHaveCount(0);
+    await expect(
+      page.getByRole('link', { name: 'Organizations' }),
+      `${path} must not render workspace navigation`,
+    ).toHaveCount(0);
+  }
+});
+
 test('the auth pages hold up on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ['/signup', '/forgot-password']) {

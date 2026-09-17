@@ -145,8 +145,24 @@ const DEVELOPMENT: { suffix: string | null; label: string; icon: React.ReactNode
   { suffix: null, label: 'CLI & SDK', icon: <IconCLI size={16} /> },
 ];
 
+/**
+ * Routes that render WITHOUT the workspace chrome: the marketing home and
+ * every page of the signed-out auth flow. A page missing from this list
+ * renders its auth card inside the signed-in sidebar and top bar, which is
+ * how /forgot-password and /reset-password first shipped — so any new page
+ * in the auth flow belongs here, and tests/e2e/password-reset.spec.ts
+ * asserts the whole flow stays bare.
+ */
+const BARE_ROUTES = new Set([
+  '/',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+]);
+
 function isAuthRoute(pathname: string): boolean {
-  return pathname === '/login' || pathname === '/signup' || pathname === '/';
+  return BARE_ROUTES.has(pathname);
 }
 
 function projectIdFromPath(pathname: string): string | null {
