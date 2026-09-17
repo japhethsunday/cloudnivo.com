@@ -104,7 +104,14 @@ jobs:
           : "${VERCEL_TOKEN:?VERCEL_TOKEN secret is not set}"
           : "${VERCEL_ORG_ID:?VERCEL_ORG_ID secret is not set}"
           : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID secret is not set}"
-          vercel --prod --token="$VERCEL_TOKEN" --yes
+          # NEXT_PUBLIC_API_URL is declared HERE rather than left to the
+          # Vercel project's stored settings. It is inlined into the bundle at
+          # build time AND builds the dashboard's CSP connect-src (the
+          # https:// and wss:// origins), so it decides which host the app may
+          # talk to at all — that belongs in version control next to the code
+          # it affects, not in dashboard state nobody can review.
+          vercel --prod --token="$VERCEL_TOKEN" --yes \
+            --build-env NEXT_PUBLIC_API_URL=https://api.cloudnivo.org
       - name: Readiness gate
         run: |
           set -euo pipefail
