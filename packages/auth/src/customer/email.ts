@@ -11,7 +11,7 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html?: string;
-  kind: 'verify' | 'reset' | 'security' | 'otp' | 'magic' | 'welcome';
+  kind: 'verify' | 'reset' | 'security' | 'otp' | 'magic' | 'welcome' | 'operator';
 }
 
 export interface EmailReceipt {
@@ -29,6 +29,23 @@ export interface EmailService {
   sendMagicLink(to: string, url: string, brand?: BrandContext): Promise<EmailReceipt>;
   sendOtpEmail(to: string, code: string, purpose: string, brand?: BrandContext): Promise<EmailReceipt>;
   sendWelcomeEmail(to: string, input: WelcomeInput): Promise<EmailReceipt>;
+  /**
+   * An already-composed message. Used by the operator Email Center, which
+   * renders its own body on the shared letterhead and then hands the result
+   * here — the provider does not template it a second time.
+   *
+   * `cc`/`bcc` are optional because not every driver supports them; a driver
+   * that does not simply ignores them rather than pretending it delivered
+   * copies it never sent.
+   */
+  sendComposed(input: {
+    to: string[];
+    subject: string;
+    text: string;
+    html?: string;
+    cc?: string[];
+    bcc?: string[];
+  }): Promise<EmailReceipt>;
 }
 
 export interface WelcomeInput {
@@ -300,6 +317,11 @@ export function buildEmail(
       // displayName/URLs); this is only a type-level fallback, never used
       // by the dedicated sendWelcomeEmail paths.
       return { subject: 'Welcome to CloudNivo', text: payload.text ?? '' };
+    case 'operator':
+      // Operator mail is composed by the Email Center and handed to the
+      // driver already rendered (sendComposed), so this branch exists only
+      // to keep the union exhaustive.
+      return { subject: 'CloudNivo', text: payload.text ?? '' };
   }
 }
 
@@ -313,6 +335,29 @@ export class MemoryEmailService implements EmailService {
     this.outbox.push({ ...msg, id, at: new Date().toISOString() });
     // Honest: queued locally, NOT delivered. Never claim otherwise.
     return { delivered: false, queued: true, id };
+  }
+
+  async sendComposed(input: {
+    to: string[];
+    subject: string;
+    text: string;
+    html?: string;
+    cc?: string[];
+    bcc?: string[];
+  }): Promise<EmailReceipt> {
+    // One outbox entry per recipient, so a dev inspecting the outbox sees
+    // exactly what a real provider would have been asked to deliver.
+    let last: EmailReceipt = { delivered: false, queued: true, id: 'email_0' };
+    for (const to of [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])]) {
+      last = this.push({
+        to,
+        subject: input.subject,
+        text: input.text,
+        ...(input.html ? { html: input.html } : {}),
+        kind: 'operator',
+      });
+    }
+    return last;
   }
 
   async sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt> {

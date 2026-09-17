@@ -62,6 +62,52 @@ export class ResendEmailService implements EmailService {
       id: typeof json.id === 'string' ? json.id : `resend_${Date.now()}`,
     };
   }
+  /**
+   * A body the caller already rendered. Resend takes the full recipient
+   * lists, so cc/bcc are real here rather than silently dropped.
+   */
+  async sendComposed(input: {
+    to: string[];
+    subject: string;
+    text: string;
+    html?: string;
+    cc?: string[];
+    bcc?: string[];
+  }): Promise<EmailReceipt> {
+    if (!this.config.apiKey || !this.config.from) {
+      throw new Error('Resend is not configured (apiKey/from required)');
+    }
+    if (input.to.length === 0) throw new Error('At least one recipient is required');
+    const unsub = this.unsubscribeHeaders();
+    const res = await this.fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.config.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: this.config.from,
+        to: input.to,
+        ...(input.cc && input.cc.length > 0 ? { cc: input.cc } : {}),
+        ...(input.bcc && input.bcc.length > 0 ? { bcc: input.bcc } : {}),
+        subject: input.subject,
+        text: input.text,
+        ...(input.html ? { html: input.html } : {}),
+        ...(Object.keys(unsub).length > 0 ? { headers: unsub } : {}),
+      }),
+      signal: AbortSignal.timeout(this.config.timeoutMs ?? 15000),
+    });
+    if (!res.ok) {
+      // Carry the provider's own reason: "Resend rejected it" with no detail
+      // is useless to an operator staring at a failed send.
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Resend rejected the message (${res.status})${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+    }
+    const json = (await res.json().catch(() => ({}))) as { id?: unknown };
+    return {
+      delivered: true,
+      queued: true,
+      id: typeof json.id === 'string' ? json.id : `resend_${Date.now()}`,
+    };
+  }
+
   sendVerificationEmail(to: string, verifyUrl: string, brand?: BrandContext): Promise<EmailReceipt> {
     if (brand) {
       const built = buildVerifyEmail(verifyUrl, brand);
@@ -200,6 +246,32 @@ class SmtpConversation {
 export class SmtpEmailService implements EmailService {
   readonly driver = 'smtp';
   constructor(private readonly config: SmtpConfig) {}
+  /**
+   * A body the caller already rendered.
+   *
+   * This driver speaks one RCPT TO per message, so a multi-recipient send is
+   * a loop of separate deliveries — each recipient gets their own copy and
+   * cannot see the others. cc/bcc are delivered the same way rather than
+   * being named in headers, which is the honest behaviour for a minimal SMTP
+   * client: a Cc header this code cannot guarantee the server honoured would
+   * claim more than it did.
+   */
+  async sendComposed(input: {
+    to: string[];
+    subject: string;
+    text: string;
+    html?: string;
+    cc?: string[];
+    bcc?: string[];
+  }): Promise<EmailReceipt> {
+    const every = [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])];
+    if (every.length === 0) throw new Error('At least one recipient is required');
+    for (const to of every) {
+      await this.sendRaw(to, input.subject, input.text, input.html);
+    }
+    return { delivered: true, queued: true, id: `smtp_${Date.now()}` };
+  }
+
   private async sendRaw(to: string, subject: string, text: string, html?: string): Promise<void> {
     const { host, port, username, password, from, secure = 'starttls', timeoutMs = 15000 } = this.config;
     if (!host || !from) throw new Error('SMTP is not configured (host/from required)');

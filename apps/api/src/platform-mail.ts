@@ -23,6 +23,17 @@ import type { ApiContext } from './v1.js';
  *   duplicate signups fail before this hook runs.
  */
 
+/**
+ * The platform's configured sender.
+ *
+ * Exported so the operator Email Center sends through the SAME driver and
+ * the same credentials as every transactional email — one integration, one
+ * place the Resend key is read, and no second code path to keep honest.
+ */
+export function platformMailer(ctx: ApiContext): EmailService {
+  return emailServiceFor(ctx);
+}
+
 function emailServiceFor(ctx: ApiContext): EmailService {
   const c = ctx.config;
   if (c.EMAIL_DRIVER === 'resend' && c.RESEND_API_KEY && c.RESEND_FROM) {

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { count, desc, eq, gte, sql, type SQL } from 'drizzle-orm';
+import { count, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { ApiError, ok, toPublicError } from '@cloudnivo/api-core';
+import { ApiError, checkRateLimit, ok, toPublicError } from '@cloudnivo/api-core';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import {
   auditLogs,
@@ -18,6 +18,18 @@ import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
 import { MemoryPlatformUsers, platformAuthFor } from './platform-auth.js';
 import { MemoryRegistry } from './registry.js';
+import { readJson } from './v1.js';
+import { platformMailer } from './platform-mail.js';
+import {
+  EMAIL_TEMPLATES,
+  MAX_RECIPIENTS,
+  SEND_RATE_LIMIT,
+  SEND_RATE_WINDOW_SECONDS,
+  emailStoreFor,
+  parseRecipients,
+  renderOperatorEmail,
+  type EmailStatus,
+} from './admin-email.js';
 
 /**
  * Platform operator console (`/api/v1/admin/*`).
@@ -33,9 +45,11 @@ import { MemoryRegistry } from './registry.js';
  * 2. Non-staff callers get 404, not 403. A 403 would confirm the console
  *    exists and that the caller found a real route; 404 tells an attacker
  *    with a stolen developer token nothing at all.
- * 3. Reads only. Nothing here mutates a tenant's data, so a mistake in this
- *    module cannot corrupt a customer's project — it can only over-share,
- *    which rule 1 and 2 are there to prevent.
+ * 3. Reads, plus a SHORT closed list of operator actions: suspend/restore an
+ *    account, and send an operator email. Nothing here writes to a tenant's
+ *    data — no project, database, bucket or row is ever mutated from this
+ *    module — so a mistake can over-share or disable an account, never
+ *    corrupt a customer's data. Every action is audited with the actor.
  *
  * Secrets are never selected: no password hashes, no TOTP material, no
  * database credentials. The console shows shape and health, not contents.
@@ -82,6 +96,26 @@ export interface AdminUser {
   displayName: string | null;
   isPlatformAdmin: boolean;
   createdAt: string;
+  suspendedAt: string | null;
+}
+
+/** One account, with the tenancy it belongs to. Never any secret material. */
+export interface AdminUserDetail extends AdminUser {
+  totpEnabled: boolean;
+  organizations: { id: string; name: string; slug: string; role: string }[];
+  projects: { id: string; name: string; organizationId: string }[];
+}
+
+export interface AdminOrgDetail extends AdminOrganization {
+  createdAt: string;
+  memberList: { userId: string; email: string | null; role: string }[];
+  projectList: { id: string; name: string; slug: string; region: string }[];
+}
+
+export interface AdminProjectDetail extends AdminProject {
+  slugPath: string;
+  databaseHealth: string | null;
+  ownerEmail: string | null;
 }
 
 export interface AdminProject {
@@ -111,6 +145,13 @@ export interface AdminStore {
   users(limit: number): Promise<AdminUser[]>;
   projects(limit: number): Promise<AdminProject[]>;
   audit(limit: number): Promise<AdminAuditRow[]>;
+  /** Audit rows whose action matches one of `actions`, newest first. */
+  auditByActions(actions: string[], limit: number): Promise<AdminAuditRow[]>;
+  userDetail(id: string): Promise<AdminUserDetail | null>;
+  organizationDetail(id: string): Promise<AdminOrgDetail | null>;
+  projectDetail(id: string): Promise<AdminProjectDetail | null>;
+  /** Everyone carrying the staff flag. Small by construction. */
+  platformAdmins(): Promise<AdminUser[]>;
   /** Per-status database counts, e.g. `{ running: 12, creating: 1 }`. */
   databasesByStatus(): Promise<Record<string, number>>;
 }
@@ -140,6 +181,25 @@ function emptyGrowth(since: Date, now: Date): Map<string, AdminGrowthPoint> {
   const map = new Map<string, AdminGrowthPoint>();
   for (const month of monthsSince(since, now)) map.set(month, { month, users: 0, projects: 0 });
   return map;
+}
+
+/** One shape for an admin user row, so both stores cannot drift apart. */
+function toAdminUser(u: {
+  id: string;
+  email: string;
+  displayName: string | null;
+  isPlatformAdmin: boolean;
+  createdAt: string;
+  suspendedAt: string | null;
+}): AdminUser {
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    isPlatformAdmin: u.isPlatformAdmin,
+    createdAt: u.createdAt,
+    suspendedAt: u.suspendedAt,
+  };
 }
 
 // ── Memory (dev, tests, e2e) ────────────────────────────────────────
@@ -200,13 +260,103 @@ export class MemoryAdminStore implements AdminStore {
   }
 
   async users(limit: number): Promise<AdminUser[]> {
-    return (await this.userStore.listAll(limit)).map(u => ({
-      id: u.id,
-      email: u.email,
-      displayName: u.displayName,
-      isPlatformAdmin: u.isPlatformAdmin,
-      createdAt: u.createdAt,
-    }));
+    return (await this.userStore.listAll(limit)).map(toAdminUser);
+  }
+
+  async platformAdmins(): Promise<AdminUser[]> {
+    const all = await this.userStore.listAll(Number.MAX_SAFE_INTEGER);
+    return all.filter(u => u.isPlatformAdmin).map(toAdminUser);
+  }
+
+  async userDetail(id: string): Promise<AdminUserDetail | null> {
+    const u = await this.userStore.findById(id);
+    if (!u) return null;
+    const memberships = this.registry.adminMemberships().filter(m => m.userId === id);
+    const orgs = new Map(this.registry.adminOrganizations().map(o => [o.id, o]));
+    const orgIds = new Set(memberships.map(m => m.organizationId));
+    return {
+      ...toAdminUser(u),
+      totpEnabled: u.totpEnabled,
+      organizations: memberships.map(m => {
+        const o = orgs.get(m.organizationId);
+        return {
+          id: m.organizationId,
+          name: o?.name ?? 'unknown',
+          slug: o?.slug ?? '',
+          role: m.role,
+        };
+      }),
+      projects: this.registry
+        .adminProjects()
+        .filter(p => orgIds.has(p.organizationId))
+        .map(p => ({ id: p.id, name: p.name, organizationId: p.organizationId })),
+    };
+  }
+
+  async organizationDetail(id: string): Promise<AdminOrgDetail | null> {
+    const org = this.registry.adminOrganizations().find(o => o.id === id);
+    if (!org) return null;
+    const members = this.registry.adminMemberships().filter(m => m.organizationId === id);
+    const projectRows = this.registry.adminProjects().filter(p => p.organizationId === id);
+    const emails = new Map(
+      (await this.userStore.listAll(Number.MAX_SAFE_INTEGER)).map(u => [u.id, u.email]),
+    );
+    return {
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      members: members.length,
+      projects: projectRows.length,
+      createdAt: '',
+      memberList: members.map(m => ({
+        userId: m.userId,
+        email: emails.get(m.userId) ?? null,
+        role: m.role,
+      })),
+      projectList: projectRows.map(p => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        region: p.region,
+      })),
+    };
+  }
+
+  async projectDetail(id: string): Promise<AdminProjectDetail | null> {
+    const p = this.registry.adminProjects().find(x => x.id === id);
+    if (!p) return null;
+    const org = this.registry.adminOrganizations().find(o => o.id === p.organizationId);
+    const db = this.registry.adminDatabases().find(d => d.projectId === id);
+    const owner = p.createdBy ? await this.userStore.findById(p.createdBy) : null;
+    return {
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      organizationId: p.organizationId,
+      organizationName: org?.name ?? null,
+      region: p.region,
+      databaseStatus: db?.status ?? null,
+      databaseHealth: null,
+      createdAt: p.createdAt,
+      slugPath: `${org?.slug ?? '?'}/${p.slug}`,
+      ownerEmail: owner?.email ?? null,
+    };
+  }
+
+  async auditByActions(actions: string[], limit: number): Promise<AdminAuditRow[]> {
+    const wanted = new Set(actions);
+    const rows = await this.registry.listAudit();
+    return rows
+      .filter(r => wanted.has(r.event))
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, limit)
+      .map(r => ({
+        id: r.id,
+        action: r.event,
+        organizationId: r.organizationId ?? null,
+        actorUserId: r.userId ?? null,
+        createdAt: r.at,
+      }));
   }
 
   async projects(limit: number): Promise<AdminProject[]> {
@@ -343,23 +493,203 @@ export class DrizzleAdminStore implements AdminStore {
     }));
   }
 
-  async users(limit: number): Promise<AdminUser[]> {
-    const rows = await this.db
-      .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        isPlatformAdmin: users.isPlatformAdmin,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .orderBy(desc(users.createdAt))
-      .limit(limit);
-    return rows.map(r => ({
+  /** The user columns this console may read. Never a hash or TOTP secret. */
+  private userCols() {
+    return {
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      isPlatformAdmin: users.isPlatformAdmin,
+      createdAt: users.createdAt,
+      suspendedAt: users.suspendedAt,
+    };
+  }
+
+  private mapUser(r: {
+    id: string;
+    email: string;
+    displayName: string | null;
+    isPlatformAdmin: boolean;
+    createdAt: Date;
+    suspendedAt: Date | null;
+  }): AdminUser {
+    return {
       id: r.id,
       email: r.email,
       displayName: r.displayName,
       isPlatformAdmin: r.isPlatformAdmin,
+      createdAt: r.createdAt.toISOString(),
+      suspendedAt: r.suspendedAt ? r.suspendedAt.toISOString() : null,
+    };
+  }
+
+  async users(limit: number): Promise<AdminUser[]> {
+    const rows = await this.db
+      .select(this.userCols())
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(limit);
+    return rows.map(r => this.mapUser(r));
+  }
+
+  async platformAdmins(): Promise<AdminUser[]> {
+    const rows = await this.db
+      .select(this.userCols())
+      .from(users)
+      .where(eq(users.isPlatformAdmin, true))
+      .orderBy(desc(users.createdAt))
+      .limit(MAX_LIMIT);
+    return rows.map(r => this.mapUser(r));
+  }
+
+  async userDetail(id: string): Promise<AdminUserDetail | null> {
+    const rows = await this.db
+      .select({ ...this.userCols(), totpEnabled: users.totpEnabled })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const memberships = await this.db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+        role: organizationMemberships.role,
+      })
+      .from(organizationMemberships)
+      .innerJoin(organizations, eq(organizations.id, organizationMemberships.organizationId))
+      .where(eq(organizationMemberships.userId, id));
+    const orgIds = memberships.map(m => m.id);
+    const projectRows =
+      orgIds.length === 0
+        ? []
+        : await this.db
+            .select({
+              id: projects.id,
+              name: projects.name,
+              organizationId: projects.organizationId,
+            })
+            .from(projects)
+            .where(inArray(projects.organizationId, orgIds))
+            .limit(MAX_LIMIT);
+    return {
+      ...this.mapUser(row),
+      totpEnabled: row.totpEnabled,
+      organizations: memberships,
+      projects: projectRows,
+    };
+  }
+
+  async organizationDetail(id: string): Promise<AdminOrgDetail | null> {
+    const rows = await this.db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+        createdAt: organizations.createdAt,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, id))
+      .limit(1);
+    const org = rows[0];
+    if (!org) return null;
+    const [memberList, projectList] = await Promise.all([
+      this.db
+        .select({
+          userId: organizationMemberships.userId,
+          email: users.email,
+          role: organizationMemberships.role,
+        })
+        .from(organizationMemberships)
+        .leftJoin(users, eq(users.id, organizationMemberships.userId))
+        .where(eq(organizationMemberships.organizationId, id))
+        .limit(MAX_LIMIT),
+      this.db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          slug: projects.slug,
+          region: projects.region,
+        })
+        .from(projects)
+        .where(eq(projects.organizationId, id))
+        .limit(MAX_LIMIT),
+    ]);
+    return {
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      members: memberList.length,
+      projects: projectList.length,
+      createdAt: org.createdAt.toISOString(),
+      memberList,
+      projectList,
+    };
+  }
+
+  async projectDetail(id: string): Promise<AdminProjectDetail | null> {
+    const rows = await this.db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        slug: projects.slug,
+        organizationId: projects.organizationId,
+        organizationName: organizations.name,
+        organizationSlug: organizations.slug,
+        region: projects.region,
+        createdAt: projects.createdAt,
+        createdBy: projects.createdBy,
+        databaseStatus: projectDatabases.status,
+      })
+      .from(projects)
+      .leftJoin(organizations, eq(organizations.id, projects.organizationId))
+      .leftJoin(projectDatabases, eq(projectDatabases.projectId, projects.id))
+      .where(eq(projects.id, id))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const owner = row.createdBy
+      ? await this.db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, row.createdBy))
+          .limit(1)
+      : [];
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      organizationId: row.organizationId,
+      organizationName: row.organizationName ?? null,
+      region: row.region,
+      databaseStatus: row.databaseStatus ?? null,
+      databaseHealth: null,
+      createdAt: row.createdAt.toISOString(),
+      slugPath: `${row.organizationSlug ?? '?'}/${row.slug}`,
+      ownerEmail: owner[0]?.email ?? null,
+    };
+  }
+
+  async auditByActions(actions: string[], limit: number): Promise<AdminAuditRow[]> {
+    if (actions.length === 0) return [];
+    const rows = await this.db
+      .select({
+        id: auditLogs.id,
+        action: auditLogs.action,
+        organizationId: auditLogs.organizationId,
+        actorUserId: auditLogs.actorUserId,
+        createdAt: auditLogs.createdAt,
+      })
+      .from(auditLogs)
+      .where(inArray(auditLogs.action, actions))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit);
+    return rows.map(r => ({
+      id: r.id,
+      action: r.action,
+      organizationId: r.organizationId,
+      actorUserId: r.actorUserId,
       createdAt: r.createdAt.toISOString(),
     }));
   }
@@ -510,6 +840,33 @@ export function isAdminRoute(pathname: string, method: string): boolean {
   return pathname === '/api/v1/admin' || pathname.startsWith('/api/v1/admin/');
 }
 
+/**
+ * Actions the console treats as security-relevant.
+ *
+ * These are the audit events the platform already records; the Security
+ * Center reads them rather than inventing a parallel event stream, so what
+ * an operator sees there is exactly what the API wrote.
+ */
+const SECURITY_ACTIONS = [
+  'platform.login_failed',
+  'platform.login_suspended',
+  'platform.mfa_challenged',
+  'platform.mfa.enabled',
+  'platform.mfa.disabled',
+  'platform.password_reset',
+  'admin.user_suspended',
+  'admin.user_restored',
+  'admin.email_sent',
+] as const;
+
+/** Admin actions, for the Admin Management and Audit sections. */
+const ADMIN_ACTIONS = [
+  'admin.user_suspended',
+  'admin.user_restored',
+  'admin.email_sent',
+  'admin.bootstrap',
+] as const;
+
 export function adminOpenApi(): Record<string, unknown> {
   return {
     '/admin/overview': {
@@ -561,22 +918,90 @@ export async function handleAdminRoutes(
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (!isAdminRoute(url.pathname, req.method ?? 'GET')) return false;
   const start = Date.now();
+  const method = (req.method ?? 'GET').toUpperCase();
   const route = url.pathname.replace('/api/v1/admin', '') || '/';
   const finish = (status: number, body: unknown): true => {
-    logger.info('admin.request', { route, status, latencyMs: Date.now() - start });
+    logger.info('admin.request', { route, method, status, latencyMs: Date.now() - start });
     sendJson(res, status, body, baseHeaders);
     return true;
   };
 
   try {
-    if ((req.method ?? 'GET') !== 'GET') throw new ApiError('NOT_FOUND', 'Not found', 404);
     const staffId = await requireStaff(req, ctx);
     const store = adminStoreFor(ctx);
     const limit = limitFrom(url);
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
     const monthAgo = new Date(now.getTime() - 30 * 86_400_000);
 
+    // ── Mutations ──────────────────────────────────────────────────
+    if (method === 'POST') {
+      const suspendMatch = /^\/users\/([^/]+)\/(suspend|restore)$/.exec(route);
+      if (suspendMatch) {
+        const targetId = suspendMatch[1] as string;
+        const suspend = suspendMatch[2] === 'suspend';
+        if (targetId === staffId) {
+          throw new ApiError('VALIDATION_ERROR', 'You cannot suspend your own account', 400);
+        }
+        const body = (await readJson(req)) as { reason?: unknown } | undefined;
+        const reason =
+          typeof body?.reason === 'string' ? body.reason.trim().slice(0, 300) || null : null;
+        const users = platformAuthFor(ctx).users;
+        const target = await users.findById(targetId);
+        if (!target) throw new ApiError('NOT_FOUND', 'User not found', 404);
+        /**
+         * Staff cannot be suspended from the console. Removing an operator
+         * is a deliberate act that should go through the staff flag, not a
+         * button that could lock every operator out of the platform at once.
+         */
+        if (target.isPlatformAdmin) {
+          throw new ApiError('FORBIDDEN', 'Platform staff cannot be suspended here', 403);
+        }
+        const updated = await users.setSuspended(targetId, suspend, reason);
+        if (!updated) throw new ApiError('NOT_FOUND', 'User not found', 404);
+        await ctx.registry.recordAudit(suspend ? 'admin.user_suspended' : 'admin.user_restored', {
+          userId: staffId,
+        });
+        logger.warn('admin.account_action', {
+          action: suspend ? 'suspend' : 'restore',
+          actor: staffId,
+          target: targetId,
+        });
+        return finish(
+          200,
+          ok(
+            {
+              user: {
+                id: updated.id,
+                email: updated.email,
+                suspendedAt: updated.suspendedAt,
+              },
+            },
+            requestId,
+          ),
+        );
+      }
+
+      if (route === '/emails' || route === '/emails/test' || route === '/emails/preview') {
+        return await handleAdminEmail(req, ctx, logger, route, staffId, requestId, finish);
+      }
+      throw new ApiError('NOT_FOUND', 'Not found', 404);
+    }
+
+    if (method === 'DELETE') {
+      const draft = /^\/emails\/([^/]+)$/.exec(route);
+      if (draft) {
+        const removed = await emailStoreFor(ctx).remove(draft[1] as string);
+        if (!removed) throw new ApiError('NOT_FOUND', 'Draft not found', 404);
+        return finish(200, ok({ deleted: true }, requestId));
+      }
+      throw new ApiError('NOT_FOUND', 'Not found', 404);
+    }
+
+    if (method !== 'GET') throw new ApiError('NOT_FOUND', 'Not found', 404);
+
+    // ── Reads ──────────────────────────────────────────────────────
     if (route === '/overview' || route === '/') {
       const since = new Date(
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (GROWTH_MONTHS - 1), 1),
@@ -588,6 +1013,9 @@ export async function handleAdminRoutes(
         store.databasesByStatus(),
         ctx.jobs.listByStatus('failed', MAX_LIMIT),
       ]);
+      // Request metrics are process-local and reset on deploy — the field
+      // name says so rather than implying platform-wide history.
+      const traffic = ctx.metrics.summarize(24 * 3600_000, now.getTime());
       return finish(
         200,
         ok(
@@ -597,6 +1025,14 @@ export async function handleAdminRoutes(
             growth,
             databases,
             provisioning: { failed: failedJobs.length },
+            trafficSinceBoot: {
+              requests: traffic.requests,
+              errors: traffic.errors,
+              errorRate: traffic.errorRate,
+              p50Ms: traffic.p50Ms,
+              p95Ms: traffic.p95Ms,
+              since: new Date(traffic.since).toISOString(),
+            },
             generatedAt: now.toISOString(),
           },
           requestId,
@@ -605,17 +1041,265 @@ export async function handleAdminRoutes(
     }
 
     if (route === '/organizations') {
-      return finish(200, ok({ organizations: await store.organizations(limit) }, requestId));
+      const rows = await store.organizations(limit);
+      return finish(
+        200,
+        ok(
+          {
+            organizations: q
+              ? rows.filter(o => `${o.name} ${o.slug}`.toLowerCase().includes(q))
+              : rows,
+          },
+          requestId,
+        ),
+      );
     }
+    const orgDetail = /^\/organizations\/([^/]+)$/.exec(route);
+    if (orgDetail) {
+      const detail = await store.organizationDetail(orgDetail[1] as string);
+      if (!detail) throw new ApiError('NOT_FOUND', 'Organization not found', 404);
+      return finish(200, ok({ organization: detail }, requestId));
+    }
+
     if (route === '/users') {
-      return finish(200, ok({ users: await store.users(limit) }, requestId));
+      const rows = await store.users(q ? MAX_LIMIT : limit);
+      const filtered = q
+        ? rows.filter(u => `${u.email} ${u.displayName ?? ''}`.toLowerCase().includes(q))
+        : rows;
+      return finish(200, ok({ users: filtered.slice(0, limit) }, requestId));
     }
+    const userDetail = /^\/users\/([^/]+)$/.exec(route);
+    if (userDetail) {
+      const detail = await store.userDetail(userDetail[1] as string);
+      if (!detail) throw new ApiError('NOT_FOUND', 'User not found', 404);
+      return finish(200, ok({ user: detail }, requestId));
+    }
+
     if (route === '/projects') {
-      return finish(200, ok({ projects: await store.projects(limit) }, requestId));
+      const rows = await store.projects(q ? MAX_LIMIT : limit);
+      const filtered = q
+        ? rows.filter(p =>
+            `${p.name} ${p.slug} ${p.organizationName ?? ''} ${p.region}`.toLowerCase().includes(q),
+          )
+        : rows;
+      return finish(200, ok({ projects: filtered.slice(0, limit) }, requestId));
     }
+    const projectDetail = /^\/projects\/([^/]+)$/.exec(route);
+    if (projectDetail) {
+      const detail = await store.projectDetail(projectDetail[1] as string);
+      if (!detail) throw new ApiError('NOT_FOUND', 'Project not found', 404);
+      return finish(200, ok({ project: detail }, requestId));
+    }
+
     if (route === '/audit') {
-      return finish(200, ok({ audit: await store.audit(limit) }, requestId));
+      const action = url.searchParams.get('action');
+      const rows = action
+        ? await store.auditByActions([action], limit)
+        : await store.audit(limit);
+      return finish(200, ok({ audit: rows }, requestId));
     }
+
+    if (route === '/security') {
+      const [events, admins] = await Promise.all([
+        store.auditByActions([...SECURITY_ACTIONS], limit),
+        store.platformAdmins(),
+      ]);
+      const failedLogins = events.filter(e => e.action === 'platform.login_failed');
+      return finish(
+        200,
+        ok(
+          {
+            events,
+            failedLogins: failedLogins.length,
+            suspendedLoginAttempts: events.filter(e => e.action === 'platform.login_suspended')
+              .length,
+            staffCount: admins.length,
+            /** Configuration facts an operator should be able to confirm. */
+            posture: {
+              captchaConfigured: ctx.config.CAPTCHA_PROVIDER !== 'disabled',
+              emailDriver: ctx.config.EMAIL_DRIVER,
+              controlStore: ctx.controlDb ? 'drizzle' : 'memory',
+              trustedProxyHops: ctx.config.TRUSTED_PROXY_HOPS,
+            },
+          },
+          requestId,
+        ),
+      );
+    }
+
+    if (route === '/admins') {
+      const [admins, actions] = await Promise.all([
+        store.platformAdmins(),
+        store.auditByActions([...ADMIN_ACTIONS], limit),
+      ]);
+      return finish(200, ok({ admins, actions }, requestId));
+    }
+
+    if (route === '/observability') {
+      const windowMs = Math.min(
+        7 * 24 * 3600_000,
+        Math.max(300_000, Number(url.searchParams.get('windowMs') ?? 3600_000)),
+      );
+      const summary = ctx.metrics.summarize(windowMs, now.getTime());
+      return finish(
+        200,
+        ok(
+          {
+            /**
+             * Process-local and reset by every deploy. Named so no operator
+             * mistakes it for platform-wide retained history.
+             */
+            scope: 'this API process, since boot',
+            since: new Date(summary.since).toISOString(),
+            windowMs: summary.windowMs,
+            requests: summary.requests,
+            errors: summary.errors,
+            errorRate: summary.errorRate,
+            p50Ms: summary.p50Ms,
+            p95Ms: summary.p95Ms,
+            byService: summary.byService,
+            topRoutes: summary.topRoutes,
+            timeline: summary.timeline,
+          },
+          requestId,
+        ),
+      );
+    }
+
+    if (route === '/infrastructure') {
+      const components: Record<string, { ok: boolean; detail: string | null }> = {
+        http: { ok: true, detail: null },
+      };
+      if (ctx.controlDb) {
+        const health = await ctx.controlDb
+          .healthCheck()
+          .catch(() => ({ ok: false as const, latencyMs: -1 }));
+        components['controlDatabase'] = {
+          ok: health.ok,
+          detail: health.latencyMs >= 0 ? `${health.latencyMs}ms` : null,
+        };
+      } else {
+        components['controlStore'] = { ok: true, detail: 'in-memory (CONTROL_STORE=memory)' };
+      }
+      try {
+        const n = await ctx.registry.countDatabases();
+        components['registry'] = { ok: true, detail: `${n} databases` };
+      } catch {
+        components['registry'] = { ok: false, detail: 'unreachable' };
+      }
+      const [databases, failed] = await Promise.all([
+        store.databasesByStatus(),
+        ctx.jobs.listByStatus('failed', MAX_LIMIT),
+      ]);
+      return finish(
+        200,
+        ok(
+          {
+            components,
+            databases,
+            failedJobs: failed.slice(0, limit).map(j => ({
+              id: j.id,
+              projectId: j.projectId,
+              kind: j.kind,
+              attempts: j.attempts,
+              maxAttempts: j.maxAttempts,
+              lastError: j.lastError,
+              updatedAt: j.updatedAt,
+            })),
+            drivers: {
+              provisioning: ctx.config.PROVISION_DRIVER,
+              storage: ctx.config.STORAGE_DRIVER,
+              realtime: ctx.config.REALTIME_DRIVER,
+              functions: ctx.config.FUNCTION_RUNTIME,
+              billing: ctx.config.BILLING_PROVIDER,
+              email: ctx.config.EMAIL_DRIVER,
+            },
+          },
+          requestId,
+        ),
+      );
+    }
+
+    if (route === '/config') {
+      /**
+       * Configuration, REDACTED. Every value here is a mode or a boolean —
+       * "is a key present", never the key. A console that printed a secret
+       * would turn one compromised staff session into a credential leak.
+       */
+      const c = ctx.config;
+      return finish(
+        200,
+        ok(
+          {
+            environment: c.NODE_ENV,
+            appUrl: c.APP_URL,
+            drivers: {
+              controlStore: ctx.controlDb ? 'drizzle' : 'memory',
+              provisioning: c.PROVISION_DRIVER,
+              storage: c.STORAGE_DRIVER,
+              realtime: c.REALTIME_DRIVER,
+              functions: c.FUNCTION_RUNTIME,
+              billing: c.BILLING_PROVIDER,
+              email: c.EMAIL_DRIVER,
+              captcha: c.CAPTCHA_PROVIDER,
+            },
+            configured: {
+              resendApiKey: Boolean(c.RESEND_API_KEY),
+              resendFrom: Boolean(c.RESEND_FROM),
+              smtpHost: Boolean(c.SMTP_HOST),
+              redis: Boolean(c.REDIS_URL),
+              jwtIssuer: Boolean(c.JWT_ISSUER),
+            },
+            senderAddress: c.RESEND_FROM || c.SMTP_FROM || null,
+            migrateOnBoot: c.MIGRATE_ON_BOOT,
+            trustedProxyHops: c.TRUSTED_PROXY_HOPS,
+          },
+          requestId,
+        ),
+      );
+    }
+
+    if (route === '/emails') {
+      const status = url.searchParams.get('status');
+      const [emails, counts] = await Promise.all([
+        emailStoreFor(ctx).list({
+          status: (status as EmailStatus | null) ?? null,
+          query: q || null,
+          limit,
+        }),
+        emailStoreFor(ctx).counts(),
+      ]);
+      return finish(
+        200,
+        ok(
+          {
+            emails,
+            counts,
+            sender: {
+              driver: ctx.config.EMAIL_DRIVER,
+              from: ctx.config.RESEND_FROM || ctx.config.SMTP_FROM || null,
+              /** Whether a real provider is wired. The key itself never leaves the server. */
+              ready:
+                (ctx.config.EMAIL_DRIVER === 'resend' &&
+                  Boolean(ctx.config.RESEND_API_KEY && ctx.config.RESEND_FROM)) ||
+                (ctx.config.EMAIL_DRIVER === 'smtp' &&
+                  Boolean(ctx.config.SMTP_HOST && ctx.config.SMTP_FROM)),
+            },
+          },
+          requestId,
+        ),
+      );
+    }
+    if (route === '/emails/templates') {
+      return finish(200, ok({ templates: EMAIL_TEMPLATES }, requestId));
+    }
+    const emailDetail = /^\/emails\/([^/]+)$/.exec(route);
+    if (emailDetail) {
+      const row = await emailStoreFor(ctx).get(emailDetail[1] as string);
+      if (!row) throw new ApiError('NOT_FOUND', 'Email not found', 404);
+      return finish(200, ok({ email: row }, requestId));
+    }
+
     if (route === '/jobs') {
       const jobs = await ctx.jobs.listByStatus('failed', limit);
       return finish(
@@ -638,13 +1322,200 @@ export async function handleAdminRoutes(
         ),
       );
     }
-    void staffId;
     throw new ApiError('NOT_FOUND', 'Not found', 404);
   } catch (err) {
     const { status, body } = toPublicError(err, requestId);
-    logger.info('admin.request', { route, status, latencyMs: Date.now() - start });
+    logger.info('admin.request', { route, method, status, latencyMs: Date.now() - start });
     sendJson(res, status, body, baseHeaders);
     return true;
   }
 }
 
+/**
+ * The Email Center's write side.
+ *
+ * Four things this does that a naive implementation would not:
+ *
+ * 1. It records the attempt BEFORE sending and updates the row with the
+ *    outcome. If the process dies mid-send, the operator sees an attempt
+ *    that never resolved rather than nothing at all.
+ * 2. It reports the provider's own verdict. An accepted message is `sent`,
+ *    never `delivered` — see admin-email.ts.
+ * 3. It refuses to pretend. With no real sender configured the request fails
+ *    with a 503 that names the missing configuration, rather than writing a
+ *    `sent` row against the memory driver.
+ * 4. It rate-limits per operator and caps recipients, so one compromised
+ *    staff session cannot turn the platform into a mailer.
+ */
+async function handleAdminEmail(
+  req: IncomingMessage,
+  ctx: ApiContext,
+  logger: Logger,
+  route: string,
+  staffId: string,
+  requestId: string,
+  finish: (status: number, body: unknown) => true,
+): Promise<true> {
+  const body = (await readJson(req)) as Record<string, unknown> | undefined;
+  if (!body || typeof body !== 'object') {
+    throw new ApiError('VALIDATION_ERROR', 'A JSON body is required', 400);
+  }
+
+  const actor = await platformAuthFor(ctx).users.findById(staffId);
+  if (!actor) throw new ApiError('UNAUTHORIZED', 'Session no longer valid', 401);
+
+  const subject = typeof body['subject'] === 'string' ? body['subject'].trim() : '';
+  const intro = typeof body['intro'] === 'string' ? body['intro'] : '';
+  const closing = typeof body['closing'] === 'string' ? body['closing'] : '';
+  const templateId = typeof body['template'] === 'string' ? body['template'] : null;
+  const bullets = Array.isArray(body['bullets'])
+    ? body['bullets'].filter((b): b is string => typeof b === 'string' && b.trim() !== '')
+    : [];
+  const ctaLabel = typeof body['ctaLabel'] === 'string' ? body['ctaLabel'].trim() : '';
+  const ctaPath = typeof body['ctaPath'] === 'string' ? body['ctaPath'].trim() : '';
+
+  const appUrl = (ctx.config.APP_URL ?? '').replace(/\/+$/, '') || 'http://localhost:3000';
+  const brand = { appUrl, logoUrl: `${appUrl}/email-logo.png` };
+  /**
+   * The CTA is built from a PATH on the product's own origin. Accepting a
+   * full URL would let an operator mail an arbitrary link on CloudNivo
+   * letterhead, which is a phishing primitive, not a feature.
+   */
+  const cta =
+    ctaLabel && ctaPath
+      ? { label: ctaLabel, url: `${appUrl}${ctaPath.startsWith('/') ? ctaPath : `/${ctaPath}`}` }
+      : null;
+
+  if (subject.length < 2) {
+    throw new ApiError('VALIDATION_ERROR', 'A subject is required', 400);
+  }
+  if (intro.trim() === '' && bullets.length === 0) {
+    throw new ApiError('VALIDATION_ERROR', 'The email has no body', 400);
+  }
+
+  const rendered = renderOperatorEmail({ subject, intro, bullets, closing, cta, brand });
+
+  // Preview renders only. Nothing is stored and nothing is sent.
+  if (route === '/emails/preview') {
+    return finish(200, ok({ preview: rendered }, requestId));
+  }
+
+  const isTest = route === '/emails/test';
+  const to = isTest ? [actor.email] : parseRecipients(body['to'], 'to');
+  const cc = isTest ? [] : parseRecipients(body['cc'], 'cc');
+  const bcc = isTest ? [] : parseRecipients(body['bcc'], 'bcc');
+  const audience = [...to, ...cc, ...bcc];
+
+  if (audience.length === 0) {
+    throw new ApiError('VALIDATION_ERROR', 'At least one recipient is required', 400);
+  }
+  if (audience.length > MAX_RECIPIENTS) {
+    throw new ApiError(
+      'VALIDATION_ERROR',
+      `A single send is limited to ${MAX_RECIPIENTS} recipients`,
+      400,
+    );
+  }
+
+  // Per-operator rate limit. Counts sends, not recipients, and applies to
+  // test sends too — a test loop is still traffic against the provider.
+  const rl = await checkRateLimit(ctx.rateLimitStore, `admin-email:${staffId}`, {
+    max: SEND_RATE_LIMIT,
+    windowMs: SEND_RATE_WINDOW_SECONDS * 1000,
+    keyPrefix: 'admin-email',
+  });
+  if (!rl.allowed) {
+    throw new ApiError('RATE_LIMITED', 'Too many sends. Try again later.', 429);
+  }
+
+  const emails = emailStoreFor(ctx);
+  const driver = ctx.config.EMAIL_DRIVER;
+  const senderReady =
+    (driver === 'resend' && Boolean(ctx.config.RESEND_API_KEY && ctx.config.RESEND_FROM)) ||
+    (driver === 'smtp' && Boolean(ctx.config.SMTP_HOST && ctx.config.SMTP_FROM));
+
+  if (!senderReady) {
+    // Recorded as failed so the attempt is visible in Delivery Logs, then
+    // reported honestly. Never written as sent.
+    await emails.create({
+      actorUserId: actor.id,
+      actorEmail: actor.email,
+      recipients: to,
+      cc,
+      bcc,
+      subject,
+      bodyHtml: rendered.html,
+      bodyText: rendered.text,
+      template: templateId,
+      status: 'failed',
+      provider: driver,
+      providerId: null,
+      error: `No email sender is configured (EMAIL_DRIVER=${driver}).`,
+      isTest,
+    });
+    /**
+     * 409, not 503. `toPublicError` replaces every 5xx message with
+     * "Internal server error" so internals never leak — which would hide the
+     * one thing the operator needs to read. A missing sender is not a
+     * transient outage either: it is a precondition the operator can fix, so
+     * it belongs in the 4xx range where its explanation survives.
+     */
+    throw new ApiError(
+      'CONFLICT',
+      `No email sender is configured (EMAIL_DRIVER=${driver}). Nothing was sent.`,
+      409,
+    );
+  }
+
+  const record = await emails.create({
+    actorUserId: actor.id,
+    actorEmail: actor.email,
+    recipients: to,
+    cc,
+    bcc,
+    subject,
+    bodyHtml: rendered.html,
+    bodyText: rendered.text,
+    template: templateId,
+    status: 'queued',
+    provider: driver,
+    providerId: null,
+    error: null,
+    isTest,
+  });
+
+  try {
+    const receipt = await platformMailer(ctx).sendComposed({
+      to,
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      ...(cc.length > 0 ? { cc } : {}),
+      ...(bcc.length > 0 ? { bcc } : {}),
+    });
+    const sent = await emails.update(record.id, {
+      status: 'sent',
+      providerId: receipt.id,
+      sentAt: new Date().toISOString(),
+    });
+    await ctx.registry.recordAudit('admin.email_sent', { userId: staffId });
+    logger.info('admin.email_sent', {
+      actor: staffId,
+      recipients: audience.length,
+      provider: driver,
+      providerId: receipt.id,
+      isTest,
+    });
+    return finish(202, ok({ email: sent ?? record }, requestId));
+  } catch (err) {
+    const message = err instanceof Error ? err.message.slice(0, 500) : 'Send failed';
+    const failed = await emails.update(record.id, { status: 'failed', error: message });
+    logger.warn('admin.email_failed', { actor: staffId, provider: driver, error: message });
+    // 502: the provider refused, not the operator's mistake. The row holds
+    // the provider's own words so the failure is diagnosable.
+    return finish(
+      502,
+      ok({ email: failed ?? record, error: message }, requestId),
+    );
+  }
+}

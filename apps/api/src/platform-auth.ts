@@ -66,10 +66,14 @@ export interface PlatformUser {
   totpEnabled: boolean;
   /** Platform staff (see users.isPlatformAdmin). Drives the operator console. */
   isPlatformAdmin: boolean;
+  /** ISO timestamp when an operator suspended the account, else null. */
+  suspendedAt: string | null;
 }
 
 interface StoredPlatformUser extends PlatformUser {
   passwordHash: string;
+  /** Operator note recorded with a suspension. Never exposed to the user. */
+  suspendedReason?: string | null;
   /** TOTP secret — server-side only, never exposed (see expose). */
   totpSecret: string | null;
   totpEnabled: boolean;
@@ -104,6 +108,12 @@ export interface PlatformUserStore {
   /** Total user count (cheap on durable stores; used by the operator KPIs). */
   countAll(): Promise<number>;
   /**
+   * Suspend or restore an account. Operator action — the caller is
+   * responsible for the staff gate and the audit record. Returns null when
+   * the user is unknown.
+   */
+  setSuspended(id: string, suspended: boolean, reason: string | null): Promise<StoredPlatformUser | null>;
+  /**
    * Bootstrap grant from PLATFORM_ADMIN_EMAILS. Grants only — never demotes —
    * and returns true when this call changed the row.
    */
@@ -135,6 +145,7 @@ export class MemoryPlatformUsers implements PlatformUserStore {
       totpEnabled: false,
       backupCodeHashes: [],
       isPlatformAdmin: false,
+      suspendedAt: null,
     };
     this.users.set(user.id, user);
     return stripSecrets(user);
@@ -198,6 +209,22 @@ export class MemoryPlatformUsers implements PlatformUserStore {
     return this.users.size;
   }
 
+  async setSuspended(
+    id: string,
+    suspended: boolean,
+    reason: string | null,
+  ): Promise<StoredPlatformUser | null> {
+    const u = this.users.get(id);
+    if (!u) return null;
+    const next: StoredPlatformUser = {
+      ...u,
+      suspendedAt: suspended ? new Date().toISOString() : null,
+      suspendedReason: suspended ? reason : null,
+    };
+    this.users.set(id, next);
+    return stripSecrets(next);
+  }
+
   async grantPlatformAdmin(email: string): Promise<boolean> {
     const want = email.toLowerCase();
     for (const u of this.users.values()) {
@@ -229,6 +256,8 @@ function rowToStored(row: {
   totpEnabled?: boolean | null;
   backupCodeHashes?: string[] | null;
   isPlatformAdmin?: boolean | null;
+  suspendedAt?: Date | string | null;
+  suspendedReason?: string | null;
 }): StoredPlatformUser | null {
   if (!row.passwordHash) return null;
   return {
@@ -241,6 +270,8 @@ function rowToStored(row: {
     totpEnabled: row.totpEnabled ?? false,
     backupCodeHashes: Array.isArray(row.backupCodeHashes) ? [...row.backupCodeHashes] : [],
     isPlatformAdmin: row.isPlatformAdmin ?? false,
+    suspendedAt: row.suspendedAt ? iso(row.suspendedAt) : null,
+    suspendedReason: row.suspendedReason ?? null,
   };
 }
 
@@ -338,6 +369,37 @@ export class DrizzlePlatformUsers implements PlatformUserStore {
       .where(and(eq(users.email, email.toLowerCase()), eq(users.isPlatformAdmin, false)))
       .returning({ id: users.id });
     return rows.length > 0;
+  }
+
+  async setSuspended(
+    id: string,
+    suspended: boolean,
+    reason: string | null,
+  ): Promise<StoredPlatformUser | null> {
+    const rows = await this.db
+      .update(users)
+      .set({
+        suspendedAt: suspended ? new Date() : null,
+        suspendedReason: suspended ? (reason ?? null) : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        createdAt: users.createdAt,
+        passwordHash: users.passwordHash,
+        totpSecret: users.totpSecret,
+        totpEnabled: users.totpEnabled,
+        isPlatformAdmin: users.isPlatformAdmin,
+        suspendedAt: users.suspendedAt,
+        suspendedReason: users.suspendedReason,
+      });
+    const row = rows[0];
+    // backupCodeHashes is deliberately not selected: a suspend/restore has
+    // no business reading MFA recovery material.
+    return row ? rowToStored({ ...row, backupCodeHashes: [] }) : null;
   }
 }
 
@@ -918,7 +980,25 @@ function expose(user: StoredPlatformUser): PlatformUser {
     createdAt: user.createdAt,
     totpEnabled: user.totpEnabled,
     isPlatformAdmin: user.isPlatformAdmin,
+    suspendedAt: user.suspendedAt,
   };
+}
+
+/**
+ * The suspension gate.
+ *
+ * A suspension that only hid the account from an operator console would be
+ * decoration: every token already issued would keep working, and the account
+ * could still sign in. This runs at sign-in AND on every authenticated
+ * request, so an account suspended mid-session stops working on its next
+ * call rather than at token expiry.
+ *
+ * The reason is never returned — it is an internal operator note.
+ */
+export function assertNotSuspended(user: { suspendedAt: string | null }): void {
+  if (user.suspendedAt) {
+    throw new ApiError('FORBIDDEN', 'This account is suspended. Contact CloudNivo support.', 403);
+  }
 }
 
 function sessionCookie(token: string, maxAgeSeconds: number, secure: boolean): string {
@@ -1366,6 +1446,16 @@ export async function handlePlatformAuthRoutes(
       if (!(await verifyPassword(parsed.password, user.passwordHash))) {
         await ctx.registry.recordAudit('platform.login_failed', { userId: user.id });
         throw new ApiError('UNAUTHORIZED', 'Invalid email or password', 401);
+      }
+      /**
+       * Checked AFTER the password, deliberately. Refusing a suspended
+       * account before verifying the password would answer "suspended" to
+       * anyone who guessed the address, turning the endpoint into an
+       * account-existence oracle.
+       */
+      if (user.suspendedAt) {
+        await ctx.registry.recordAudit('platform.login_suspended', { userId: user.id });
+        assertNotSuspended(user);
       }
       if (user.totpEnabled && user.totpSecret) {
         const ticket = `pmfa_${randomBytes(24).toString('base64url')}`;

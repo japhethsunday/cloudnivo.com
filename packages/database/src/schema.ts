@@ -44,6 +44,15 @@ export const users = pgTable('users', {
    * exists without hand-written SQL; see apps/api/src/admin.ts.
    */
   isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+  /**
+   * Set when an operator suspends the account. Enforced SERVER-SIDE at
+   * sign-in and on every authenticated request — a suspension that only hid
+   * the account in a console would leave every issued token working.
+   * Nullable rather than a boolean so the audit trail keeps the moment.
+   */
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  /** Free text recorded with the suspension. Never shown to the user. */
+  suspendedReason: varchar('suspended_reason', { length: 300 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -71,6 +80,53 @@ export const platformPasswordResets = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   t => [index('platform_password_resets_user_idx').on(t.userId)],
+);
+
+/**
+ * Every email an operator sends from the Email Center.
+ *
+ * This is the delivery record, not a mailbox: it holds who sent it, to whom,
+ * the subject, the provider's own message id and the outcome. The BODY is
+ * kept so a sent message can be read back and re-used as a draft, which is
+ * the whole point of having a sent folder.
+ *
+ * What it deliberately does not hold: the provider API key, and any status
+ * CloudNivo did not observe. `status` is what the provider actually told us
+ * — queued/sent when it accepted the message, failed with its error when it
+ * did not. Bounces and complaints arrive later over a webhook; until one
+ * does, a row says `sent`, never `delivered`.
+ */
+export const platformEmails = pgTable(
+  'platform_emails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The operator who sent it. Null only if the account is later deleted. */
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    actorEmail: varchar('actor_email', { length: 320 }).notNull(),
+    recipients: jsonb('recipients').notNull().default([]),
+    cc: jsonb('cc').notNull().default([]),
+    bcc: jsonb('bcc').notNull().default([]),
+    subject: varchar('subject', { length: 300 }).notNull(),
+    bodyHtml: text('body_html'),
+    bodyText: text('body_text'),
+    /** Which built-in template produced it, when one did. */
+    template: varchar('template', { length: 60 }),
+    /** draft | queued | sent | failed | bounced | complained */
+    status: varchar('status', { length: 20 }).notNull(),
+    provider: varchar('provider', { length: 30 }),
+    providerId: varchar('provider_id', { length: 200 }),
+    error: text('error'),
+    /** True for a test send to the operator's own address. */
+    isTest: boolean('is_test').notNull().default(false),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    index('platform_emails_created_idx').on(t.createdAt),
+    index('platform_emails_status_idx').on(t.status),
+    index('platform_emails_actor_idx').on(t.actorUserId),
+  ],
 );
 
 export const organizations = pgTable(
