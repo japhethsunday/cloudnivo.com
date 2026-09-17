@@ -13,10 +13,16 @@ target of the `DatabaseProvisioner` / Dockerfile abstraction.
      stop receiving traffic).
    - Set every variable from `.env.example` as Railway environment variables.
      Minimum: `DATABASE_URL` (plugin), `JWT_SECRET` (≥32 chars), `CORS_ORIGINS`,
-     `PUBLIC_API_URL` (your Railway public domain, e.g.
-     `https://api.<your-app>.up.railway.app`), `REDIS_URL` if you add Redis.
-3. Deploy the dashboard to Vercel with `NEXT_PUBLIC_API_URL` pointing at the
-   Railway API URL.
+     `PUBLIC_API_URL`, `REDIS_URL` if you add Redis.
+   - Attach a custom domain to the API service (Railway → service → Settings →
+     Networking → Custom Domain) and point `PUBLIC_API_URL` at it, e.g.
+     `https://api.yourdomain.com`. The generated `*.up.railway.app` host works,
+     but it ends up in every client config, SDK snippet and Connect dialog your
+     users copy — the production deployment uses `https://api.cloudnivo.org`.
+3. Deploy the dashboard to Vercel with `NEXT_PUBLIC_API_URL` pointing at that
+   same API domain. It is baked in at build time AND builds the dashboard's
+   CSP `connect-src` (both the `https://` and `wss://` origins), so changing it
+   requires a rebuild, not just a variable edit.
 4. On Railway, project databases are provisioned per the active provider:
    - `PROVISION_DRIVER=managed` (use this on Railway): one database +
      locked-down role per project inside the Postgres plugin
