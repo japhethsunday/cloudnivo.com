@@ -74,6 +74,12 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # Production's canonical API origin, declared here rather than read from
+      # a repository variable. It used to come from vars.PRODUCTION_API_URL,
+      # which still held the generated Railway host — so the readiness gate
+      # was proving the wrong hostname healthy while the product moved to its
+      # own domain, and nothing in review could see that.
+      PRODUCTION_API_URL: https://api.cloudnivo.org
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -111,12 +117,17 @@ jobs:
           # talk to at all — that belongs in version control next to the code
           # it affects, not in dashboard state nobody can review.
           vercel --prod --token="$VERCEL_TOKEN" --yes \
-            --build-env NEXT_PUBLIC_API_URL=https://api.cloudnivo.org
+            --build-env NEXT_PUBLIC_API_URL="$PRODUCTION_API_URL"
       - name: Readiness gate
         run: |
           set -euo pipefail
-          test -n "${{ vars.PRODUCTION_API_URL }}" || { echo 'PRODUCTION_API_URL var is not set'; exit 1; }
           for i in $(seq 1 36); do
-            curl -fsS "${{ vars.PRODUCTION_API_URL }}/api/v1/health/ready" && break || sleep 10
+            curl -fsS "$PRODUCTION_API_URL/api/v1/health/ready" && break || sleep 10
           done
-          curl -fsS "${{ vars.PRODUCTION_API_URL }}/api/v1/health/ready" | grep -q '"ready"'
+          curl -fsS "$PRODUCTION_API_URL/api/v1/health/ready" | grep -q '"ready"'
+          # The gate must also prove the deploy is serving the real domain,
+          # not just that something answers: a certificate or routing mistake
+          # on api.cloudnivo.org has to fail the deploy, not pass it quietly.
+          case "$PRODUCTION_API_URL" in
+            *railway.app*) echo "production API URL is still a Railway host"; exit 1 ;;
+          esac
