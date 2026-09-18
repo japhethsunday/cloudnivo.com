@@ -288,13 +288,37 @@ Contract details: [`docs/api.md`](docs/api.md).
 
 ## Testing
 
-| Command             | What it proves                                                                            |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| `npm run lint`      | ESLint flat config, zero warnings                                                         |
-| `npm run typecheck` | `tsc --noEmit` across all 13 workspaces                                                   |
-| `npm test`          | Vitest: storage E2E (real bytes) + engine/keys/auth suites + injection/isolation matrices |
-| `npm run build`     | All packages `tsc` emit + `apps/api` + `next build`                                       |
-| `DOCKER_TESTS=1`    | Real-Postgres integration (provision → CRUD → delete) where Docker exists                 |
+**Before pushing, run `npm run verify`.** It runs what CI runs, in CI's order,
+against CI's environment — lint, typecheck, unit tests, build, the full
+Playwright suite, and the production smoke, each against a stack booted the way
+the workflow boots it.
+
+That last part is the reason it exists rather than being a list of commands to
+remember. CI went red three times on changes that passed "the tests" locally,
+and every failure came from an environment difference rather than the code:
+
+- `NEXT_PUBLIC_API_URL` is inlined at **build** time, so a dashboard built
+  against a different origin fails every browser test with a CSP error that
+  looks nothing like the real cause. `verify` rebuilds it.
+- The e2e harness raises rate-limit and threat budgets, because the suite
+  drives hostile traffic from one address. The smoke API deliberately gets no
+  such exemption, because it proves production-shaped behaviour. Running one
+  against the other's stack proves the wrong thing.
+
+| Command               | What it proves                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `npm run verify`      | **Everything below, the way CI runs it.** Use this before pushing.                        |
+| `npm run verify:fast` | Static gates only — lint, typecheck, unit, build. No servers, no browser.                 |
+| `npm run lint`        | ESLint flat config, zero warnings                                                         |
+| `npm run typecheck`   | `tsc --noEmit` across all 13 workspaces                                                   |
+| `npm test`            | Vitest: storage E2E (real bytes) + engine/keys/auth suites + injection/isolation matrices |
+| `npm run build`       | All packages `tsc` emit + `apps/api` + `next build`                                       |
+| `npm run test:e2e`    | Playwright, against a stack you booted yourself                                           |
+| `npm run test:smoke`  | 24-step production smoke against `API_BASE`                                               |
+| `DOCKER_TESTS=1`      | Real-Postgres integration (provision → CRUD → delete) where Docker exists                 |
+
+`verify` does not reproduce CI's `docker` job, which needs a real Postgres and
+Redis. That one still runs only in CI.
 
 ## Production build report
 
@@ -314,7 +338,8 @@ Measured via `npm run build` (Next.js 15.5.25):
 | Script                                          | Purpose                                    |
 | ----------------------------------------------- | ------------------------------------------ |
 | `npm run dev` / `dev:api`                       | Dashboard (:3000) / standalone API (:3001) |
-| `npm run lint` / `typecheck` / `test` / `build` | Quality gates (run in this order)          |
+| `npm run verify`                                | Full CI gate locally (use before pushing)  |
+| `npm run lint` / `typecheck` / `test` / `build` | Individual quality gates                   |
 | `npm run format` / `format:check`               | Prettier write / check                     |
 | `npm run db:generate` / `db:migrate`            | Drizzle generate / migrate                 |
 

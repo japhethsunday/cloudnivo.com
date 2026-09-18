@@ -2,7 +2,7 @@
   "name": "cloudnivo",
   "private": true,
   "version": "0.1.0",
-  "description": "CloudNivo — developer-focused Backend-as-a-Service platform (control plane foundation, Phase 1)",
+  "description": "CloudNivo \u2014 developer-focused Backend-as-a-Service platform (control plane foundation, Phase 1)",
   "type": "module",
   "license": "MIT",
   "workspaces": [
@@ -26,6 +26,8 @@
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "test:smoke": "node tests/smoke-prod.mjs",
     "test:load": "tsx tests/load/run.ts",
+    "verify": "bash scripts/verify.sh",
+    "verify:fast": "bash scripts/verify.sh --fast",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "npm run db:generate --workspace=packages/database --if-present",

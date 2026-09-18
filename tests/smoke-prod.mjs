@@ -359,7 +359,21 @@ await check('21. isolation + error envelope', async () => {
   assert(nf.status === 404 && nf.json.error?.code, 'no error envelope');
   assert(!JSON.stringify(nf.json).includes('stack'), 'stack leaked');
 });
-await check('22. rate limits + session behavior', async () => {
+/**
+ * Session validation, checked BEFORE the flood below.
+ *
+ * Order matters and is the point: the flood deliberately gets this IP
+ * throttled, and a throttled IP is answered 429 before any handler runs — so
+ * asking "is a garbage token rejected?" afterwards measures the throttle, not
+ * session validation, and fails for a reason that has nothing to do with
+ * sessions. Each step now tests the thing it is named after.
+ */
+await check('22. rejects a bad session', async () => {
+  const bad = await api('GET', '/api/v1/me', { token: 'garbage' });
+  assert(bad.status === 401, `bad session accepted (got ${bad.status})`);
+});
+
+await check('23. rate limits a login flood', async () => {
   let limited = false;
   for (let i = 0; i < 30; i += 1) {
     const r = await api('POST', '/api/v1/auth/login', {
@@ -372,8 +386,17 @@ await check('22. rate limits + session behavior', async () => {
     assert(r.status === 401, `expected 401, got ${r.status}`);
   }
   assert(limited, 'login flood never rate-limited');
-  const bad = await api('GET', '/api/v1/me', { token: 'garbage' });
-  assert(bad.status === 401, 'bad session accepted');
+});
+
+/**
+ * The adaptive tracker throttles the IP the flood just came from, and it does
+ * so on BEHAVIOUR: repeated failures against one account. Proving the throttle
+ * is real matters more than proving a number — a 429 here is the edge refusing
+ * an address that has earned it, before any handler or database is touched.
+ */
+await check('24. the flood leaves the IP throttled at the edge', async () => {
+  const after = await api('GET', '/api/v1/me', { token: 'garbage' });
+  assert(after.status === 429, `expected the IP to still be throttled, got ${after.status}`);
 });
 
 const failed = results.filter(r => !r.ok);
