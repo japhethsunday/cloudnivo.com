@@ -4176,3 +4176,517 @@ ul.stat-grid {
     display: none;
   }
 }
+
+
+/* ── Sidebar, rebuilt ───────────────────────────────────────────────────
+   The rail had four competing label systems stacked on top of each other:
+   a group heading, a parent row, an uppercase sub-heading indented under
+   that parent, and the child links. On screen that reads as four levels of
+   hierarchy for what is really two, and the sub-headings collided with the
+   parent they were nested in. Children are now one indented list hung off a
+   single hairline spine, and a sub-group is separated by a rule rather than
+   by another shouting label. */
+
+.sidebar {
+  background: var(--bg-muted);
+  padding: 8px 10px 12px;
+  gap: 0;
+}
+.sidebar .brand {
+  padding: 4px 6px 10px;
+  font-size: 14.5px;
+}
+
+.nav {
+  gap: 1px;
+}
+.nav-group + .nav-group {
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.nav-context {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  color: var(--text-faint);
+  padding: 14px 8px 6px;
+}
+.nav-group:first-child .nav-context {
+  padding-top: 4px;
+}
+.nav a {
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 450;
+  border-radius: 6px;
+  border: 0;
+  color: var(--text-muted);
+}
+.nav a:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+/* Current page: a filled row, no border. A 1px outline on a 6px radius at
+   this density reads as a rendering artefact rather than as selection. */
+.nav a[aria-current='page'] {
+  background: var(--accent-faint);
+  color: var(--accent-ink, var(--accent));
+  border: 0;
+  font-weight: 600;
+}
+.nav a[aria-current='page'] .nav-icon {
+  opacity: 1;
+  color: var(--accent-ink, var(--accent));
+}
+.nav-icon {
+  width: 15px;
+  height: 15px;
+  opacity: 0.7;
+}
+
+/* The spine: children hang off one vertical hairline instead of floating at
+   an arbitrary 35px indent. */
+.nav-children-inner {
+  position: relative;
+  margin: 1px 0 3px 15px;
+  padding: 1px 0 1px 0;
+  border-left: 1px solid var(--border);
+  gap: 0;
+}
+.nav-child {
+  padding: 5px 8px 5px 14px;
+  margin-left: -1px;
+  border-left: 1px solid transparent;
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  font-weight: 450;
+  color: var(--text-muted);
+}
+.nav-child:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+.nav-child[aria-current='page'] {
+  background: var(--accent-faint);
+  border-left-color: var(--accent);
+  color: var(--accent-ink, var(--accent));
+  font-weight: 600;
+}
+/* Separates Manage from Configuration without a second uppercase label. */
+.nav-subrule {
+  display: block;
+  height: 1px;
+  margin: 5px 8px 5px 14px;
+  background: var(--border);
+}
+.nav-sublabel {
+  display: none;
+}
+
+.nav-parent-row > a {
+  padding-right: 2px;
+}
+.nav-toggle {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+.nav-toggle:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.nav-back {
+  padding: 5px 8px;
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.nav-back:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.sidebar-foot {
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.rail-toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+/* ── Console surfaces used by the operator sections ──────────────────── */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fact-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.fact-row:last-child {
+  border-bottom: 0;
+}
+.fact-k {
+  color: var(--text-muted);
+}
+.fact-v {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.count-chip {
+  margin-left: 6px;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+.count-bad {
+  background: var(--danger-soft);
+  color: var(--danger-ink, var(--danger));
+}
+.tag-inline {
+  margin-left: 6px;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  color: var(--text-faint);
+}
+.row-error {
+  margin-top: 3px;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--danger-ink, var(--danger));
+  overflow-wrap: anywhere;
+}
+.mail-preview {
+  width: 100%;
+  height: 520px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+@media (max-width: 980px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Operator console layout ─────────────────────────────────────────── */
+
+.admin-body {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.admin-rail {
+  position: sticky;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 16px;
+  border-right: 1px solid var(--border);
+}
+.admin-rail-group + .admin-rail-group {
+  margin-top: 12px;
+}
+.admin-rail-label {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.admin-rail-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 450;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.admin-rail-item:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+.admin-rail-item[aria-current='page'] {
+  background: var(--accent-faint);
+  color: var(--accent-ink, var(--accent));
+  font-weight: 600;
+}
+.admin-main {
+  min-width: 0;
+}
+.health-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 9px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.health-row:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .admin-rail {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .admin-rail-group {
+    display: contents;
+  }
+  .admin-rail-label {
+    display: none;
+  }
+  .admin-rail-item {
+    width: auto;
+    border: 1px solid var(--border);
+  }
+}
+
+/* ── Density and finish pass ─────────────────────────────────────────
+   The console read as a set of loose boxes: cards with generous padding
+   and headings the same weight as body copy, tables whose rows were the
+   tallest thing on the page, and a page head that took a whole band before
+   any information appeared. These bring it to a working density. */
+
+.main {
+  padding: 20px 24px 64px;
+}
+.page-head {
+  margin-bottom: 14px;
+}
+.page-head h1 {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.022em;
+}
+.page-head .sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+}
+
+.card {
+  padding: 12px 14px 14px;
+  border-radius: 7px;
+}
+.card > h3:first-of-type {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  color: var(--text);
+}
+.card > p.muted {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.table {
+  font-size: 13px;
+}
+.table th,
+.table td {
+  padding: 7px 12px;
+}
+.table thead th {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  padding: 7px 12px;
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.table-wrap {
+  border-radius: 7px;
+}
+
+.stat-grid {
+  border-radius: 7px;
+}
+.stat .k {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+.stat .v {
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+.stat .s {
+  font-size: 11.5px;
+}
+
+.toolbar {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toolbar .search input,
+.toolbar select {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+/* Sub-tabs: an underline strip, matching the project section tabs rather
+   than inventing a third tab style for the same job. */
+.subtabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.subtabs button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.subtabs button:hover {
+  color: var(--text);
+}
+.subtabs button[aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* Compose is a form, not a panel of prose: fields sit closer together and
+   the two textareas do not each claim five rows of empty space. */
+.admin .field {
+  margin-bottom: 10px;
+}
+.admin .field textarea {
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.admin .form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.admin .form-row .field {
+  margin-bottom: 10px;
+}
+
+/* Tables are the widest thing in the console; on a phone the wrapper has to
+   be allowed to shrink below its content or the document scrolls sideways
+   instead of the table. */
+@media (max-width: 900px) {
+  .admin-body,
+  .admin-main,
+  .admin .table-wrap,
+  .admin .card {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .admin .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin .toolbar {
+    flex-wrap: wrap;
+  }
+  .admin .toolbar .search {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+/* `1fr` is minmax(auto, 1fr): the content column reported a wide table's
+   min-content width to the grid, so the DOCUMENT scrolled sideways instead
+   of the table. The content column must be allowed to shrink. */
+.shell {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+}
+.content {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  /* Same reason as the desktop rule: the single column is minmax(auto,1fr)
+     by default, so a wide table still grew the document. */
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Email addresses and long identifiers are the one thing in these tables
+   with no natural break, so they set the table's minimum width. Let them
+   wrap rather than push the page sideways. */
+.admin .table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) {
+  .admin .table {
+    table-layout: fixed;
+    width: 100%;
+  }
+}
+
+/* The status filter clipped its own chevron because the select had no room
+   for it beside the widest option label. */
+.toolbar select {
+  padding-right: 30px;
+  min-width: 150px;
+}

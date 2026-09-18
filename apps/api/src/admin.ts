@@ -1380,7 +1380,19 @@ async function handleAdminEmail(
    * The CTA is built from a PATH on the product's own origin. Accepting a
    * full URL would let an operator mail an arbitrary link on CloudNivo
    * letterhead, which is a phishing primitive, not a feature.
+   *
+   * Prefixing alone is not enough: `https://evil.test` prefixed becomes
+   * `https://app/https://evil.test`, which stays on-origin but is a dead
+   * link. And a protocol-relative `//evil.test` would escape the origin
+   * entirely. Both are rejected rather than mangled.
    */
+  if (ctaPath && (/^[a-z][a-z0-9+.-]*:/i.test(ctaPath) || ctaPath.startsWith('//'))) {
+    throw new ApiError(
+      'VALIDATION_ERROR',
+      'The button must link to a path on CloudNivo, such as /dashboard — not a full URL.',
+      400,
+    );
+  }
   const cta =
     ctaLabel && ctaPath
       ? { label: ctaLabel, url: `${appUrl}${ctaPath.startsWith('/') ? ctaPath : `/${ctaPath}`}` }

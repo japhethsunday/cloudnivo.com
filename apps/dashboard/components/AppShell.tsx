@@ -496,11 +496,7 @@ function ShellBody({
                         <div className="nav-children-inner">
                           {groupNavChildren(r.children ?? []).map((g, gi) => (
                             <Fragment key={g.label ?? `top-${gi}`}>
-                              {g.label ? (
-                                <p className="nav-sublabel" aria-hidden>
-                                  {g.label}
-                                </p>
-                              ) : null}
+                              {g.label && gi > 0 ? <span className="nav-subrule" aria-hidden /> : null}
                               {g.items.map(c => (
                                 <Link
                                   key={c.suffix === '' ? `${r.suffix}#top` : c.suffix}

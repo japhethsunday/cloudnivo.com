@@ -233,6 +233,34 @@ describe('operator email', () => {
     expect((log.json['data'] as { emails: unknown[] }).emails.length).toBe(0);
   });
 
+  it('refuses a button that links off CloudNivo', async () => {
+    live = await boot({ PLATFORM_ADMIN_EMAILS: 'staff@example.com' });
+    const { base } = live;
+    const staff = await signup(base, 'staff@example.com');
+
+    for (const ctaPath of ['https://evil.example.com/steal', '//evil.example.com', 'javascript:alert(1)']) {
+      const res = await api(base, 'POST', '/api/v1/admin/emails/preview', staff.token, {
+        subject: 'Check this out',
+        intro: 'hello',
+        ctaLabel: 'Go',
+        ctaPath,
+      });
+      expect(res.status, ctaPath).toBe(400);
+    }
+
+    // A real path still works, and resolves on the product's own origin.
+    const good = await api(base, 'POST', '/api/v1/admin/emails/preview', staff.token, {
+      subject: 'Check this out',
+      intro: 'hello',
+      ctaLabel: 'Go',
+      ctaPath: '/dashboard',
+    });
+    expect(good.status).toBe(200);
+    const html = (good.json['data'] as { preview: { html: string } }).preview.html;
+    expect(html).not.toContain('evil.example.com');
+    expect(html).toContain('/dashboard');
+  });
+
   it('previews without sending or recording', async () => {
     live = await boot({ PLATFORM_ADMIN_EMAILS: 'staff@example.com' });
     const { base } = live;
