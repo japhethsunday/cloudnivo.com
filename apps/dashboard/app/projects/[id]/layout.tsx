@@ -89,17 +89,11 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
         project's live infrastructure state, in the state's own words.
       */}
       <div className="ws-strip">
-        <h1 id="ws-title" className="sr-only">
+        <h1 id="ws-title" className="ws-strip-name">
           {project.name}
         </h1>
         <span className={`state-word state-${statusTone(status)}`}>{status}</span>
-        <span className="ws-strip-sep" aria-hidden>
-          ·
-        </span>
         <span className={`state-word state-${statusTone(health)}`}>{healthLabel}</span>
-        <span className="ws-strip-sep" aria-hidden>
-          ·
-        </span>
         <EnvSwitcher projectId={project.id} region={project.region} />
         <span className="grow" />
         <Menu

@@ -641,3 +641,135 @@
   color: var(--g-danger-ink);
   margin: 1px 0 0;
 }
+
+/* ── The split: product on the left, form on the right ────────────────────
+   Only first-run surfaces turn this on. The scene stops centring its single
+   child and becomes two columns whose gutter is the page's own padding, so
+   the card keeps the exact width, glass and animation it has when centred —
+   the aside is added beside it, not a redesign around it.
+
+   Both tracks are minmax(0, …): a bare 1fr resolves to minmax(auto, 1fr),
+   and the board's own minimum width would then push the page wider than the
+   viewport. */
+
+.sceneSplit {
+  display: grid;
+  /* The scene paints the page's background, so it must stay full-bleed: the
+     content is capped by the track widths, never by a max-width on .scene
+     itself, which would leave unpainted gutters beside the glow. */
+  grid-template-columns: minmax(0, 560px) minmax(0, 424px);
+  align-items: center;
+  justify-content: center;
+  gap: clamp(32px, 6vw, 88px);
+  padding: 48px clamp(20px, 5vw, 56px);
+}
+
+.sceneSplit .shell {
+  max-width: 424px;
+  justify-self: end;
+}
+
+.aside {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  max-width: 520px;
+  /* Matched to the card's entrance, offset so the two do not arrive in
+     lockstep — the eye lands on the product, then the form. */
+  animation: asideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes asideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.asideMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--g-ink);
+  margin-bottom: 4px;
+}
+.asideMark:hover {
+  text-decoration: none;
+}
+
+.asideHeading {
+  margin: 0;
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 640;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  color: var(--g-ink);
+  text-wrap: balance;
+}
+
+.asideLede {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--g-ink-muted);
+}
+
+.asidePoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 13px;
+  color: var(--g-ink-faint);
+}
+.asidePoints li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.asideBoard {
+  width: 100%;
+  margin-top: 6px;
+}
+
+/* Below the split's comfortable width the form has to own the screen: the
+   scene goes back to one centred column and the aside's board, which is the
+   costly part, stops rendering rather than stacking above the form. */
+@media (max-width: 960px) {
+  .sceneSplit {
+    display: flex;
+    padding: 40px 20px;
+  }
+  .sceneSplit .shell {
+    justify-self: auto;
+  }
+  .aside {
+    display: none;
+  }
+}
+
+/* A laptop in landscape has the width but not the height for the board. */
+@media (min-width: 961px) and (max-height: 720px) {
+  .asideBoard {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aside {
+    animation: none;
+  }
+}

@@ -44,7 +44,11 @@ export default function SignupPage(): React.JSX.Element {
       title="Create your CloudNivo account"
       sub="One account for every organization and project."
       points={POINTS}
-      foot="By creating an account you agree to use CloudNivo responsibly." 
+      aside={{
+        heading: 'Ship infrastructure your team can reason about.',
+        lede: 'CloudNivo gives every project its own isolated database, scoped keys and approval gates — one control plane, one audit trail, no shared blast radius.',
+      }}
+      foot="By creating an account you agree to use CloudNivo responsibly."
     >
       <form onSubmit={submit} aria-label="Create account" className={styles.form}>
         <div className={styles.field}>

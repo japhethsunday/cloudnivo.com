@@ -4690,3 +4690,121 @@ ul.stat-grid {
   padding-right: 30px;
   min-width: 150px;
 }
+
+/* The strip led with a bare state word and no subject: "running · healthy"
+   with nothing saying what was running. The project's name is the subject;
+   the breadcrumb names it too, but the page should not depend on chrome
+   above it to make its own first line mean something. */
+.ws-strip-name {
+  margin: 0 4px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.018em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+.ws-strip {
+  gap: 7px;
+}
+
+/* Account's own section list was a column of full-width filled buttons —
+   heavier than the content beside it and a third navigation style for the
+   same job. It now matches the operator console's rail. */
+.account-grid {
+  grid-template-columns: 172px minmax(0, 1fr);
+  gap: 20px;
+}
+.account-nav {
+  gap: 2px;
+  padding-right: 16px;
+  border-right: 1px solid var(--border);
+}
+.account-nav button {
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 450;
+  color: var(--text-muted);
+}
+.account-nav button:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+.account-nav button.active,
+.account-nav button[aria-current='true'] {
+  background: var(--accent-faint);
+  color: var(--accent-ink, var(--accent));
+  font-weight: 600;
+  border: 0;
+}
+@media (max-width: 900px) {
+  .account-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .account-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .account-nav button {
+    width: auto;
+    border: 1px solid var(--border);
+  }
+}
+
+/* My density pass reset the search input's padding, so its own icon sat on
+   top of the placeholder. The icon owns that space back. */
+.toolbar .search input {
+  padding-left: 34px;
+}
+/* Admin toolbars have no icon element, so their input keeps normal padding. */
+.admin .toolbar .search input {
+  padding-left: 10px;
+}
+
+/* The state words carry their own colour, so the dot separators between
+   them were punctuation doing no work — and the fixed-width state column
+   left ragged gaps around them. Each reading is its own chip instead. */
+.ws-strip .state-word {
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  min-width: 0;
+}
+.ws-strip-sep {
+  display: none;
+}
+.ws-strip .state-word {
+  min-width: 0;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  /* The breadcrumb wrapped behind the mobile bar's own controls. It is the
+     one thing in that bar that can lose a level: the project name is enough
+     when the org is one tap away. */
+  .topbar .crumbs {
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .topbar .crumbs .switcher:first-child,
+  .topbar .crumbs .crumb-sep {
+    display: none;
+  }
+  .topbar .crumb-name {
+    max-width: 130px;
+  }
+  .topbar-connect {
+    margin-left: 4px;
+  }
+}
