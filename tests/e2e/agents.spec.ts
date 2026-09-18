@@ -18,7 +18,12 @@ test('agent tokens: create, reveal once, revoke', async ({ page }) => {
     .getByRole('dialog', { name: /new organization/i })
     .getByRole('button', { name: /^create organization$/i })
     .click();
-  await expect(page.getByText(`Agent Org ${stamp}`, { exact: true })).toBeVisible({ timeout: 15_000 });
+  // The new organization's name now appears in the breadcrumb and the
+  // account menu as well as the table, so assert on the row that proves it
+  // was created rather than on any element carrying the name.
+  await expect(
+    page.locator('#main').getByRole('row', { name: new RegExp(`Agent Org ${stamp}\\b`) }),
+  ).toBeVisible({ timeout: 15_000 });
 
   await page.goto('/agents');
   await expect(page.getByRole('heading', { name: /agent access/i })).toBeVisible({ timeout: 15_000 });

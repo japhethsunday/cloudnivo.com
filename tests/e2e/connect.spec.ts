@@ -72,7 +72,11 @@ async function login(page: Page, email: string): Promise<void> {
 
 async function openConnect(page: Page, projectId: string): Promise<void> {
   await page.goto(`/projects/${projectId}`);
-  await page.getByRole('button', { name: /^connect$/i }).click();
+  // Connect is offered twice on purpose: once in the breadcrumb, where the
+  // primary action for the current scope lives, and once in the project
+  // strip. The strip is the one this suite drives, so scope to the main
+  // region rather than matching both and violating strict mode.
+  await page.locator('#main').getByRole('button', { name: /^connect$/i }).click();
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 });
 }
 
