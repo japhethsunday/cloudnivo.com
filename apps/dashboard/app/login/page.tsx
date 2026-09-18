@@ -214,7 +214,14 @@ function LoginForm(): React.JSX.Element {
   }
 
   return (
-    <AuthGlass title="Welcome back" sub="Sign in to your CloudNivo workspace.">
+    <AuthGlass
+      title="Welcome back"
+      sub="Sign in to your CloudNivo workspace."
+      aside={{
+        heading: 'Every project, in the state you left it.',
+        lede: 'One control plane over isolated databases, scoped keys and approval gates — with an audit trail that says who changed what.',
+      }}
+    >
       <form onSubmit={submit} aria-label="Sign in" className={styles.form}>
         <div className={styles.field}>
           <label htmlFor="login-email">Email</label>

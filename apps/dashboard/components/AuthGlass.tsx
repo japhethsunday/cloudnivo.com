@@ -12,10 +12,14 @@ import styles from '../app/auth-glass.module.css';
  * the four pages of the front door are one surface rather than four.
  *
  * When `aside` is set the shell becomes two columns: the product on the
- * left, the form on the right. That is for first-run surfaces — someone
- * creating an account has not seen the product yet, so the page should show
- * it. Signing in does not: a returning user wants the form, centred, with
- * nothing to read first.
+ * left, the form on the right. The board in that column is the product, not
+ * an illustration of it — the same component the marketing hero uses, with
+ * real primitive names and the real state words the control plane reports.
+ *
+ * The aside deliberately does NOT repeat `points`. The board already names
+ * the primitives, so a proof-point row beside it says the same thing twice,
+ * which is what makes a page read as filler. Points stay under the card on
+ * the surfaces that have no aside.
  *
  * `data-testid="auth-card"` is load-bearing: the e2e suite asserts the card
  * renders on every signed-out route and compares two rendered cards byte for
@@ -34,7 +38,7 @@ export function AuthGlass({
   children: React.ReactNode;
   /** A quiet line under the card. Context, never the task. */
   foot?: string;
-  /** Proof points. Rendered in the aside when there is one, else under the card. */
+  /** Proof points. Rendered under the card, and only when there is no aside. */
   points?: readonly string[];
   /** Headline shown beside the form. Presence of this turns on the split. */
   aside?: { heading: string; lede: string };
@@ -54,22 +58,8 @@ export function AuthGlass({
           </Link>
           <h2 className={styles.asideHeading}>{aside.heading}</h2>
           <p className={styles.asideLede}>{aside.lede}</p>
-          {points && points.length > 0 ? (
-            <ul className={styles.asidePoints}>
-              {points.map(p => (
-                <li key={p}>
-                  <span className={styles.footDot} aria-hidden />
-                  {p}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {/*
-            The product itself, not an illustration of it: the same project
-            board component the marketing hero uses, showing real primitive
-            names and real state words. Hidden on short and narrow viewports,
-            where the form has to own the screen.
-          */}
+          {/* Hidden on short and narrow viewports, where the form has to own
+              the screen. */}
           <div className={styles.asideBoard}>
             <HeroBoard compact />
           </div>

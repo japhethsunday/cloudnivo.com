@@ -5,6 +5,7 @@ import { useSession } from '../../components/SessionProvider';
 import { RequireAuth } from '../../components/RequireAuth';
 import { EmptyState } from '../../components/States';
 import { EmailCenter } from '../../components/admin/EmailCenter';
+import { SectionBoundary } from '../../components/admin/SectionBoundary';
 import {
   AdminsSection,
   AiSection,
@@ -150,21 +151,28 @@ function AdminConsole(): React.JSX.Element {
         </nav>
 
         <div className="admin-main">
-          {section === 'overview' ? <OverviewSection /> : null}
-          {section === 'users' ? <UsersSection /> : null}
-          {section === 'organizations' ? <OrganizationsSection /> : null}
-          {section === 'projects' ? <ProjectsSection /> : null}
-          {section === 'infrastructure' ? <InfrastructureSection /> : null}
-          {section === 'observability' ? <ObservabilitySection /> : null}
-          {section === 'deployments' ? <DeploymentsSection /> : null}
-          {section === 'incidents' ? <IncidentsSection /> : null}
-          {section === 'security' ? <SecuritySection /> : null}
-          {section === 'audit' ? <AuditSection /> : null}
-          {section === 'admins' ? <AdminsSection /> : null}
-          {section === 'email' ? <EmailCenter /> : null}
-          {section === 'billing' ? <BillingSection /> : null}
-          {section === 'ai' ? <AiSection /> : null}
-          {section === 'config' ? <ConfigSection /> : null}
+          {/*
+            Keyed AND bounded by the section: the key discards the previous
+            section's state on switch, and the boundary keeps a section that
+            throws from taking the whole console down with it.
+          */}
+          <SectionBoundary sectionId={section}>
+            {section === 'overview' ? <OverviewSection /> : null}
+            {section === 'users' ? <UsersSection /> : null}
+            {section === 'organizations' ? <OrganizationsSection /> : null}
+            {section === 'projects' ? <ProjectsSection /> : null}
+            {section === 'infrastructure' ? <InfrastructureSection /> : null}
+            {section === 'observability' ? <ObservabilitySection /> : null}
+            {section === 'deployments' ? <DeploymentsSection /> : null}
+            {section === 'incidents' ? <IncidentsSection /> : null}
+            {section === 'security' ? <SecuritySection /> : null}
+            {section === 'audit' ? <AuditSection /> : null}
+            {section === 'admins' ? <AdminsSection /> : null}
+            {section === 'email' ? <EmailCenter /> : null}
+            {section === 'billing' ? <BillingSection /> : null}
+            {section === 'ai' ? <AiSection /> : null}
+            {section === 'config' ? <ConfigSection /> : null}
+          </SectionBoundary>
         </div>
       </div>
     </section>

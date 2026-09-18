@@ -643,25 +643,26 @@
 }
 
 /* ── The split: product on the left, form on the right ────────────────────
-   Only first-run surfaces turn this on. The scene stops centring its single
-   child and becomes two columns whose gutter is the page's own padding, so
-   the card keeps the exact width, glass and animation it has when centred —
-   the aside is added beside it, not a redesign around it.
+   Only surfaces that should show the product turn this on. The scene stops
+   centring its single child and becomes two columns whose gutter is the
+   page's own padding, so the card keeps the exact width, glass and entrance
+   it has when centred — the aside is added beside it, not a redesign around
+   it.
 
-   Both tracks are minmax(0, …): a bare 1fr resolves to minmax(auto, 1fr),
+   Both tracks are minmax(0, ...): a bare 1fr resolves to minmax(auto, 1fr),
    and the board's own minimum width would then push the page wider than the
    viewport. */
 
 .sceneSplit {
-  display: grid;
   /* The scene paints the page's background, so it must stay full-bleed: the
      content is capped by the track widths, never by a max-width on .scene
      itself, which would leave unpainted gutters beside the glow. */
-  grid-template-columns: minmax(0, 560px) minmax(0, 424px);
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 424px);
   align-items: center;
   justify-content: center;
-  gap: clamp(32px, 6vw, 88px);
-  padding: 48px clamp(20px, 5vw, 56px);
+  gap: clamp(40px, 6vw, 96px);
+  padding: 56px clamp(20px, 5vw, 64px);
 }
 
 .sceneSplit .shell {
@@ -674,10 +675,10 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 18px;
-  max-width: 520px;
-  /* Matched to the card's entrance, offset so the two do not arrive in
-     lockstep — the eye lands on the product, then the form. */
+  /* Rhythm, not one uniform gap: the mark is a label, so it sits close to
+     nothing; the heading and its lede are one block; the board is a separate
+     object and gets the largest step. Each margin is set on the element that
+     owns the space below it. */
   animation: asideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -696,59 +697,73 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   color: var(--g-ink);
-  margin-bottom: 4px;
+  margin: 0 0 26px;
 }
 .asideMark:hover {
   text-decoration: none;
 }
 
 .asideHeading {
-  margin: 0;
-  font-size: clamp(28px, 3.4vw, 40px);
+  /* Capped below the display step the marketing hero uses: beside a 22px
+     card title, 40px shouts. This is the loudest thing on the page and it
+     still has to belong to the same composition as the form. */
+  margin: 0 0 14px;
+  font-size: clamp(27px, 2.6vw, 35px);
   font-weight: 640;
-  letter-spacing: -0.035em;
-  line-height: 1.08;
+  letter-spacing: -0.032em;
+  line-height: 1.12;
   color: var(--g-ink);
   text-wrap: balance;
 }
 
 .asideLede {
-  margin: 0;
-  max-width: 42ch;
-  font-size: 15px;
-  line-height: 1.6;
+  margin: 0 0 34px;
+  max-width: 44ch;
+  font-size: 14.5px;
+  line-height: 1.62;
   color: var(--g-ink-muted);
 }
 
-.asidePoints {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  font-size: 13px;
-  color: var(--g-ink-faint);
-}
-.asidePoints li {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
+/* The board is glass too. Sharing the card's material is what makes the two
+   columns read as one surface rather than a form pasted next to a figure. */
 .asideBoard {
   width: 100%;
-  margin-top: 6px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--g-line);
+  background: rgb(255 255 255 / 0.04);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  box-shadow:
+    0 24px 60px -26px rgb(0 0 0 / 0.75),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.1);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .asideBoard {
+    background: var(--g-card-solid);
+  }
+}
+
+/* The board component carries the marketing surface's own frame. Inside the
+   glass it would be a border inside a border, so the outer one above is the
+   only frame and the component's is dropped. */
+.asideBoard > :global(figure) {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Below the split's comfortable width the form has to own the screen: the
-   scene goes back to one centred column and the aside's board, which is the
-   costly part, stops rendering rather than stacking above the form. */
-@media (max-width: 960px) {
+   scene goes back to one centred column and the aside, which is the costly
+   part, stops rendering rather than stacking above the form. */
+@media (max-width: 1000px) {
   .sceneSplit {
     display: flex;
     padding: 40px 20px;
@@ -762,9 +777,12 @@
 }
 
 /* A laptop in landscape has the width but not the height for the board. */
-@media (min-width: 961px) and (max-height: 720px) {
+@media (min-width: 1001px) and (max-height: 740px) {
   .asideBoard {
     display: none;
+  }
+  .asideLede {
+    margin-bottom: 0;
   }
 }
 

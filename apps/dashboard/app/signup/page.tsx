@@ -8,8 +8,6 @@ import { AuthGlass } from '../../components/AuthGlass';
 import { PasswordField, passwordMeetsRules } from '../../components/PasswordField';
 import styles from '../auth-glass.module.css';
 
-const POINTS = ['Isolated PostgreSQL', 'Scoped keys', 'Approval gates'] as const;
-
 export default function SignupPage(): React.JSX.Element {
   const { signup } = useSession();
   const router = useRouter();
@@ -43,10 +41,9 @@ export default function SignupPage(): React.JSX.Element {
     <AuthGlass
       title="Create your CloudNivo account"
       sub="One account for every organization and project."
-      points={POINTS}
       aside={{
         heading: 'Ship infrastructure your team can reason about.',
-        lede: 'CloudNivo gives every project its own isolated database, scoped keys and approval gates — one control plane, one audit trail, no shared blast radius.',
+        lede: 'Every project gets its own isolated database, scoped keys and approval gates — one control plane, one audit trail, no shared blast radius.',
       }}
       foot="By creating an account you agree to use CloudNivo responsibly."
     >
