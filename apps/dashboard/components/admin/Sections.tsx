@@ -589,12 +589,42 @@ export function SecuritySection(): React.JSX.Element {
               <FactRow k="Trusted proxy hops">{s.posture.trustedProxyHops}</FactRow>
             </div>
             <div className="card">
-              <h3>What this reads</h3>
-              <p className="muted">
-                These are the audit events the API already writes — failed sign-ins, MFA challenges,
-                suspensions, operator sends. The console does not keep a second security stream, so
-                what you see here is exactly what the platform recorded.
-              </p>
+              <h3>Edge defence</h3>
+              {s.edge ? (
+                <>
+                  <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+                    A filter in front of the whole stack, plus per-IP reputation that escalates
+                    throttle → ban on behaviour rather than volume.
+                  </p>
+                  <FactRow k="WAF">
+                    {s.edge.wafMode === 'block'
+                      ? `blocking · ${s.edge.rules} rules`
+                      : s.edge.wafMode === 'report'
+                        ? `report only · ${s.edge.rules} rules`
+                        : 'off'}
+                  </FactRow>
+                  <FactRow k="Blocked (24h)">{formatCount(s.edge.wafBlocked24h)}</FactRow>
+                  <FactRow k="Bans (24h)">{formatCount(s.edge.bans24h)}</FactRow>
+                  <FactRow k="Throttle / ban at">
+                    {s.edge.policy.throttleAt} / {s.edge.policy.banAt}
+                  </FactRow>
+                  <FactRow k="Ban length">{Math.round(s.edge.policy.banSeconds / 60)} min</FactRow>
+                  <FactRow k="Max body">
+                    {Math.round(s.edge.maxBodyBytes / 1024).toLocaleString()} KB
+                  </FactRow>
+                  {s.edge.shared ? null : (
+                    <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                      The cache is per-process, so these counters and any ban apply to this API
+                      instance alone. Set REDIS_URL to share them across instances.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="muted">
+                  <strong>Not reported.</strong> This API build predates the edge defence block, so
+                  it sends no WAF or reputation figures. Deploy the API to see them.
+                </p>
+              )}
             </div>
           </div>
 

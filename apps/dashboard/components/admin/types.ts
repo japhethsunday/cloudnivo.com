@@ -101,6 +101,27 @@ export interface SecurityView {
     controlStore: string;
     trustedProxyHops: number;
   };
+  /**
+   * Edge defence. Optional because the API and the dashboard deploy
+   * separately: an API older than this console simply does not send it, and a
+   * missing block must render as "not reported" rather than crash the section.
+   */
+  edge?: {
+    wafMode: 'block' | 'report' | 'off';
+    rules: number;
+    /** False with the memory cache: counters and bans are per-process. */
+    shared: boolean;
+    wafBlocked24h: number;
+    bans24h: number;
+    policy: {
+      throttleAt: number;
+      banAt: number;
+      windowSeconds: number;
+      banSeconds: number;
+      throttledBudget: number;
+    };
+    maxBodyBytes: number;
+  };
 }
 
 export interface ObservabilityView {

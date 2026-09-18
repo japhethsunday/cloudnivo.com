@@ -155,11 +155,21 @@ jobs:
           # E2E drives many parallel browser+API flows from one IP; budgets are
           # raised for this harness only (429 behavior stays covered by unit
           # tests in apps/api, same rationale as tests/load/run.ts).
+          #
+          # The same applies to IP reputation: the suite deliberately drives
+          # failed logins, cross-tenant probes and injection attempts from a
+          # single address, which is precisely what the adaptive tracker is
+          # built to ban. Thresholds are raised so one suite proving its
+          # defence cannot ban the address every later suite needs. WAF_MODE
+          # stays at its default (block), so e2e still proves the filter is
+          # reachable and does not break real product traffic; escalation
+          # itself is covered by apps/api/src/waf-live.test.ts.
           JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64'))") \
           DATABASE_URL=postgres://u:p@localhost:5432/db \
           CORS_ORIGINS=http://127.0.0.1:3000 API_PORT=3001 \
           PROVISION_DRIVER=fake CONTROL_STORE=memory CACHE_DRIVER=memory \
           AUTH_RATE_MAX=1000 RATE_LIMIT_MAX_REQUESTS=10000 \
+          THREAT_THROTTLE_AT=10000 THREAT_BAN_AT=50000 \
           nohup node apps/api/dist/index.js > /tmp/cn-api.log 2>&1 &
           echo $! > /tmp/cn-api.pid
           (cd apps/dashboard && nohup npx next start -p 3000 > /tmp/cn-dash.log 2>&1 & echo $! > /tmp/cn-dash.pid)

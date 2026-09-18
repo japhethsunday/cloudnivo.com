@@ -15,6 +15,9 @@ import {
 import { bearerFromHeader, type SessionClaims } from '@cloudnivo/auth';
 import { verifyPlatformSession } from './sessions.js';
 import { createCacheService, type CacheService } from '@cloudnivo/cache';
+import { inspectRequest } from './waf.js';
+import { configureBodyReader, readCheckedJson } from './body.js';
+import { DEFAULT_POLICY, ThreatTracker } from './threat.js';
 import type { AppConfig } from '@cloudnivo/config';
 import { createLogger, type Logger } from '@cloudnivo/logging';
 import {
@@ -98,6 +101,11 @@ export interface ApiContext {
   controlDb: DatabaseService | null;
   /** Per-project customer-auth handles (service + dev outbox), cached. */
   customerAuth: Map<string, CustomerAuthHandle>;
+  /**
+   * Adaptive IP reputation. Shares the cache backend, so a ban placed by one
+   * instance is honoured by every instance.
+   */
+  threat: ThreatTracker;
 }
 
 export function createContext(config: AppConfig): ApiContext {
@@ -119,6 +127,21 @@ export function createContext(config: AppConfig): ApiContext {
       }
     },
   };
+  const threat = new ThreatTracker(
+    cache,
+    {
+      ...DEFAULT_POLICY,
+      throttleAt: config.THREAT_THROTTLE_AT,
+      banAt: config.THREAT_BAN_AT,
+      windowSeconds: config.THREAT_WINDOW_S,
+      banSeconds: config.THREAT_BAN_S,
+      throttledBudget: config.THREAT_THROTTLED_BUDGET,
+    },
+    config.THREAT_ALLOWLIST_IPS.split(',')
+      .map((entry: string) => entry.trim())
+      .filter(Boolean),
+  );
+  configureBodyReader(config.WAF_MODE, config.MAX_BODY_BYTES);
   const registry = new MemoryRegistry();
   registry.setCredentialKeyFromSecret(config.VAULT_KEY);
   const isFake = config.PROVISION_DRIVER === 'fake';
@@ -165,6 +188,7 @@ export function createContext(config: AppConfig): ApiContext {
     logger,
     cache,
     rateLimitStore,
+    threat,
     sessionRevocations: cache,
     registry,
     provider,
@@ -275,20 +299,15 @@ function sendJson(
   res.end(payload);
 }
 
+/**
+ * Read and parse a JSON body.
+ *
+ * Both the byte cap and the scoped WAF inspection live in `./body.js`, which
+ * is the single reader every route now shares — see its comment for why that
+ * matters more than it looks.
+ */
 export async function readJson(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  if (chunks.length === 0) return undefined;
-  const text = Buffer.concat(chunks).toString('utf8');
-  if (!text) return undefined;
-  if (text.length > 1_000_000) {
-    throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
-  }
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-  }
+  return readCheckedJson(req);
 }
 
 /**
@@ -326,6 +345,7 @@ export async function handleRequest(
   const metricsProject = /^\/api\/v1\/projects\/([^/]+)/.exec(url.pathname)?.[1] ?? null;
   const metricsMethod = req.method ?? 'GET';
   const metricsPath = url.pathname;
+  const behaviourIp = rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   res.on('finish', () => {
     try {
       ctx.metrics.record({
@@ -339,6 +359,34 @@ export async function handleRequest(
     } catch {
       // Metrics must never break responses.
     }
+    // Behaviour scoring reads the OUTCOME, which is the only place the
+    // difference between a client and an attacker actually shows: the request
+    // that failed authentication looks identical to the one that succeeded
+    // until the status is known.
+    //
+    // The subject is what makes the signal sharp — the account for a 401, the
+    // path for a 404 — because "many failures against many subjects" is the
+    // attack and "many failures against one" is a person having a bad day.
+    try {
+      if (metricsPath.startsWith('/api/v1/health')) return;
+      const status = res.statusCode;
+      if (status === 401) {
+        // No subject here: the account being attacked is in the request body,
+        // which is gone by the time a response finishes. The authoritative
+        // call is made inside the auth handler, which still has the parsed
+        // address — see `failed()` in platform-auth.ts. This one keeps the
+        // baseline score for every other 401 on the platform.
+        void ctx.threat.record(behaviourIp, 'auth_failure');
+      } else if (status === 403) {
+        void ctx.threat.record(behaviourIp, 'forbidden');
+      } else if (status === 404) {
+        void ctx.threat.record(behaviourIp, 'not_found', routeTemplate(metricsPath));
+      } else if (status >= 500) {
+        void ctx.threat.record(behaviourIp, 'server_error');
+      }
+    } catch {
+      // Scoring must never break responses either.
+    }
   });
 
   if (req.method === 'OPTIONS') {
@@ -347,15 +395,97 @@ export async function handleRequest(
     return;
   }
 
+  const ip = rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
+
+  // ── Edge defence, in order of cost ──
+  //
+  // 1. Ban check: one cache read, no parsing, no handler, no database. An IP
+  //    that has already proven hostile costs the platform almost nothing.
+  // 2. WAF: judges the shape of THIS request, so a first hostile request is
+  //    refused rather than counted toward a threshold.
+  // 3. Adaptive throttle: a suspicious-but-not-banned IP keeps working at a
+  //    reduced budget.
+  // 4. The fixed per-IP limiter, unchanged, as the floor under all of it.
+  //
+  // Liveness is exempt from every step: an orchestrator that cannot health
+  // check restarts the service, which is the attacker's goal.
+  const isHealthProbe = url.pathname.startsWith('/api/v1/health');
+
+  if (!isHealthProbe) {
+    const state = await ctx.threat.assess(ip);
+
+    if (state.level === 'banned') {
+      logger.warn('threat.banned_request', {
+        ip,
+        offences: state.offences,
+        retryAfter: state.banSecondsRemaining,
+      });
+      sendJson(
+        res,
+        429,
+        { error: { code: 'RATE_LIMITED', message: 'Too many requests', requestId } },
+        { ...baseHeaders, 'Retry-After': String(state.banSecondsRemaining) },
+      );
+      return;
+    }
+
+    if (ctx.config.WAF_MODE !== 'off') {
+      const verdict = inspectRequest({
+        method: req.method ?? 'GET',
+        rawUrl: req.url ?? '/',
+        pathname: url.pathname,
+        headers: req.headers as Record<string, string | string[] | undefined>,
+      });
+      if (verdict.blocked) {
+        // Logged with the rule so an operator can tell a true positive from a
+        // rule that needs narrowing; the caller is told nothing that would
+        // help them tune an evasion.
+        logger.warn('waf.block', {
+          ip,
+          rule: verdict.ruleId,
+          category: verdict.category,
+          where: verdict.where,
+          method: req.method,
+          path: url.pathname.slice(0, 200),
+          mode: ctx.config.WAF_MODE,
+        });
+        void ctx.threat.noteWafBlock();
+        void ctx.threat.record(ip, 'waf_block');
+        if (ctx.config.WAF_MODE === 'block') {
+          sendJson(
+            res,
+            400,
+            { error: { code: 'BAD_REQUEST', message: 'Malformed request', requestId } },
+            baseHeaders,
+          );
+          return;
+        }
+      }
+    }
+
+    if (state.level === 'throttled') {
+      const ok = await ctx.threat.spendThrottledBudget(ip);
+      if (!ok) {
+        logger.warn('threat.throttled', { ip, score: state.score });
+        sendJson(
+          res,
+          429,
+          { error: { code: 'RATE_LIMITED', message: 'Too many requests', requestId } },
+          { ...baseHeaders, 'Retry-After': '60' },
+        );
+        return;
+      }
+    }
+  }
+
   // Rate limit: 120/min per IP by default (in-memory; Redis-backed in prod).
-  const ip =
-    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const rl = await checkRateLimit(ctx.rateLimitStore, `ip:${ip}`, {
     windowMs: ctx.config.RATE_LIMIT_WINDOW_MS,
     max: ctx.config.RATE_LIMIT_MAX_REQUESTS,
   });
   if (!rl.allowed) {
     logger.warn('rate limited', { ip });
+    if (!isHealthProbe) void ctx.threat.record(ip, 'rate_limited');
     sendJson(
       res,
       429,

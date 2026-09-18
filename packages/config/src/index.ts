@@ -52,6 +52,26 @@ const EnvSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
 
+  // ── Edge defence: WAF + adaptive IP reputation ──
+  // The WAF filters malicious request SHAPES before routing; the threat
+  // tracker scores BEHAVIOUR per IP and escalates throttle → ban. Both are on
+  // by default: an edge control that ships disabled protects nothing.
+  //
+  // `report` logs and scores a match without refusing the request. Use it for
+  // the first days on a new deployment to prove the rules are clean against
+  // real traffic, then move to `block`.
+  WAF_MODE: z.enum(['block', 'report', 'off']).default('block'),
+  /** Comma-separated IPs never scored or banned (health checkers, office egress). */
+  THREAT_ALLOWLIST_IPS: z.string().default(''),
+  THREAT_THROTTLE_AT: z.coerce.number().int().min(10).max(10_000).default(50),
+  THREAT_BAN_AT: z.coerce.number().int().min(20).max(50_000).default(120),
+  THREAT_WINDOW_S: z.coerce.number().int().min(60).max(86_400).default(900),
+  THREAT_BAN_S: z.coerce.number().int().min(60).max(86_400).default(900),
+  /** Requests per minute a throttled IP still gets — degraded, not cut off. */
+  THREAT_THROTTLED_BUDGET: z.coerce.number().int().min(1).max(1000).default(10),
+  /** Largest request body accepted, enforced while streaming (never buffered past it). */
+  MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(52_428_800).default(1_048_576),
+
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./.data/storage'),
   // S3-compatible backend (Phase 5; local default keeps $0 dev).
@@ -275,12 +295,35 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
   const base = parsed.data;
+  const isTest = base.NODE_ENV === 'test';
+
+  /**
+   * Under `NODE_ENV=test`, IP escalation is off unless a suite asks for it.
+   *
+   * The whole suite runs from 127.0.0.1 and deliberately sends hostile
+   * requests — injection payloads the data plane is supposed to neutralise,
+   * failed logins that prove brute-force protection, cross-tenant probes that
+   * prove isolation. With escalation on, the first suite to prove its defence
+   * gets the shared address banned and every later suite fails with 429, which
+   * says nothing about the code under test.
+   *
+   * The WAF itself stays ON in tests, because "is the filter reachable" is
+   * worth asserting everywhere. Only the cross-request MEMORY is neutralised,
+   * and only when the suite has not set a threshold itself — the WAF suite
+   * sets both, so it still proves real escalation end to end.
+   */
+  const escalationOverrides =
+    isTest && env['THREAT_BAN_AT'] === undefined && env['THREAT_THROTTLE_AT'] === undefined
+      ? { THREAT_BAN_AT: 50_000, THREAT_THROTTLE_AT: 10_000 }
+      : {};
+
   return {
     ...base,
+    ...escalationOverrides,
     corsOrigins: parseCorsOrigins(base.CORS_ORIGINS),
     isProduction: base.NODE_ENV === 'production',
     isDevelopment: base.NODE_ENV === 'development',
-    isTest: base.NODE_ENV === 'test',
+    isTest,
   };
 }
 

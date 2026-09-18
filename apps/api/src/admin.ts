@@ -18,6 +18,7 @@ import { sendJson } from './projects.js';
 import { verifyPlatformSession } from './sessions.js';
 import { MemoryPlatformUsers, platformAuthFor } from './platform-auth.js';
 import { MemoryRegistry } from './registry.js';
+import { ruleCatalog } from './waf.js';
 import { readJson } from './v1.js';
 import { platformMailer } from './platform-mail.js';
 import {
@@ -1120,6 +1121,25 @@ export async function handleAdminRoutes(
               emailDriver: ctx.config.EMAIL_DRIVER,
               controlStore: ctx.controlDb ? 'drizzle' : 'memory',
               trustedProxyHops: ctx.config.TRUSTED_PROXY_HOPS,
+            },
+            /**
+             * Edge defence. `wafBlocked24h` and `bans24h` are real counters
+             * from the shared cache, not estimates — with the memory cache
+             * they are per-process and say so via `shared`.
+             */
+            edge: {
+              wafMode: ctx.config.WAF_MODE,
+              rules: ruleCatalog().length,
+              shared: ctx.cache.driver !== 'memory',
+              ...(await ctx.threat.counters()),
+              policy: {
+                throttleAt: ctx.threat.settings.throttleAt,
+                banAt: ctx.threat.settings.banAt,
+                windowSeconds: ctx.threat.settings.windowSeconds,
+                banSeconds: ctx.threat.settings.banSeconds,
+                throttledBudget: ctx.threat.settings.throttledBudget,
+              },
+              maxBodyBytes: ctx.config.MAX_BODY_BYTES,
             },
           },
           requestId,

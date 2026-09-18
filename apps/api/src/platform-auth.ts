@@ -2,7 +2,14 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { and, count, desc, eq, gt, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import {
+  ApiError,
+  checkRateLimit,
+  isUniqueViolation,
+  ok,
+  parseBody,
+  toPublicError,
+} from '@cloudnivo/api-core';
 import {
   bearerFromHeader,
   buildAuthorizeUrl,
@@ -42,6 +49,7 @@ import type { ApiContext } from './v1.js';
 import { sendPlatformPasswordReset, sendSignupWelcome } from './platform-mail.js';
 import { applyStaffAllowlist } from './admin.js';
 import { sendJson } from './projects.js';
+import { readCheckedJson } from './body.js';
 import { verifyPlatformSession } from './sessions.js';
 import { clientIpOf, rateLimitIp } from './client-ip.js';
 
@@ -1383,16 +1391,10 @@ export async function handlePlatformAuthRoutes(
     });
     if (!rl.allowed) throw new ApiError('RATE_LIMITED', 'Too many attempts', 429);
   };
-  const readJson = async (): Promise<unknown> => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    if (chunks.length === 0) return undefined;
-    try {
-      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
-    } catch {
-      throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-    }
-  };
+  // Credentials are small. The cap is enforced while streaming so an unbounded
+  // body cannot be buffered by an unauthenticated caller — this is the surface
+  // reachable with no token at all, so it is the one that matters most.
+  const readJson = async (): Promise<unknown> => readCheckedJson(req, 131_072);
   try {
     const store = platformAuthFor(ctx);
 
@@ -1438,13 +1440,38 @@ export async function handlePlatformAuthRoutes(
       const parsed = parseBody(LoginBody, raw);
       await checkPlatformCaptcha(ctx, req, raw);
       const user = await store.users.findByEmail(parsed.email);
+      /**
+       * Report the attempted account to the IP reputation tracker from HERE,
+       * where the address is the one the caller actually submitted.
+       *
+       * The tracker's sharpest signal is "this IP is failing against accounts
+       * it has not tried before" — credential stuffing looks like that and a
+       * forgotten password does not. Deriving that subject from a request
+       * HEADER would hand the attacker the switch: pin one value and every
+       * attempt looks like the same account, which is precisely the case the
+       * tracker treats as harmless. The parsed body is the only authoritative
+       * source, so the scoring call lives next to the failure.
+       *
+       * Unknown addresses score too — enumeration is the reconnaissance step
+       * before stuffing, and refusing to score it would leave the cheap half
+       * of the attack free.
+       */
+      const failed = (): void => {
+        void ctx.threat.record(
+          rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS),
+          'auth_failure',
+          `platform-login:${parsed.email.toLowerCase()}`,
+        );
+      };
       if (!user) {
         // Timing equalization: do equivalent scrypt work for unknown emails.
         await hashPassword(`dummy:${randomBytes(8).toString('hex')}:long-enough`);
+        failed();
         throw new ApiError('UNAUTHORIZED', 'Invalid email or password', 401);
       }
       if (!(await verifyPassword(parsed.password, user.passwordHash))) {
         await ctx.registry.recordAudit('platform.login_failed', { userId: user.id });
+        failed();
         throw new ApiError('UNAUTHORIZED', 'Invalid email or password', 401);
       }
       /**

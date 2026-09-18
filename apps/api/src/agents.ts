@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import {
+  ApiError,
+  checkRateLimit,
+  ok,
+  parseBody,
+  toPublicError,
+} from '@cloudnivo/api-core';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import { verifyPlatformSession } from './sessions.js';
 import {
@@ -24,6 +30,7 @@ import {
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { readCheckedJson } from './body.js';
 import { rateLimitIp } from './client-ip.js';
 
 /**
@@ -417,18 +424,9 @@ const CreateTokenBody = z.object({
   ipAllowlist: z.array(z.string().max(60)).max(20).default([]),
 });
 
+/** Agent-token payloads are small; the cap is enforced while streaming. */
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  if (chunks.length === 0) return undefined;
-  const text = Buffer.concat(chunks).toString('utf8');
-  if (!text) return undefined;
-  if (text.length > 262_144) throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-  }
+  return readCheckedJson(req, 262_144);
 }
 
 export async function handleAgentRoutes(

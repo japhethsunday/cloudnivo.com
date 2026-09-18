@@ -3,7 +3,14 @@ import { resolveTxt } from 'node:dns/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { desc, eq } from 'drizzle-orm';
-import { ApiError, checkRateLimit, isUniqueViolation, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import {
+  ApiError,
+  checkRateLimit,
+  isUniqueViolation,
+  ok,
+  parseBody,
+  toPublicError,
+} from '@cloudnivo/api-core';
 import { resolvesToPublicAddress } from './ssrf.js';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import {
@@ -15,6 +22,7 @@ import {
 import type { Logger } from '@cloudnivo/logging';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { readCheckedJson } from './body.js';
 import { rateLimitIp } from './client-ip.js';
 
 /**
@@ -721,16 +729,9 @@ export async function handlePlatformOpsRoutes(
     });
     if (!rl.allowed) throw new ApiError('RATE_LIMITED', 'Too many attempts', 429);
   };
-  const readJson = async (): Promise<unknown> => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    if (chunks.length === 0) return undefined;
-    try {
-      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
-    } catch {
-      throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-    }
-  };
+  // Capped while streaming: these are unauthenticated operator-recovery
+  // surfaces, so an unbounded body here is reachable by anyone.
+  const readJson = async (): Promise<unknown> => readCheckedJson(req, 131_072);
 
   try {
     const ops = platformOpsFor(ctx);

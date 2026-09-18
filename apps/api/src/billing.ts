@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import {
+  ApiError,
+  checkRateLimit,
+  ok,
+  parseBody,
+  toPublicError,
+} from '@cloudnivo/api-core';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import { verifyPlatformSession } from './sessions.js';
 import {
@@ -17,6 +23,7 @@ import type { Logger } from '@cloudnivo/logging';
 import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { sendJson } from './projects.js';
+import { readCheckedBody, readCheckedJson } from './body.js';
 import { agentFromRequest, agentServiceFor, requireAgentScope, verifyAgentAccess } from './agents.js';
 import type { UsageMetric, UsageService } from '@cloudnivo/billing';
 import { rateLimitIp } from './client-ip.js';
@@ -186,26 +193,17 @@ const InvoiceGenerateBody = z.object({
     .optional(),
 });
 
+/** Billing payloads are small; both readers cap while streaming. */
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  if (chunks.length === 0) return undefined;
-  const text = Buffer.concat(chunks).toString('utf8');
-  if (!text) return undefined;
-  if (text.length > 262_144) throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-  }
+  return readCheckedJson(req, 262_144);
 }
 
+/**
+ * Raw body for webhook signature verification — the signature is over the
+ * exact bytes, so this must not parse or re-serialize.
+ */
 async function readRawBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  const text = Buffer.concat(chunks).toString('utf8');
-  if (text.length > 262_144) throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
-  return text;
+  return readCheckedBody(req, 262_144);
 }
 
 export async function handleBillingRoutes(

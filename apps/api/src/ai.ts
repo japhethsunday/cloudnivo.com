@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { ApiError, checkRateLimit, ok, parseBody, toPublicError } from '@cloudnivo/api-core';
+import {
+  ApiError,
+  checkRateLimit,
+  ok,
+  parseBody,
+  toPublicError,
+} from '@cloudnivo/api-core';
 import { bearerFromHeader } from '@cloudnivo/auth';
 import { verifyPlatformSession } from './sessions.js';
 import { changeFeedDdl } from '@cloudnivo/database';
@@ -25,6 +31,7 @@ import type { AgentToken } from '@cloudnivo/agents';
 import type { ApiContext } from './v1.js';
 import { mustOwnProject } from './registry.js';
 import { sendJson } from './projects.js';
+import { readCheckedJson } from './body.js';
 import {
   agentFromRequest,
   agentServiceFor,
@@ -412,16 +419,9 @@ export async function handleAiRoutes(
     sendJson(res, status, body, baseHeaders);
     return true;
   };
-  const readJson = async (): Promise<unknown> => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    if (chunks.length === 0) return undefined;
-    try {
-      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
-    } catch {
-      throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
-    }
-  };
+  // Prompts are bounded separately below; this is the transport-level cap that
+  // stops a body being buffered before anyone looks at it.
+  const readJson = async (): Promise<unknown> => readCheckedJson(req, 1_048_576);
   try {
     const member = await requireMember(ctx, req, projectId);
     // Agents resolve builder permission from scopes (never from member roles).

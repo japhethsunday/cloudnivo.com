@@ -8,6 +8,40 @@ hostile and the client is lying — now including infrastructure operations.
 
 ## Boundaries
 
+- **Edge boundary (WAF + IP reputation):** one filter in front of the whole
+  stack, before routing and before authentication. `apps/api/src/waf.ts` judges
+  the SHAPE of a request — traversal, SQL-injection syntax, XSS, command
+  injection, scanner probes, self-identified attack tools, absurd URLs and
+  headers — and `apps/api/src/threat.ts` scores per-IP BEHAVIOUR and escalates
+  `normal → throttled → banned`.
+
+  The scope is the design: path, query and headers are inspected on every
+  request, but bodies are inspected ONLY on routes whose payload shape the
+  platform defines. On a tenant data plane the body is the customer's own SQL,
+  JSON or source, and pattern-matching it would break the product — a WAF with
+  false positives gets switched off, and then nothing is protected.
+
+  Scoring weights behaviour over volume: failed logins against many different
+  accounts score far higher than one account retried, and 404s across many
+  paths far higher than one stale link, because that is what separates an
+  attack from a bad day. The attempted account comes from the parsed body
+  server-side, never from a header — a client-chosen subject would let an
+  attacker pin one value and opt out of the credential-stuffing signal.
+
+  Bans are shared through Redis, expire on their own, and are capped: an
+  automated decision can never become permanent. Health probes are exempt at
+  every step, because an orchestrator that cannot health check restarts the
+  service, which is the attacker's goal. See `docs/ddos-response.md`.
+
+- **Request body boundary:** every body is read through one function
+  (`apps/api/src/body.ts` → `readBoundedBody`), which enforces `MAX_BODY_BYTES`
+  WHILE STREAMING. Six modules previously had their own reader that drained the
+  whole stream into memory and checked the size afterwards, so a single request
+  advertising nothing and sending gigabytes was buffered in full before being
+  rejected — one socket, unbounded server memory. Reading stops at the limit
+  and the remainder is drained, so memory is bounded and the caller still gets
+  a real 413 rather than a connection fault.
+
 - **Authentication boundary:** `Bearer` JWT (`@cloudnivo/auth`) or API-key hash
   lookup. `bearerFromHeader()` never logs tokens. Weak secrets rejected at boot
   (`JWT_SECRET` ≥ 32 chars) and at sign time.

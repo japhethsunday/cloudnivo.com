@@ -56,6 +56,12 @@ export function statusFor(code: string): number {
       return 404;
     case 'CONFLICT':
       return 409;
+    case 'PAYLOAD_TOO_LARGE':
+      return 413;
+    case 'MALFORMED_JSON':
+      return 400;
+    case 'METHOD_NOT_ALLOWED':
+      return 405;
     case 'RATE_LIMITED':
       return 429;
     default:
@@ -199,6 +205,78 @@ export function corsHeaders(origin: string | null, allowlist: string[]): Record<
     };
   }
   return { Vary: 'Origin' };
+}
+
+// ── Request bodies ────────────────────────────────────────
+
+/**
+ * Read a request body, refusing anything past `maxBytes` WHILE STREAMING.
+ *
+ * Every body reader in this codebase used to drain the whole stream into
+ * memory and check the length afterwards:
+ *
+ *     for await (const chunk of req) chunks.push(chunk);
+ *     if (Buffer.concat(chunks).length > LIMIT) throw ...
+ *
+ * which means a single request advertising nothing and sending gigabytes was
+ * buffered in full before being rejected — one socket, unbounded server
+ * memory, and a 413 that arrives long after the damage. Six call sites had
+ * their own copy of it, so the fix belongs here rather than in any one of them.
+ *
+ * Counting as chunks arrive and destroying the socket at the first byte past
+ * the limit bounds the cost of a hostile body to the limit itself.
+ *
+ * The declared `content-length` is trusted only to reject EARLY. It is never
+ * used to size an allocation, because a client that lies about it low would
+ * otherwise get a buffer smaller than what it sends.
+ */
+export async function readBoundedBody(
+  req: {
+    headers: Record<string, string | string[] | undefined>;
+    resume: () => void;
+    [Symbol.asyncIterator]: () => AsyncIterableIterator<unknown>;
+  },
+  maxBytes: number,
+): Promise<string> {
+  const rawLength = req.headers['content-length'];
+  const declared = Number(Array.isArray(rawLength) ? rawLength[0] : (rawLength ?? '0'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    // Refused on the header alone — no reason to read a byte of it.
+    req.resume();
+    throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > maxBytes) {
+      // Stop ACCUMULATING — that is what bounds memory — then drain the rest
+      // so the socket stays healthy long enough to carry a real 413 back.
+      // Dropping the connection instead would bound memory just as well but
+      // leave every oversized upload looking like a network fault, which is a
+      // far worse thing to debug than a clear "too large".
+      chunks.length = 0;
+      req.resume();
+      throw new ApiError('PAYLOAD_TOO_LARGE', 'Request body too large', 413);
+    }
+    chunks.push(buf);
+  }
+  return chunks.length === 0 ? '' : Buffer.concat(chunks).toString('utf8');
+}
+
+/** `readBoundedBody` plus JSON parsing. Empty body resolves to undefined. */
+export async function readBoundedJson(
+  req: Parameters<typeof readBoundedBody>[0],
+  maxBytes: number,
+): Promise<unknown> {
+  const text = await readBoundedBody(req, maxBytes);
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new ApiError('MALFORMED_JSON', 'Request body is not valid JSON', 400);
+  }
 }
 
 // ── Rate limiting (token bucket via CacheService-compatible store) ──
