@@ -54,7 +54,12 @@ test('failed login explains the problem without internals', async ({ page }) => 
   await page.getByLabel(/email/i).fill('nobody@example.com');
   await page.getByLabel('Password', { exact: true }).fill('wrong-password-123');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  const alert = page.getByRole('alert');
+  // Scoped to the auth card: Next.js renders its own `__next-route-announcer__`
+  // with role="alert" on every client navigation, so a page-wide alert locator
+  // matches two elements and fails strict mode whenever the announcer happens
+  // to be visible at the moment of the assertion. That timing is what made this
+  // pass locally and fail in CI — the ambiguity was always there.
+  const alert = page.getByTestId('auth-card').getByRole('alert');
   await expect(alert).toBeVisible({ timeout: 15_000 });
   const text = (await alert.innerText()).toLowerCase();
   expect(text).not.toContain('stack');
