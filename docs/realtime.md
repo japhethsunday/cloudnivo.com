@@ -222,4 +222,4 @@ payloads, and secrets are never logged.
 
 ## AI-generated channels (Phase 9)
 
-Plans declare table/broadcast/presence channel intents; table channels install the standard CDC trigger on apply. Channels remain structural (project-bound) � see docs/ai-builder.md.
+Plans declare table/broadcast/presence channel intents; table channels install the standard CDC trigger on apply. Channels remain structural (project-bound) — see docs/ai-builder.md.
