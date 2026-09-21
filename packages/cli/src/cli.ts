@@ -2,6 +2,26 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { CloudNivoClient } from '@cloudnivo/sdk';
+import {
+  apiUrl,
+  cmdAuth,
+  cmdConnect,
+  cmdDb,
+  cmdDeploy,
+  cmdDiscover,
+  cmdEnv,
+  cmdFunctions,
+  cmdLink,
+  cmdLogs,
+  cmdProjects,
+  cmdSecrets,
+  cmdStatus,
+  cmdStorage,
+  cmdTypes,
+  cmdWhoami,
+  helpText,
+  type CommandContext,
+} from './commands.js';
 
 /**
  * CloudNivo CLI. Same backend AI Builder service as the dashboard — no
@@ -144,13 +164,65 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
   const log = (line: string): void => {
     out.push(line);
   };
+  const cwd = typeof flags['cwd'] === 'string' ? (flags['cwd'] as string) : process.cwd();
+  const ctx: CommandContext = { env, flags, log };
+
+  if (command.length === 0 || command[0] === 'help' || flags['help'] === true) {
+    return helpText().join('\n');
+  }
+
   if (command[0] === 'login') {
+    // `--agent-token` is the agent path; `--token` stays the session path.
+    // Both verify against the live API before anything is written to disk:
+    // a stored credential that does not work is worse than none.
+    const agentToken = typeof flags['agent-token'] === 'string' ? (flags['agent-token'] as string) : '';
+    if (agentToken) {
+      if (!agentToken.startsWith('cn_agent_')) {
+        throw new Error('Expected a cn_agent_… token (create one on the project Connect page)');
+      }
+      const probe = new CloudNivoClient({ baseUrl: apiUrl(env), token: agentToken });
+      const who = await probe.agentWhoami();
+      await saveCredential(env, 'agentToken', agentToken);
+      return `Logged in as agent "${who.token.name}" (${who.scopes.length} scopes). Credential saved with 0600 permissions.`;
+    }
     const token = requireFlag(flags, 'token');
-    // Verify before persisting: never store a dead credential.
-    const probe = new CloudNivoClient({ baseUrl: env['CLOUDNIVO_API_URL'] ?? 'http://localhost:3001', token });
+    const probe = new CloudNivoClient({ baseUrl: apiUrl(env), token });
     await probe.listProjects();
     await saveCredential(env, 'token', token);
     return 'Logged in — session saved to the local credentials file.';
+  }
+
+  // Developer/agent workflow commands. Each resolves its own credential and
+  // project, so an agent can run them in any order without ceremony.
+  const single: Record<string, () => Promise<void>> = {
+    whoami: () => cmdWhoami(ctx),
+    projects: () => cmdProjects(ctx),
+    link: () => cmdLink(ctx, cwd),
+    status: () => cmdStatus(ctx, cwd),
+    connect: () => cmdConnect(ctx, cwd),
+    discover: () => cmdDiscover(ctx),
+    types: () => cmdTypes(ctx, cwd),
+    logs: () => cmdLogs(ctx, cwd),
+    deploy: () => cmdDeploy(ctx, cwd),
+  };
+  const singleHandler = command[0] ? single[command[0]] : undefined;
+  if (singleHandler) {
+    await singleHandler();
+    return out.join('\n');
+  }
+
+  const grouped: Record<string, (argv: string[]) => Promise<void>> = {
+    db: argv => cmdDb(ctx, argv, cwd),
+    secrets: argv => cmdSecrets(ctx, argv, cwd),
+    env: argv => cmdEnv(ctx, argv, cwd),
+    auth: argv => cmdAuth(ctx, argv, cwd),
+    storage: argv => cmdStorage(ctx, argv, cwd),
+    functions: argv => cmdFunctions(ctx, argv, cwd),
+  };
+  const groupHandler = command[0] ? grouped[command[0]] : undefined;
+  if (groupHandler) {
+    await groupHandler(command.slice(1));
+    return out.join('\n');
   }
   if (command[0] === 'agent') {
     return runAgent(argv.slice(1), flags, env, log).then(() => out.join('\n'));
@@ -163,7 +235,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
   }
   if (command[0] !== 'ai') {
     throw new Error(
-      `Unknown command: ${command.join(' ') || '(none)'}. Try: cloudnivo ai plan --project <id> --prompt "..."`,
+      `Unknown command: ${command.join(' ') || '(none)'}. Run \`cloudnivo help\` for the full command list.`,
     );
   }
   const sub = command[1] ?? 'help';
