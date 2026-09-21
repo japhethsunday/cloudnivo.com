@@ -298,7 +298,21 @@ function cmp(a: unknown, op: string, b: unknown): boolean {
 
 // ── Routing ───────────────────────────────────────────────────────────
 
-const PROJECT_RESERVED = new Set(['database', 'jobs', 'auth', 'storage', 'functions', 'queues', 'schedules', 'webhooks']);
+// Segments that are project sub-planes, never table names. `connect` is
+// here because it is served by handleProjectRoutes, which runs AFTER the
+// data plane: without the reservation, GET /projects/:id/connect resolves
+// as a table lookup and 404s as TABLE_NOT_FOUND.
+const PROJECT_RESERVED = new Set([
+  'database',
+  'jobs',
+  'auth',
+  'storage',
+  'functions',
+  'queues',
+  'schedules',
+  'webhooks',
+  'connect',
+]);
 
 /** True when /projects/:id/<seg>... belongs to the data plane. */
 export function isDataRoute(rest: string[], method: string): boolean {

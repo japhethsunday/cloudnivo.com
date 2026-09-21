@@ -68,6 +68,7 @@ import { handleBillingRoutes, isBillingRoute } from './billing.js';
 import { agentSessionFor, handleAgentRoutes, isAgentRoute, looksLikeAgentToken } from './agents.js';
 import { handlePlatformAuthRoutes, isPlatformAuthRoute } from './platform-auth.js';
 import { handleAdminRoutes, isAdminRoute } from './admin.js';
+import { handleDiscoveryRoutes, isDiscoveryRoute } from './discovery.js';
 
 /**
  * Framework-free v1 API (Node `http` only — no Express/Fastify dep in Phase 1).
@@ -535,6 +536,14 @@ export async function handleRequest(
         baseHeaders,
       );
       return;
+    }
+
+    // Capability discovery. Unauthenticated by design: an agent handed only
+    // a URL must be able to learn the auth schemes and scope catalog before
+    // it has a credential to present. No tenant data is served here.
+    if (isDiscoveryRoute(url.pathname, req.method ?? 'GET')) {
+      const handled = await handleDiscoveryRoutes(req, res, ctx, baseHeaders, requestId);
+      if (handled) return;
     }
 
     // Platform auth (developer signup/login/me + org invites — no project yet).

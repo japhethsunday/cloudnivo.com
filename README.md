@@ -359,7 +359,7 @@ All config via `loadConfig()` (`packages/config`) — fails fast with `ConfigErr
 
 ## Roadmap
 
-Phase 13 (this release): agent access tokens (`cn_agent_*`, scopes, approval-gated destructives, activity, dashboard/CLI/SDK — see `docs/agent-tokens.md`). Phase 12: billing + usage metering (plans, quotas, manual provider default). Phase 9: CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
+Phase 13 (this release): agent access tokens (`cn_agent_*`, scopes, approval-gated destructives, activity, dashboard/CLI/SDK — see `docs/agent-tokens.md`, and `docs/agent-access.md` for the end-to-end coding-agent workflow: connect → discover → build → migrate → deploy → verify). Phase 12: billing + usage metering (plans, quotas, manual provider default). Phase 9: CLI/SDKs. Details: [`docs/roadmap.md`](docs/roadmap.md). Functions reference: [`docs/functions.md`](docs/functions.md). Deploy: [`docs/deploy-railway.md`](docs/deploy-railway.md).
 
 ## Star history
 

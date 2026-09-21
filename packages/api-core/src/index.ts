@@ -21,7 +21,62 @@ export interface ApiErrorBody {
     message: string;
     requestId: string;
     details?: unknown;
+    /**
+     * What the caller should DO about it. Present for every catalogued code
+     * so a coding agent can act without reverse-engineering the message.
+     */
+    remediation?: string;
   };
+}
+
+/**
+ * Error-code → remediation catalog. Machine-readable in the sense that
+ * matters to an agent: the code is stable, the remediation tells it which
+ * next call to make. Never mentions internals or credentials.
+ */
+export const ERROR_REMEDIATION: Readonly<Record<string, string>> = {
+  BAD_REQUEST: 'Check the request shape against GET /api/v1/discovery and retry.',
+  VALIDATION_ERROR: 'Fix the fields listed in error.details and retry.',
+  MALFORMED_JSON: 'Send a well-formed JSON body with Content-Type: application/json.',
+  UNAUTHORIZED:
+    'Send Authorization: Bearer <token>. Use a cn_agent_… token for agents (GET /api/v1/agent/whoami verifies it).',
+  INVALID_SESSION: 'Session expired — sign in again or switch to an agent token.',
+  INVALID_KEY: 'The API key is not recognised. Issue a new one under the project API keys.',
+  KEY_REVOKED: 'This API key was revoked. Issue a replacement key.',
+  KEY_EXPIRED: 'This API key expired. Issue a replacement key.',
+  AGENT_TOKEN_INVALID:
+    'The agent token is unknown. Create one in the dashboard Connect page and set CLOUDNIVO_AGENT_TOKEN.',
+  AGENT_TOKEN_REVOKED: 'This agent token was revoked. Rotate it or issue a new one.',
+  AGENT_TOKEN_EXPIRED: 'This agent token expired. Rotate it to get a new secret.',
+  AGENT_IP_DENIED: 'This token has an IP allowlist that excludes the caller. Run from an allowed address.',
+  FORBIDDEN:
+    'The credential lacks the required scope. GET /api/v1/agent/whoami lists granted scopes; GET /api/v1/discovery lists what each route needs.',
+  FORBIDDEN_SCOPE:
+    'Grant the named scope to the token (rotate or re-issue it) — scopes cannot be widened at request time.',
+  TENANT_FORBIDDEN:
+    'This credential belongs to a different organization or project. Check CLOUDNIVO_PROJECT_ID.',
+  NOT_FOUND: 'The resource does not exist under this project. List it first to get a valid id.',
+  CONFLICT: 'The resource is in a state that blocks this operation. Re-read it and retry.',
+  APPROVAL_REQUIRED:
+    'A human owner must approve this destructive operation, then repeat the identical request with the X-Approval-Id header.',
+  DESTRUCTIVE_BLOCKED:
+    'This statement would destroy data. Re-issue it as a migration and apply it with an approval, or set allowDestructive with the database.destructive scope.',
+  PAYLOAD_TOO_LARGE: 'Reduce the request body size and retry.',
+  METHOD_NOT_ALLOWED: 'Use one of the methods listed for this route in GET /api/v1/discovery.',
+  RATE_LIMITED: 'Back off and retry after the Retry-After interval.',
+  LIMIT_EXCEEDED: 'The plan limit for this resource is reached. Remove unused resources or upgrade.',
+  VAULT_UNCONFIGURED: 'Ask an operator to configure the server vault key before storing secrets.',
+  INTERNAL: 'Retry once; if it persists, quote the meta.requestId to support.',
+};
+
+/** Attach the catalogued remediation to an error body (no-op when unknown). */
+export function withRemediation(result: { status: number; body: ApiErrorBody }): {
+  status: number;
+  body: ApiErrorBody;
+} {
+  const remediation = ERROR_REMEDIATION[result.body.error.code];
+  if (!remediation || result.body.error.remediation) return result;
+  return { status: result.status, body: { error: { ...result.body.error, remediation } } };
 }
 
 export function ok<T>(data: T, requestId: string): ApiSuccess<T> {
@@ -75,6 +130,13 @@ export function publicMessage(status: number, fallback = 'Internal server error'
 }
 
 export function toPublicError(
+  err: unknown,
+  requestId: string,
+): { status: number; body: ApiErrorBody } {
+  return withRemediation(classifyError(err, requestId));
+}
+
+function classifyError(
   err: unknown,
   requestId: string,
 ): { status: number; body: ApiErrorBody } {

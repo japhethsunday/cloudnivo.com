@@ -4,6 +4,9 @@ Dedicated `cn_agent_…` credentials that let approved AI/developer agents
 (Claude Code, OpenCode, compatible tools) manage your CloudNivo resources
 through the API — without sharing your password, session, or project keys.
 
+For the full agent workflow — connect, discover, migrate, deploy, verify —
+see [`agent-access.md`](./agent-access.md).
+
 ## Concepts
 
 - **Separate credential type.** Agent tokens are not user API keys: they are
