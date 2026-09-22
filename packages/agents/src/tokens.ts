@@ -32,6 +32,13 @@ export interface AgentToken {
   scopes: string[];
   /** Empty = all projects in scope. */
   projectIds: string[];
+  /**
+   * Environment slugs this token may act on. Empty = every NON-production
+   * environment. Production is never implied and must be listed explicitly,
+   * so a token holding a dangerous scope still cannot reach production
+   * unless someone granted it that environment on purpose.
+   */
+  environments: string[];
   approvalRequired: boolean;
   /** Empty = unrestricted. CIDR (v4) or exact IPs, max 20. */
   ipAllowlist: string[];
@@ -79,6 +86,8 @@ export interface CreateTokenInput {
   name: string;
   scopes: string[];
   projectIds: string[];
+  /** Environment slugs (empty = all non-production). */
+  environments?: string[];
   approvalRequired?: boolean;
   /** Preset id (7d/30d/90d/365d/never). Defaults to 30d. */
   expiresIn?: string;
@@ -101,6 +110,9 @@ export function buildTokenRecord(input: CreateTokenInput, now: Date = new Date()
     }
   }
   const projectIds = [...new Set(input.projectIds)].slice(0, 200);
+  const environments = [...new Set((input.environments ?? []).map(e => e.trim().toLowerCase()))]
+    .filter(e => e.length > 0 && e.length <= 63)
+    .slice(0, 20);
   const preset = expiryPreset(input.expiresIn ?? '30d');
   if (!preset) throw new AgentTokenError('VALIDATION_ERROR', 'Unknown expiry preset', 400);
   const ipAllowlist = parseIpAllowlist(input.ipAllowlist);
@@ -114,6 +126,7 @@ export function buildTokenRecord(input: CreateTokenInput, now: Date = new Date()
     hash: '',
     scopes,
     projectIds,
+    environments,
     approvalRequired: input.approvalRequired ?? false,
     ipAllowlist,
     expiresAt: preset.days === null ? null : new Date(now.getTime() + preset.days * 86_400_000).toISOString(),
@@ -174,4 +187,24 @@ export class MemoryAgentTokenStore implements AgentTokenStore {
       lastUsedAt: new Date().toISOString(),
     });
   }
+}
+
+/**
+ * May this token act on `environmentSlug`?
+ *
+ * Production is deliberately asymmetric. An empty allowlist means "every
+ * ordinary environment", which keeps existing tokens working, but it never
+ * means production: reaching production takes an explicit grant. The caller
+ * passes `isProduction` from the stored environment row, never from a request
+ * body — otherwise the check could be talked out of firing by renaming.
+ */
+export function environmentAllowed(
+  token: Pick<AgentToken, 'environments'>,
+  environmentSlug: string,
+  isProduction: boolean,
+): boolean {
+  const slug = environmentSlug.trim().toLowerCase();
+  const allowed = token.environments.map(e => e.trim().toLowerCase());
+  if (isProduction) return allowed.includes(slug);
+  return allowed.length === 0 || allowed.includes(slug);
 }

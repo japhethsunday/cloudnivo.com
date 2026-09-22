@@ -17,6 +17,13 @@ export const PERMISSIONS = [
   'projects:delete',
   'envs:read',
   'envs:manage',
+  /**
+   * Operate on an environment marked production. Separate from `envs:manage`
+   * on purpose: creating a staging environment and applying schema changes to
+   * production are not the same risk, and a member who may do the first must
+   * not thereby be able to do the second.
+   */
+  'envs:production',
   'keys:read',
   'keys:create',
   'keys:revoke',
@@ -47,6 +54,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, readonly PermissionKey[]> = {
     'projects:delete',
     'envs:read',
     'envs:manage',
+    'envs:production',
     'keys:read',
     'keys:create',
     'keys:revoke',
@@ -63,6 +71,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, readonly PermissionKey[]> = {
     'projects:delete',
     'envs:read',
     'envs:manage',
+    'envs:production',
     'keys:read',
     'keys:create',
     'keys:revoke',

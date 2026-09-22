@@ -429,6 +429,11 @@ const CreateTokenBody = z.object({
   organizationId: z.string().uuid().nullable().optional(),
   scopes: z.array(z.string().max(60)).min(1).max(40),
   projectIds: z.array(z.string().min(1).max(64)).max(200).default([]),
+  /**
+   * Environment slugs this token may act on. Empty covers every ordinary
+   * environment but never production — production must be named here.
+   */
+  environments: z.array(z.string().min(1).max(63)).max(20).default([]),
   approvalRequired: z.boolean().default(false),
   expiresIn: z.enum(['7d', '30d', '90d', '365d', 'never']).default('30d'),
   ipAllowlist: z.array(z.string().max(60)).max(20).default([]),
@@ -536,6 +541,7 @@ export async function handleAgentRoutes(
         name: parsed.name,
         scopes: [...new Set(parsed.scopes)],
         projectIds: [...new Set(parsed.projectIds ?? [])],
+        environments: [...new Set(parsed.environments ?? [])],
         approvalRequired: parsed.approvalRequired,
         expiresIn: parsed.expiresIn,
         ipAllowlist: parsed.ipAllowlist ?? [],

@@ -209,3 +209,38 @@ curl -X POST $API/api/v1/projects/$PID/auth/logout -d '{"refresh_token":"'$REF2'
 ## AI-generated auth (Phase 9)
 
 The AI Builder drafts roles and owner-scoped policies as structured plan data; enforcement stays in the existing engine/RLS layer — never in model output. See docs/ai-builder.md.
+
+## Environment authorization (production vs staging)
+
+`USER → ORGANIZATION → PROJECT → ENVIRONMENT → RESOURCE`. The environment level
+is enforced, not advisory.
+
+**Production-ness is server-side.** `project_environments.is_production` decides
+it. The `environment` field on a migration request is the caller's word and is
+never what the gate reads — declaring `development` on the same destructive SQL,
+against the same database, used to skip the production approval gate entirely.
+
+`resolveEnvironment()` (`apps/api/src/migrations.ts`) resolves it:
+
+- The declared slug must name an environment the project has. Unknown is
+  refused, not silently treated as development.
+- `isProduction` comes from the stored row.
+- **A non-production environment sharing a database with a production one is
+  treated as production.** Same data, whatever it is called. This is the
+  relabelling bypass, closed.
+- Projects with no environments configured keep the previous behaviour: the
+  declared name is the only signal, and there is no stored truth to contradict.
+
+**Humans** need `envs:production` — admin and owner only. Deliberately separate
+from `envs:manage`: creating a staging environment and rewriting production
+schema are not the same risk, so a member who may do the first cannot thereby do
+the second.
+
+**Agent tokens** carry an `environments` allowlist. Empty means every ordinary
+environment — so tokens issued before this keep working — but it never means
+production. Production must be named explicitly, so a token over-granted
+`database.destructive` still cannot reach it. The grant gets a token to the
+approval gate; it does not get it past one.
+
+Enforcement is at **apply**, not create: create validates and executes nothing,
+so a production migration can still be written for a human to review.
