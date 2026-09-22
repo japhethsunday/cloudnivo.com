@@ -19,11 +19,11 @@ permissions:
   contents: read
   actions: read
 
-# Staging deploys automatically on main. Production deploys ONLY via manual
-# dispatch, and the job refuses to run unless BOTH hold for the dispatched
-# commit: it is on `main`, and CI concluded `success` for that exact SHA.
-# Those two checks are enforced below, in this file, where they can be
-# reviewed — see the `preflight` step.
+# Staging deploys immediately on a push to main. Production ALSO deploys on a
+# push to main, but only after its preflight has waited for CI on that exact
+# commit and seen it conclude `success`; it can still be dispatched by hand
+# for a re-deploy. Both checks live below, in this file, where they can be
+# reviewed — see the preflight step.
 #
 # A HUMAN APPROVAL GATE IS NOT ENFORCED HERE, and cannot be: a workflow
 # cannot grant itself one. It comes from the `production` environment's
@@ -78,10 +78,20 @@ jobs:
           curl -fsS "${{ vars.STAGING_API_URL }}/api/v1/health/ready" | grep -q '"ready"'
 
   deploy-production:
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    # Auto-deploys on every merge to main, and still dispatchable by hand for
+    # a re-deploy. The preflight below is what makes the automatic path safe:
+    # it WAITS for CI on this exact commit and refuses anything but green.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
+    # One production deploy at a time. Two merges in quick succession would
+    # otherwise race each other onto the same services, and the later commit
+    # is not guaranteed to win. Never cancel in progress: a half-applied
+    # deploy is worse than a queued one.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
@@ -99,7 +109,7 @@ jobs:
       # Preflight runs BEFORE any CLI is installed or any credential is used,
       # so a refused deploy touches nothing. Both checks are about the commit
       # being shipped, not about who asked for it.
-      - name: Preflight — refuse anything but green main
+      - name: Preflight — wait for CI, refuse anything but green main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -112,20 +122,38 @@ jobs:
             exit 1
           fi
 
-          # 2. CI. Nothing else verifies the commit was ever tested — this job
-          #    has no `needs:`, because it is dispatched rather than chained.
-          #    Ask the API what CI concluded for this exact SHA.
+          # 2. CI, for this exact commit.
+          #
+          #    This job has no `needs:` — CI and Deploy are separate workflows
+          #    triggered by the same push, so they start at the SAME moment.
+          #    A snapshot read would therefore always find nothing and refuse
+          #    every automatic deploy. So we WAIT for the run to finish, then
+          #    judge its conclusion.
+          #
+          #    Self-dispatched CI runs are excluded: a green must come from
+          #    the automatic run, otherwise anyone could hand-trigger CI to
+          #    manufacture one. Re-runs keep the original `push` event, so a
+          #    legitimate re-run still counts.
           sha='${{ github.sha }}'
-          echo "Checking CI conclusion for $sha"
-          conclusion=$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&status=completed" \
-            --jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | first | .conclusion // empty')
+          query="repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha"
+          jq_status='[.workflow_runs[] | select(.event != "workflow_dispatch")] | first | .status // empty'
+          jq_concl='[.workflow_runs[] | select(.event != "workflow_dispatch")] | first | .conclusion // empty'
 
-          if [ -z "$conclusion" ]; then
-            echo "::error::No completed CI run found for $sha. Wait for CI, or re-run it, before deploying."
+          echo "Waiting for CI to finish for $sha"
+          status=''
+          for _ in $(seq 1 120); do            # 120 × 15s = 30 minutes
+            status=$(gh api "$query" --jq "$jq_status" || echo '')
+            [ "$status" = 'completed' ] && break
+            sleep 15
+          done
+
+          if [ "$status" != 'completed' ]; then
+            echo "::error::CI for $sha did not finish within 30 minutes. Not deploying a commit whose tests never reported."
             exit 1
           fi
-          if [ "$conclusion" != "success" ]; then
+
+          conclusion=$(gh api "$query" --jq "$jq_concl")
+          if [ "$conclusion" != 'success' ]; then
             echo "::error::CI concluded '$conclusion' for $sha. Production deploys require a green CI run."
             exit 1
           fi
