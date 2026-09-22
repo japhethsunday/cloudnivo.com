@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { setSelectedProject } from '../../../lib/selection';
+import { usePolling, type PollOutcome } from '../../../lib/poll';
 import { RequireAuth } from '../../../components/RequireAuth';
 import { EnvSwitcher } from '../../../components/EnvSwitcher';
 import { ErrorState, LoadingSkeleton } from '../../../components/States';
@@ -47,7 +48,7 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
   const [job, setJob] = useState<ProvisionJobLike | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<PollOutcome> => {
     const r = await apiFetch<{
       project: Project;
       database: ProjectDatabase | null;
@@ -60,14 +61,17 @@ function Workspace({ id, children }: { id: string; children: React.ReactNode }):
       setDatabase(r.data.database ?? null);
       setJob(r.data.job ?? null);
       setSelectedProject(r.data.project.id);
+      setError(null);
     }
+    return {
+      rateLimited: r.status === 429,
+      retryAfterSeconds: r.retryAfterSeconds ?? null,
+    };
   }, [id]);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 15000);
-    return () => clearInterval(t);
-  }, [load]);
+  // Backs off while the API answers 429 instead of holding 15s through a
+  // rate limit — see lib/poll.ts.
+  usePolling(load, 15000);
 
   if (error && !project)
     return <ErrorState title="Couldn't open project" message={error} retry={() => void load()} />;

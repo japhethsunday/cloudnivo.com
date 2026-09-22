@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePolling, type PollOutcome } from '../lib/poll';
 import { apiFetch } from '../lib/api';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
@@ -116,15 +117,40 @@ export function FunctionsPanel({ projectId }: { projectId: string }): React.JSX.
   }, [loadDetail]);
 
   // Poll while a deployment is in flight — shows actual state, never faked.
-  useEffect(() => {
-    if (
-      !job ||
-      (job.status !== 'pending' && job.status !== 'building' && job.status !== 'deploying')
-    )
-      return;
-    const t = setInterval(() => void loadDetail(), 1500);
-    return () => clearInterval(t);
-  }, [job, loadDetail]);
+  //
+  // This used to call loadDetail() every 1.5s, and loadDetail fetches FOUR
+  // endpoints in parallel: 160 requests a minute from one panel. That is what
+  // exhausted the per-IP budget during a deploy and, because the loop never
+  // backed off, escalated into an IP ban — the console then showed "Too many
+  // requests" for everything, long after the deploy had finished.
+  //
+  // Only the deployment status changes while a build runs, so only that is
+  // polled. Logs, env and versions are refreshed once, when the deploy
+  // reaches a terminal state and there is actually something new to show.
+  const deploying =
+    !!job && (job.status === 'pending' || job.status === 'building' || job.status === 'deploying');
+
+  const pollDeployment = useCallback(async (): Promise<PollOutcome> => {
+    if (!active) return { stop: true };
+    const d = await apiFetch<{ deployments: DeployJob[] }>(`${base}/${active}/deployments`);
+    if (d.ok && d.data) {
+      const latest = d.data.deployments[0] ?? null;
+      setJob(latest);
+      const settled =
+        latest !== null &&
+        latest.status !== 'pending' &&
+        latest.status !== 'building' &&
+        latest.status !== 'deploying';
+      // Terminal state: pull the rest once so logs and versions catch up.
+      if (settled) void loadDetail();
+    }
+    return {
+      rateLimited: d.status === 429,
+      retryAfterSeconds: d.retryAfterSeconds ?? null,
+    };
+  }, [base, active, loadDetail]);
+
+  usePolling(pollDeployment, 2000, deploying);
 
   async function create(e: React.FormEvent): Promise<void> {
     e.preventDefault();
