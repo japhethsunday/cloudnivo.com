@@ -866,6 +866,7 @@ const ADMIN_ACTIONS = [
   'admin.user_restored',
   'admin.email_sent',
   'admin.bootstrap',
+  'admin.threat_ban_cleared',
 ] as const;
 
 export function adminOpenApi(): Record<string, unknown> {
@@ -938,6 +939,59 @@ export async function handleAdminRoutes(
 
     // ── Mutations ──────────────────────────────────────────────────
     if (method === 'POST') {
+      /**
+       * Lift an adaptive-rate-limit ban.
+       *
+       * A ban is checked before routing, so a banned address cannot reach any
+       * endpoint — including the login page. Before this route there was no
+       * way to undo one: an honest client that tripped the limiter was locked
+       * out of the product for up to 24 hours and an operator could only
+       * wait. That is an outage with no lever, which is why it exists.
+       *
+       * Staff only, like every other route here, and audited: lifting a ban
+       * is a security decision and the trail has to show who made it.
+       */
+      const unbanMatch = /^\/threat\/bans\/([^/]+)$/.exec(route);
+      if (unbanMatch) {
+        const ip = decodeURIComponent(unbanMatch[1] as string).trim();
+        // Bound the input: this becomes cache keys, and an unbounded string
+        // has no business reaching the cache from an HTTP path segment.
+        if (!ip || ip.length > 64 || /[\s\r\n]/.test(ip)) {
+          throw new ApiError('VALIDATION_ERROR', 'Provide a single valid IP address', 400);
+        }
+        const { cleared, previous } = await ctx.threat.clearBan(ip);
+        if (!cleared) {
+          throw new ApiError(
+            'CACHE_UNAVAILABLE',
+            'Could not reach the cache to lift the ban — it is still in force',
+            503,
+          );
+        }
+        await ctx.registry.recordAudit('admin.threat_ban_cleared', { userId: staffId });
+        logger.warn('admin.threat_ban_cleared', {
+          staffId,
+          ip,
+          wasLevel: previous.level,
+          wasOffences: previous.offences,
+        });
+        return finish(
+          200,
+          ok(
+            {
+              ip,
+              cleared: true,
+              previous: {
+                level: previous.level,
+                score: previous.score,
+                offences: previous.offences,
+                banSecondsRemaining: previous.banSecondsRemaining,
+              },
+            },
+            requestId,
+          ),
+        );
+      }
+
       const suspendMatch = /^\/users\/([^/]+)\/(suspend|restore)$/.exec(route);
       if (suspendMatch) {
         const targetId = suspendMatch[1] as string;

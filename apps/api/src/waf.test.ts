@@ -357,3 +357,55 @@ describe('the scoring subject cannot be chosen by the caller', () => {
     expect(pinnedLevel).not.toBe('banned');
   });
 });
+
+describe('an operator can lift a ban', () => {
+  // A ban is enforced before routing, so a banned address cannot reach any
+  // endpoint — not even the login page. Without a lever an honest client that
+  // tripped the limiter is locked out of the product for up to 24 hours.
+  it('clears the ban and the score behind it', async () => {
+    const t = tracker();
+    for (let i = 0; i < 200; i += 1) await t.record('14.14.14.14', 'rate_limited');
+    expect((await t.assess('14.14.14.14')).level).toBe('banned');
+
+    const { cleared, previous } = await t.clearBan('14.14.14.14');
+    expect(cleared).toBe(true);
+    expect(previous.level, 'the caller is told what it lifted').toBe('banned');
+    expect((await t.assess('14.14.14.14')).level).toBe('normal');
+  });
+
+  it('does not re-ban immediately, because the score went with the ban', async () => {
+    const t = tracker();
+    for (let i = 0; i < 200; i += 1) await t.record('14.14.14.15', 'rate_limited');
+    await t.clearBan('14.14.14.15');
+    // One more refusal must not tip it straight back over the line.
+    expect((await t.record('14.14.14.15', 'rate_limited')).level).not.toBe('banned');
+  });
+
+  it('reports failure rather than claiming a ban was lifted', async () => {
+    const broken = {
+      driver: 'broken',
+      get: async () => {
+        throw new Error('redis down');
+      },
+      set: async () => {
+        throw new Error('redis down');
+      },
+      del: async () => {
+        throw new Error('redis down');
+      },
+      incr: async () => {
+        throw new Error('redis down');
+      },
+      ping: async () => false,
+    };
+    const t = new ThreatTracker(broken, FAST, []);
+    expect((await t.clearBan('15.15.15.15')).cleared).toBe(false);
+  });
+
+  it('is a no-op on an address that was never banned', async () => {
+    const t = tracker();
+    const { cleared, previous } = await t.clearBan('16.16.16.16');
+    expect(cleared).toBe(true);
+    expect(previous.level).toBe('normal');
+  });
+});

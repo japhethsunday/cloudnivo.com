@@ -142,6 +142,41 @@ describe('operator console access', () => {
   });
 });
 
+describe('lifting an adaptive-rate-limit ban', () => {
+  it('is staff-only, and a non-staff developer cannot even see the route', async () => {
+    live = await boot();
+    const { base } = live;
+    const dev = await signup(base, 'nonstaff-unban@example.com');
+    expect((await api(base, 'POST', '/api/v1/admin/threat/bans/1.2.3.4')).status).toBe(404);
+    expect((await api(base, 'POST', '/api/v1/admin/threat/bans/1.2.3.4', dev.token)).status).toBe(
+      404,
+    );
+  });
+
+  it('lifts a live ban for staff, and rejects a malformed address', async () => {
+    // The test profile disables the limiter unless the thresholds are set,
+    // so ask for the production ones: this test is about a real ban.
+    live = await boot({
+      PLATFORM_ADMIN_EMAILS: 'operator@example.com',
+      THREAT_THROTTLE_AT: '50',
+      THREAT_BAN_AT: '120',
+    });
+    const { base, ctx } = live;
+    const op = await signup(base, 'operator@example.com');
+
+    // Put a real ban in place through the tracker the API actually uses.
+    for (let i = 0; i < 200; i += 1) await ctx.threat.record('7.7.7.7', 'rate_limited');
+    expect((await ctx.threat.assess('7.7.7.7')).level).toBe('banned');
+
+    const res = await api(base, 'POST', '/api/v1/admin/threat/bans/7.7.7.7', op.token);
+    expect(res.status).toBe(200);
+    expect((await ctx.threat.assess('7.7.7.7')).level).toBe('normal');
+
+    const bad = await api(base, 'POST', `/api/v1/admin/threat/bans/${'x'.repeat(80)}`, op.token);
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe('operator console data', () => {
   it('sees every tenant, which no other route in the API may do', async () => {
     live = await boot({ PLATFORM_ADMIN_EMAILS: 'operator@example.com' });
