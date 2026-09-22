@@ -487,4 +487,109 @@ describe('individual account authorization', () => {
       'outsider reads audit trail',
     );
   });
+
+  // ── Planes added after the first pass of this suite ──
+  //
+  // Automation, billing, AI, realtime, metrics and the database advisor and
+  // branch routes all landed after the cross-tenant list above was written, so
+  // none of them was covered by it. Each was verified closed by hand; these
+  // assertions are what stops one of them drifting open unnoticed. The
+  // strongest credential A holds is used deliberately: if an owner cannot
+  // reach tenant B here, no lesser role can.
+  it("denies an owner every newer route into another tenant's project and org", async () => {
+    const PB = `/api/v1/projects/${projectB}`;
+    const OB = `/api/v1/organizations/${orgB}`;
+    const routes: [string, string, unknown?][] = [
+      ['GET', `${PB}/schedules`],
+      ['POST', `${PB}/schedules`, { name: 'x', functionSlug: 'f', cron: '0 2 * * *' }],
+      ['GET', `${PB}/webhooks`],
+      ['POST', `${PB}/webhooks`, { name: 'x', url: 'https://example.com/h', eventTypes: ['job.failed'] }],
+      ['GET', `${PB}/ai/usage`],
+      ['POST', `${PB}/ai/plan`, { prompt: 'read another tenant' }],
+      ['GET', `${PB}/storage/usage`],
+      ['GET', `${PB}/metrics`],
+      ['GET', `${PB}/database/advisors`],
+      ['POST', `${PB}/database/branches`, { name: 'b' }],
+      ['GET', `${PB}/realtime/stats`],
+      ['GET', `${PB}/realtime/channels`],
+      ['GET', `${OB}/billing/plan`],
+      ['GET', `${OB}/billing/usage`],
+      ['GET', `${OB}/billing/budgets`],
+      ['POST', `${OB}/billing/subscription`, { planKey: 'pro' }],
+      ['POST', `${OB}/invites`, { email: 'cross-tenant@example.com', role: 'admin' }],
+      ['PATCH', `${PB}`, { name: 'hijacked' }],
+    ];
+    for (const [method, path, body] of routes) {
+      expectDenied(await api(base, method, path, ownerA, body), `A -> B ${method} ${path}`);
+    }
+  });
+
+  it('holds the role line on automation, billing and environment writes', async () => {
+    const P = `/api/v1/projects/${projectA}`;
+    const O = `/api/v1/organizations/${orgA}`;
+    // Reads are open to every member of the org, viewer included.
+    for (const path of [`${P}/queues`, `${P}/schedules`, `${P}/webhooks`, `${O}/billing/plan`]) {
+      expect((await api(base, 'GET', path, viewerA)).status, `viewer reads ${path}`).toBe(200);
+    }
+    // Writes are management operations: neither a viewer nor a member may.
+    const writes: [string, string, unknown?][] = [
+      ['POST', `${P}/queues`, { name: 'role-q' }],
+      ['POST', `${P}/schedules`, { name: 'role-s', functionSlug: 'f', cron: '0 2 * * *' }],
+      ['POST', `${P}/webhooks`, { name: 'role-w', url: 'https://example.com/h', eventTypes: ['job.failed'] }],
+      ['POST', `${P}/database/environments`, { name: 'role-env', slug: 'roleenv' }],
+      ['POST', `${O}/billing/subscription`, { planKey: 'pro' }],
+      ['POST', `${O}/billing/invoices`, {}],
+    ];
+    for (const [method, path, body] of writes) {
+      expectDenied(await api(base, method, path, viewerA, body), `viewer ${method} ${path}`);
+      expectDenied(await api(base, method, path, memberA, body), `member ${method} ${path}`);
+    }
+  });
+
+  it('kills an agent token the instant it is revoked, and on rotation kills the old secret', async () => {
+    const mk = await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens`, ownerA, {
+      name: 'revocation-probe',
+      scopes: ['projects.read'],
+      projectIds: [projectA],
+    });
+    expect(mk.status).toBe(201);
+    const issued = data<{ token: { id: string }; raw: string }>(mk.json);
+    // Works while live — otherwise the denial below would prove nothing.
+    expect(
+      (await api(base, 'GET', `/api/v1/projects/${projectA}`, issued.raw)).status,
+      'token works before revocation',
+    ).toBe(200);
+    expect(
+      (await api(base, 'DELETE', `/api/v1/organizations/${orgA}/agent-tokens/${issued.token.id}`, ownerA))
+        .status,
+    ).toBe(200);
+    expectDenied(
+      await api(base, 'GET', `/api/v1/projects/${projectA}`, issued.raw),
+      'revoked agent token',
+    );
+
+    const rot = await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens`, ownerA, {
+      name: 'rotation-probe',
+      scopes: ['projects.read'],
+      projectIds: [projectA],
+    });
+    const first = data<{ token: { id: string }; raw: string }>(rot.json);
+    const spun = await api(
+      base,
+      'POST',
+      `/api/v1/organizations/${orgA}/agent-tokens/${first.token.id}/rotate`,
+      ownerA,
+      {},
+    );
+    expect(spun.status).toBe(200);
+    expectDenied(
+      await api(base, 'GET', `/api/v1/projects/${projectA}`, first.raw),
+      'pre-rotation secret',
+    );
+    expect(
+      (await api(base, 'GET', `/api/v1/projects/${projectA}`, data<{ raw: string }>(spun.json).raw))
+        .status,
+      'post-rotation secret',
+    ).toBe(200);
+  });
 });

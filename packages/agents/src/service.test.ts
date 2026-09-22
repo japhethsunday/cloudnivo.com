@@ -76,8 +76,17 @@ describe('token lifecycle', () => {
     });
     await svc.revokeToken(token.id, USER);
     await expect(svc.verifyToken(raw)).rejects.toMatchObject({ code: 'TOKEN_REVOKED' });
-    const short = service(new Date('2026-01-10T00:00:00Z'));
-    const created = await short.createToken({
+    // Expiry must be proven by a verify that actually fails, not by arithmetic
+    // on expiresAt: the check lives in verifyToken, so only calling it past the
+    // expiry can catch that check being removed. One store, a clock that moves.
+    let clock = new Date('2026-01-10T00:00:00Z');
+    const aging = new AgentService(
+      new MemoryAgentTokenStore(),
+      new MemoryApprovalStore(),
+      new MemoryActivityStore(),
+      () => clock,
+    );
+    const short = await aging.createToken({
       userId: USER,
       organizationId: null,
       name: 'short',
@@ -85,15 +94,35 @@ describe('token lifecycle', () => {
       projectIds: [],
       expiresIn: '7d',
     });
-    const later = new AgentService(
+    // Valid one day in.
+    clock = new Date('2026-01-11T00:00:00Z');
+    await expect(aging.verifyToken(short.raw)).resolves.toMatchObject({ id: short.token.id });
+    // One second past the boundary it must stop authenticating, and say why.
+    clock = new Date(Date.parse(short.token.expiresAt as string) + 1000);
+    await expect(aging.verifyToken(short.raw)).rejects.toMatchObject({
+      code: 'TOKEN_EXPIRED',
+      status: 401,
+    });
+  });
+
+  it('never expires a token issued with expiresIn never, however far the clock moves', async () => {
+    let clock = new Date('2026-01-10T00:00:00Z');
+    const aging = new AgentService(
       new MemoryAgentTokenStore(),
       new MemoryApprovalStore(),
       new MemoryActivityStore(),
-      () => new Date('2026-02-10T00:00:00Z'),
+      () => clock,
     );
-    // Same store would be needed; instead prove expiry math on the record.
-    expect(Date.parse(created.token.expiresAt as string)).toBeLessThan(new Date('2026-02-10T00:00:00Z').getTime());
-    void later;
+    const forever = await aging.createToken({
+      userId: USER,
+      organizationId: null,
+      name: 'forever',
+      scopes: ['projects.read'],
+      projectIds: [],
+      expiresIn: 'never',
+    });
+    clock = new Date('2099-01-01T00:00:00Z');
+    await expect(aging.verifyToken(forever.raw)).resolves.toMatchObject({ id: forever.token.id });
   });
 
   it('supports never-expiring tokens', async () => {
