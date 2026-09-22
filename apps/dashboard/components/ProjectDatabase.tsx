@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiFetchRaw, isAuthFailure } from '../lib/api';
+import { usePolling, type PollOutcome } from '../lib/poll';
 import { isSystemSchema, qualifiedRef } from './DatabaseSections';
 import { EmptyState, ErrorState, LoadingSkeleton } from './States';
 
@@ -54,7 +55,7 @@ export function ProjectDatabase({
   const [error, setError] = useState<string | null>(null);
   const [sessionLost, setSessionLost] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<PollOutcome> => {
     const r = await apiFetch<{ database: DbRecord | null; health: string }>(
       `/api/v1/projects/${projectId}/database`,
     );
@@ -68,17 +69,15 @@ export function ProjectDatabase({
       // every 5s forever. Stop and say so.
       setSessionLost(true);
       setError('Session expired — sign in again to keep watching this database.');
+      return { stop: true };
     } else {
       setError(r.error);
     }
+    return { rateLimited: r.status === 429, retryAfterSeconds: r.retryAfterSeconds ?? null };
   }, [projectId]);
 
-  useEffect(() => {
-    if (sessionLost) return;
-    void load();
-    const t = setInterval(() => void load(), 5000);
-    return () => clearInterval(t);
-  }, [load, sessionLost]);
+  // 5s base, backing off while the API answers 429 — see lib/poll.ts.
+  usePolling(load, 5000, !sessionLost);
 
   // Masked connection details and the schema are read-only and already on
   // this page's job: fetch them once the database is actually running rather

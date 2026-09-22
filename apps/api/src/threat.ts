@@ -67,7 +67,17 @@ export const SIGNAL_WEIGHTS: Record<ThreatSignal, number> = {
   not_found: 2,
   // A path this IP has not asked for before — a wordlist walk scores here.
   not_found_new_path: 9,
-  rate_limited: 5,
+  // Being rate limited is ALREADY the punishment: the request was refused.
+  // Scoring it heavily on top turns one honest burst into a 15-minute ban,
+  // and because a client that keeps polling keeps generating 429s, the ban
+  // re-arms and escalates — an outage that outlives the burst by hours.
+  // That is exactly what took the dashboard down during deploys.
+  //
+  // Weighted at 1 so a ban needs 120 refused requests in the window (real,
+  // sustained volumetric abuse) rather than 24 (a chatty tab). An actual
+  // attacker still bans quickly via the signals above, which a legitimate
+  // client does not produce.
+  rate_limited: 1,
   // Requests that make the server throw: either an attack or a bug worth
   // seeing. Weighted low because honest clients trip real bugs.
   server_error: 3,
@@ -127,7 +137,11 @@ export class ThreatTracker {
   /** IPs never scored or banned: health checkers, and anything an operator pins. */
   private readonly allowlist: Set<string>;
 
-  constructor(cache: CacheService, policy: ThreatPolicy = DEFAULT_POLICY, allowlist: string[] = []) {
+  constructor(
+    cache: CacheService,
+    policy: ThreatPolicy = DEFAULT_POLICY,
+    allowlist: string[] = [],
+  ) {
     this.cache = cache;
     this.policy = policy;
     this.allowlist = new Set(allowlist.map(s => s.trim()).filter(Boolean));
@@ -225,11 +239,7 @@ export class ThreatTracker {
    * person who forgot their password, and ten against ten accounts is an
    * attack. Volume cannot tell them apart; this can.
    */
-  private async sharpen(
-    ip: string,
-    signal: ThreatSignal,
-    subject?: string,
-  ): Promise<ThreatSignal> {
+  private async sharpen(ip: string, signal: ThreatSignal, subject?: string): Promise<ThreatSignal> {
     if (!subject) return signal;
     if (signal !== 'auth_failure' && signal !== 'not_found') return signal;
     const key =

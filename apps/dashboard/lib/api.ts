@@ -44,10 +44,23 @@ export interface ApiErrorShape {
   error: { code: string; message: string; requestId: string };
 }
 
+/**
+ * Result of one API call. `retryAfterSeconds` is populated on a 429 when the
+ * server said how long to wait — pollers honour it instead of guessing (see
+ * lib/poll.ts for why that matters).
+ */
+export interface ApiResult<T> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  error: string | null;
+  retryAfterSeconds?: number | null;
+}
+
 export async function apiFetch<T>(
   path: string,
   opts: { method?: string; body?: unknown; token?: string; headers?: Record<string, string> } = {},
-): Promise<{ ok: boolean; status: number; data: T | null; error: string | null }> {
+): Promise<ApiResult<T>> {
   const token = opts.token ?? getToken();
   let res: Response;
   try {
@@ -77,6 +90,17 @@ export async function apiFetch<T>(
   }
   if (!res.ok) {
     const msg = (json as ApiErrorShape)?.error?.message ?? `HTTP ${res.status}`;
+    if (res.status === 429) {
+      const raw = res.headers.get('retry-after');
+      const secs = raw === null ? null : Number(raw);
+      return {
+        ok: false,
+        status: res.status,
+        data: null,
+        error: msg,
+        retryAfterSeconds: Number.isFinite(secs) && (secs as number) > 0 ? (secs as number) : null,
+      };
+    }
     return { ok: false, status: res.status, data: null, error: msg };
   }
   return { ok: true, status: res.status, data: (json as { data: T }).data, error: null };

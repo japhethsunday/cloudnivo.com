@@ -151,8 +151,9 @@ describe('WAF — body scope', () => {
   });
 
   it('allows an ordinary platform body', () => {
-    expect(inspectBody('{"email":"ada@example.com","password":"correct horse battery"}').blocked)
-      .toBe(false);
+    expect(
+      inspectBody('{"email":"ada@example.com","password":"correct horse battery"}').blocked,
+    ).toBe(false);
     expect(inspectBody('{"name":"Union Bank","slug":"union-bank"}').blocked).toBe(false);
   });
 
@@ -170,6 +171,39 @@ const FAST: ThreatPolicy = { ...DEFAULT_POLICY, throttleAt: 50, banAt: 120 };
 function tracker(over: Partial<ThreatPolicy> = {}, allow: string[] = []): ThreatTracker {
   return new ThreatTracker(new MemoryCache(), { ...FAST, ...over }, allow);
 }
+
+describe('rate limiting must not escalate into a ban', () => {
+  // The dashboard outage: a chatty tab exceeded the per-IP budget, every 429
+  // scored against it, and the address was banned — then the pollers, which
+  // did not back off, kept the ban alive and escalating. Refusing a request
+  // is already the punishment; it must not also be most of a ban.
+  it('tolerates a long burst of refusals without banning', async () => {
+    const t = tracker();
+    // 60 refused requests — a poller hammering for a solid minute.
+    for (let i = 0; i < 60; i += 1) await t.record('9.9.9.9', 'rate_limited');
+    const state = await t.assess('9.9.9.9');
+    expect(state.level, 'an honest burst must not ban the client').not.toBe('banned');
+  });
+
+  it('still bans genuinely sustained volumetric abuse', async () => {
+    const t = tracker();
+    // An order of magnitude more: no longer a chatty tab.
+    for (let i = 0; i < 200; i += 1) await t.record('9.9.9.10', 'rate_limited');
+    expect((await t.assess('9.9.9.10')).level).toBe('banned');
+  });
+
+  it('still bans attack signals quickly — this did not weaken those', async () => {
+    const t = tracker();
+    // Credential stuffing: three unseen accounts is over the throttle line.
+    for (const acct of ['a@x.test', 'b@x.test', 'c@x.test', 'd@x.test', 'e@x.test', 'f@x.test']) {
+      await t.record('9.9.9.11', 'auth_failure', acct);
+    }
+    expect((await t.assess('9.9.9.11')).level).not.toBe('normal');
+    const w = tracker();
+    for (let i = 0; i < 5; i += 1) await w.record('9.9.9.12', 'waf_block');
+    expect((await w.assess('9.9.9.12')).level).toBe('banned');
+  });
+});
 
 describe('adaptive rate limiting — behaviour, not volume', () => {
   it('leaves a busy honest client alone', async () => {
@@ -194,7 +228,8 @@ describe('adaptive rate limiting — behaviour, not volume', () => {
     const stuffing = tracker();
     let level = 'normal';
     for (let i = 0; i < 6 && level !== 'banned'; i += 1) {
-      level = (await stuffing.record('3.3.3.3', 'auth_failure', `login:user${i}@example.com`)).level;
+      level = (await stuffing.record('3.3.3.3', 'auth_failure', `login:user${i}@example.com`))
+        .level;
     }
     expect(level).toBe('banned');
 

@@ -50,7 +50,17 @@ const EnvSchema = z.object({
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
+  // Per IP, per window. 120/min was too small for the product it protects:
+  // the dashboard fans out several calls per view and runs status pollers
+  // (a deploy polls every 1.5s), so a single engineer with two tabs open
+  // could exceed it while doing nothing wrong — and an office behind one NAT
+  // address shares this budget between everybody.
+  //
+  // This is a volumetric floor, not the authorization boundary. Brute force
+  // is bounded separately by AUTH_RATE_MAX (10), the data plane by
+  // DATA_API_KEY_MAX, agents by AGENT_RATE_MAX, and genuinely hostile traffic
+  // by the WAF and the threat tracker — none of which this changes.
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(600),
 
   // ── Edge defence: WAF + adaptive IP reputation ──
   // The WAF filters malicious request SHAPES before routing; the threat
