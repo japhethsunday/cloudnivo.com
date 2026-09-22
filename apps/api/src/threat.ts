@@ -188,6 +188,37 @@ export class ThreatTracker {
   }
 
   /**
+   * Lift a ban and reset the address to a clean slate.
+   *
+   * Until this existed a ban was irreversible: the score, the ban and the
+   * offence count all sat in the cache behind TTLs, escalating to 24 hours,
+   * with no operator recourse. An honest client that tripped the limiter was
+   * locked out of the product — including the login page, because the ban is
+   * checked before routing — and the only cure was waiting.
+   *
+   * Clears all three keys, not just the ban: leaving the score behind would
+   * let the next handful of requests re-ban immediately, and leaving the
+   * offence count behind would make that re-ban longer than the first.
+   *
+   * Returns the state it cleared, so the caller can report what was lifted.
+   */
+  async clearBan(ip: string): Promise<{ cleared: boolean; previous: ThreatState }> {
+    const previous = await this.assess(ip);
+    try {
+      await Promise.all([
+        this.cache.del(KEY.ban(ip)),
+        this.cache.del(KEY.score(ip)),
+        this.cache.del(KEY.offences(ip)),
+        this.cache.del(KEY.throttleBudget(ip)),
+      ]);
+      return { cleared: true, previous };
+    } catch {
+      // A cache outage must not look like a successful unban.
+      return { cleared: false, previous };
+    }
+  }
+
+  /**
    * Consume one unit of a throttled IP's reduced budget.
    *
    * Returns false when the budget for this minute is spent. Only called for
