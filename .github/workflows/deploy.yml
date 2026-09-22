@@ -13,12 +13,26 @@ on:
         options: [staging, production]
 
 # Least privilege: nothing in this workflow writes to the repository.
+# `actions: read` lets the production preflight read CI's conclusion for the
+# commit it is about to ship; it grants no write anywhere.
 permissions:
   contents: read
+  actions: read
 
 # Staging deploys automatically on main. Production deploys ONLY via manual
-# dispatch against the `production` environment (required reviewers configured
-# in repo settings). Tokens live in GitHub secrets — never in this file.
+# dispatch, and the job refuses to run unless BOTH hold for the dispatched
+# commit: it is on `main`, and CI concluded `success` for that exact SHA.
+# Those two checks are enforced below, in this file, where they can be
+# reviewed — see the `preflight` step.
+#
+# A HUMAN APPROVAL GATE IS NOT ENFORCED HERE, and cannot be: a workflow
+# cannot grant itself one. It comes from the `production` environment's
+# "Required reviewers" setting (Settings → Environments → production). If
+# that list is empty, a dispatch deploys with no human in the loop, however
+# green this preflight is. Treat the preflight as defence in depth, not as
+# the approval gate.
+#
+# Tokens live in GitHub secrets — never in this file.
 # Required secrets: RAILWAY_TOKEN, RAILWAY_PROJECT_ID,
 # VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
 
@@ -82,6 +96,40 @@ jobs:
       PRODUCTION_API_URL: https://api.cloudnivo.org
     steps:
       - uses: actions/checkout@v4
+      # Preflight runs BEFORE any CLI is installed or any credential is used,
+      # so a refused deploy touches nothing. Both checks are about the commit
+      # being shipped, not about who asked for it.
+      - name: Preflight — refuse anything but green main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # 1. Branch. workflow_dispatch lets the caller pick any ref, so
+          #    without this a feature branch deploys to production.
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "::error::Production deploys only from main (got '${{ github.ref_name }}')."
+            exit 1
+          fi
+
+          # 2. CI. Nothing else verifies the commit was ever tested — this job
+          #    has no `needs:`, because it is dispatched rather than chained.
+          #    Ask the API what CI concluded for this exact SHA.
+          sha='${{ github.sha }}'
+          echo "Checking CI conclusion for $sha"
+          conclusion=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&status=completed" \
+            --jq '[.workflow_runs[] | select(.event != "workflow_dispatch")] | first | .conclusion // empty')
+
+          if [ -z "$conclusion" ]; then
+            echo "::error::No completed CI run found for $sha. Wait for CI, or re-run it, before deploying."
+            exit 1
+          fi
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::CI concluded '$conclusion' for $sha. Production deploys require a green CI run."
+            exit 1
+          fi
+          echo "CI passed for $sha — proceeding."
       - uses: actions/setup-node@v4
         with:
           node-version: 20

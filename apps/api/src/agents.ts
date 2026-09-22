@@ -279,7 +279,9 @@ export function sendApprovalRequired(
     {
       error: {
         code: 'APPROVAL_REQUIRED',
-        message: `Destructive operation held for approval (${approval.action}). Ask an organization owner to approve, then repeat the exact request with X-Approval-Id.`,
+        message: `Destructive operation held for approval (${approval.action}).`,
+        remediation:
+          'Ask an organization owner to approve this request, then repeat the identical request with the X-Approval-Id header set to data.approval.id.',
         requestId,
       },
       data: {
@@ -313,10 +315,18 @@ export async function gateDestructive(
     path: string;
     body: unknown;
     resource?: string;
+    /**
+     * Demand a human approval even when the token holds the scope. Used for
+     * production: an over-granted token is precisely the failure this gate
+     * exists to survive, so the scope alone must not be enough.
+     */
+    alwaysApprove?: boolean;
   },
 ): Promise<{ proceed: true } | { proceed: false; approval: ApprovalRequest }> {
   const svc = agentServiceFor(ctx);
-  const gate = svc.gate(opts.agent, opts.scope);
+  const gate = opts.alwaysApprove
+    ? { allowed: false, needsApproval: true }
+    : svc.gate(opts.agent, opts.scope);
   if (gate.allowed) return { proceed: true };
   if (!gate.needsApproval) {
     await auditAgent(ctx, req, {

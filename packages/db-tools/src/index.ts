@@ -7,3 +7,4 @@ export * from './restore.js';
 export * from './errors.js';
 export * from './import.js';
 export * from './migrate.js';
+export * from './migration-plan.js';

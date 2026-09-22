@@ -1158,6 +1158,57 @@ export const projectSecrets = pgTable(
   t => [unique('project_secrets_project_name_unique').on(t.projectId, t.name)],
 );
 
+/**
+ * Recorded migration state — the professional workflow's memory.
+ *
+ * A migration is created (validated, never applied), previewed, then applied
+ * inside one transaction. `status` is the whole point: nothing is "maybe
+ * applied". `checksum` pins the SQL that was validated, so an agent cannot
+ * edit a migration between approval and apply, and `schemaAfter` records the
+ * schema fingerprint the apply produced so drift is detectable later.
+ */
+export const projectMigrations = pgTable(
+  'project_migrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Monotonic per project — the order migrations must be applied in. */
+    version: integer('version').notNull(),
+    name: varchar('name', { length: 120 }).notNull(),
+    environment: varchar('environment', { length: 40 }).notNull().default('development'),
+    /** 'main' or a branch id — which database this migration targets. */
+    target: varchar('target', { length: 100 }).notNull().default('main'),
+    statements: jsonb('statements').$type<string[]>().notNull().default([]),
+    /** sha256 of the normalised statements, pinned at creation. */
+    checksum: varchar('checksum', { length: 64 }).notNull(),
+    /** pending | applied | failed | discarded */
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    destructive: boolean('destructive').notNull().default(false),
+    /** Validation findings recorded at creation (never re-derived at apply). */
+    findings: jsonb('findings').$type<{ level: string; code: string; message: string }[]>().notNull().default([]),
+    appliedBy: uuid('applied_by').references(() => users.id, { onDelete: 'set null' }),
+    /** Agent token id when an agent applied it; null for human applies. */
+    appliedByTokenId: varchar('applied_by_token_id', { length: 100 }),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    /** Table/column fingerprint after a successful apply. */
+    schemaAfter: varchar('schema_after', { length: 64 }),
+    error: varchar('error', { length: 500 }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  t => [
+    unique('project_migrations_project_version_unique').on(t.projectId, t.version),
+    index('project_migrations_project_idx').on(t.projectId),
+    index('project_migrations_status_idx').on(t.status),
+  ],
+);
+
 // ── Status incidents, custom domains, log drains ──
 // Public status page incidents are global (no tenant scope). Domains and
 // drains are org-owned; verification tokens/secrets never echo raw twice.

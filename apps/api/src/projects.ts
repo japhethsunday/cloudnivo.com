@@ -30,7 +30,8 @@ import { generateDbPassword, mustOwnProject, toTenantError } from './registry.js
 import { auditAgent, gateDestructive, requireAgent, sendApprovalRequired } from './agents.js';
 import { emitAutomationEvent } from './automation.js';
 import { requireSpendAllowed } from './billing.js';
-import { handleDbToolsRoutes } from './db-tools.js';
+import { envServiceFor, handleDbToolsRoutes } from './db-tools.js';
+import { buildConnectBundle } from './discovery.js';
 import { storageFor } from './storage.js';
 
 export function sendJson(
@@ -285,6 +286,27 @@ export async function handleProjectRoutes(
   ): Promise<void> {
     if (agent) {
       await requireAgent(ctx, req, agent, opts);
+    }
+  }
+
+  /**
+   * Human-session role gate. `gate()` above is a NO-OP for sessions — it only
+   * enforces agent scopes — so anything destructive or privileged must call
+   * this as well, or every organization member (viewer included) can perform
+   * it. packages/database/src/rbac.ts stays the single source of truth for
+   * which role holds which permission.
+   */
+  async function requireSessionPermission(
+    organizationId: string,
+    permission: 'projects:update' | 'projects:delete' | 'envs:manage',
+  ): Promise<void> {
+    if (agent) return; // Agents are authorized by scope, not by org role.
+    const role =
+      (await ctx.registry.membershipsFor(session.sub)).find(
+        m => m.organizationId === organizationId,
+      )?.role ?? 'viewer';
+    if (!can(role, permission)) {
+      throw new ApiError('FORBIDDEN', `Insufficient role for ${permission}`, 403);
     }
   }
 
@@ -571,6 +593,9 @@ export async function handleProjectRoutes(
 
     // DELETE /api/v1/projects/:id — delete infra first, then metadata.
     if (rest.length === 0 && req.method === 'DELETE') {
+      // Deleting a project destroys its database, storage and every secret in
+      // it. Admin/owner only — membership alone is not authority.
+      await requireSessionPermission(project.organizationId, 'projects:delete');
       if (agent) {
         const decision = await gateDestructive(ctx, req, {
           agent,
@@ -634,6 +659,87 @@ export async function handleProjectRoutes(
     }
 
     // GET /:id/jobs, GET /:id/jobs/:jobId
+    // GET /:id/connect — the one call that tells an agent (or a human on the
+    // Connect page) everything needed to point tooling at this project.
+    // Credentials follow the platform rule: agents never get them, humans
+    // only with ?reveal=true, audited.
+    if (rest[0] === 'connect' && rest.length === 1 && req.method === 'GET') {
+      if (agent) {
+        await gate({
+          scope: 'projects.read',
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'project.connect',
+        });
+      }
+      const wantsReveal = query.get('reveal') === 'true';
+      if (wantsReveal && agent) {
+        auditAgent(ctx, req, {
+          token: agent,
+          userId: agent.userId,
+          organizationId: project.organizationId,
+          projectId: project.id,
+          action: 'project.connect.reveal',
+          result: 'denied',
+          reason: 'FORBIDDEN: agents cannot reveal credentials',
+        });
+        throw new ApiError('FORBIDDEN', 'Agents cannot reveal database credentials', 403);
+      }
+      const stored = await ctx.registry.getDatabaseByProject(project.id);
+      const cred = stored ? await ctx.registry.getCredential(project.id) : null;
+      let revealed = false;
+      if (wantsReveal && !agent) {
+        const role =
+          (await ctx.registry.membershipsFor(session.sub)).find(
+            m => m.organizationId === project.organizationId,
+          )?.role ?? 'viewer';
+        if (role !== 'owner' && role !== 'admin') {
+          throw new ApiError('FORBIDDEN', 'Revealing credentials requires admin', 403);
+        }
+        revealed = true;
+        await ctx.registry.recordAudit('database.credentials.accessed', {
+          projectId: project.id,
+          organizationId: project.organizationId,
+          userId: session.sub,
+        });
+      }
+      const keys = await ctx.keys.listByProject(project.id);
+      const environments = await envServiceFor(ctx)
+        .list(project.id)
+        .catch(() => [] as { slug: string; name: string; isPreview: boolean }[]);
+      const bundle = buildConnectBundle({
+        config,
+        project: {
+          id: project.id,
+          slug: project.slug,
+          name: project.name,
+          organizationId: project.organizationId,
+          region: project.region,
+        },
+        keys: keys.map(k => ({ prefix: k.prefix, role: k.role, revokedAt: k.revokedAt })),
+        database:
+          stored && cred
+            ? {
+                host: stored.host,
+                port: stored.port,
+                database: stored.dbName,
+                user: cred.dbUser,
+                password: cred.password,
+              }
+            : null,
+        revealed,
+        environments: environments.map(e => ({
+          slug: e.slug,
+          name: e.name,
+          isPreview: e.isPreview,
+        })),
+        environment: query.get('environment') ?? 'development',
+      });
+      logger.info('project.connect', { project: project.id, revealed });
+      sendJson(res, 200, ok(bundle, requestId), baseHeaders);
+      return true;
+    }
+
     if (rest[0] === 'jobs' && req.method === 'GET') {
       if (agent) {
         await gate({
@@ -672,6 +778,7 @@ export async function handleProjectRoutes(
     // console has nothing to show but "provisioning" forever. Runs only when
     // there is no database record, so it can never clobber a live one.
     if (rest.length === 2 && rest[1] === 'provision' && req.method === 'POST') {
+      await requireSessionPermission(project.organizationId, 'projects:update');
       if (db) throw new ApiError('CONFLICT', 'Database is already provisioned', 409);
       if (agent) {
         await gate({
@@ -879,6 +986,8 @@ export async function handleProjectRoutes(
 
     // POST /:id/database/actions { action: start|stop|restart }
     if (rest.length === 2 && rest[1] === 'actions' && req.method === 'POST') {
+      // Stopping or restarting a database is an outage. Viewers cannot.
+      await requireSessionPermission(project.organizationId, 'projects:update');
       try {
         const body = parseBody(ActionBody, await readJson());
         if (agent) {

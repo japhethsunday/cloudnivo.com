@@ -16,7 +16,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/tests-684%20passing-22c55e?style=flat-square&logo=vitest&logoColor=white" alt="684 tests passing" />
+  <img src="https://img.shields.io/badge/tests-740%20passing-22c55e?style=flat-square&logo=vitest&logoColor=white" alt="740 tests passing" />
   <img src="https://img.shields.io/badge/workspaces-21-2563eb?style=flat-square&logo=npm&logoColor=white" alt="21 workspaces" />
   <img src="https://img.shields.io/badge/lint-0%20warnings-22c55e?style=flat-square&logo=eslint&logoColor=white" alt="zero lint warnings" />
   <img src="https://img.shields.io/badge/typecheck-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="strict typecheck" />
@@ -171,8 +171,9 @@ signing, delivery history, replay and secret rotation.
 ### 🪪 Agent access tokens
 
 `cn_agent_*` tokens with scopes, IP restrictions, activity trails, and an approval
-gate that destructive operations cannot bypass. Available in the dashboard, CLI and SDK.
-<br/>→ [`docs/agent-tokens.md`](docs/agent-tokens.md)
+gate that destructive operations cannot bypass. A coding agent runs the whole loop —
+connect → discover → build → migrate → deploy → verify — from the dashboard, CLI or SDK.
+<br/>→ [`docs/agent-access.md`](docs/agent-access.md) · [`docs/agent-tokens.md`](docs/agent-tokens.md)
 
 </td><td width="50%" valign="top">
 
@@ -596,7 +597,7 @@ cloudnivo.com/
 │   ├── api-engine/          Introspection, query builder, CRUD, OpenAPI, CSV
 │   ├── sdk/                 CloudNivoClient — typed HTTP client
 │   └── cli/                 `cloudnivo` command-line client
-├── docs/                    22 reference documents
+├── docs/                    23 reference documents
 ├── tests/                   e2e (Playwright), load, production smoke
 ├── infrastructure/          Docker + Postgres bootstrap
 ├── scripts/verify.sh        The whole CI gate as one command
@@ -612,7 +613,7 @@ production smoke. Run it before pushing.
 | --------------------- | -------------------------------------------------------------------- |
 | `npm run verify`      | **The whole gate, the way CI runs it.** Use this before pushing.     |
 | `npm run verify:fast` | Static subset — lint, typecheck, unit, build. No servers, no browser |
-| `npm test`            | Vitest — 684 passing, 15 skipped across 103 files                    |
+| `npm test`            | Vitest — 740 passing, 15 skipped across 108 files                    |
 | `npm run test:e2e`    | Playwright, against a stack you booted yourself                      |
 | `npm run test:smoke`  | 18-step production smoke against `API_BASE`                          |
 | `DOCKER_TESTS=1`      | Real-Postgres integration (provision → CRUD → delete)                |
@@ -643,6 +644,7 @@ production smoke. Run it before pushing.
 - [CLI](docs/cli.md)
 - [AI backend builder](docs/ai-builder.md)
 - [AI security model](docs/ai-security.md)
+- [Agent & developer access](docs/agent-access.md)
 - [Agent access tokens](docs/agent-tokens.md)
 - [Roadmap](docs/roadmap.md)
 

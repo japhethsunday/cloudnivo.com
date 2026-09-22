@@ -46,6 +46,7 @@ import { generateDbPassword } from './registry.js';
 import { auditAgent } from './agents.js';
 import { mapInfraError, sendJson } from './projects.js';
 import { requireSpendAllowed } from './billing.js';
+import { handleMigrationRoutes, isMigrationRoute } from './migrations.js';
 
 /**
  * Database power-tools: extensions, advisors, generated types, schema diff,
@@ -92,7 +93,7 @@ function mapInfraErrorCaught(err: unknown): ApiError | unknown {
 
 /** Human role gate: destructive database operations require admin/owner.
  *  Agents are gated separately via scopes; this closes viewer/member escalation. */
-async function requireDbManager(
+export async function requireDbManager(
   ctx: ApiContext,
   sessionSub: string,
   project: ProjectRecord,
@@ -514,6 +515,15 @@ export async function handleDbToolsRoutes(deps: DbToolsDeps): Promise<boolean> {
     return (m[n] ?? null) as string | null;
   };
   const head = seg(1);
+  // Migrations own a deeper path shape than seg() matches, so they are
+  // dispatched from the raw path before the single-segment table below.
+  if (isMigrationRoute(path)) {
+    try {
+      return await handleMigrationRoutes(deps);
+    } catch (err) {
+      return fail(deps, err);
+    }
+  }
   if (!head) return false;
 
   try {

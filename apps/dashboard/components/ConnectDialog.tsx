@@ -32,7 +32,7 @@ import { CopyButton, CopyField, Modal } from './ui';
 
 const DEFAULT_BUCKET = 'business-data';
 
-type TabId = 'connection' | 'keys' | 'database' | 'storage' | 'code';
+type TabId = 'connection' | 'keys' | 'database' | 'storage' | 'code' | 'agent';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'connection', label: 'Connection' },
@@ -40,7 +40,20 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'database', label: 'Database' },
   { id: 'storage', label: 'Storage' },
   { id: 'code', label: 'Code' },
+  { id: 'agent', label: 'Coding agent' },
 ];
+
+/**
+ * The agent tab's payload comes from GET /projects/:id/connect — the same
+ * endpoint the CLI and SDK read, so what a developer copies here is exactly
+ * what `cloudnivo connect` prints. No second source of truth.
+ */
+interface ConnectBundle {
+  agentToken: { issue: string; verify: string; note: string };
+  install: { cli: string; sdk: string; login: string; link: string };
+  urls: { api: string; discovery: string };
+  env: { lines: string[]; variables: { name: string; value: string; secret: boolean; note: string }[] };
+}
 
 interface ApiKeyRow {
   id: string;
@@ -148,6 +161,7 @@ export function ConnectDialog({
 
   const projectUrl = `${base}/api/v1/projects/${projectId}`;
   const storageUrl = `${projectUrl}/storage`;
+  const [bundle, setBundle] = useState<ConnectBundle | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -171,6 +185,10 @@ export function ConnectDialog({
       // missing list is a fact about this project, not a failure of the dialog.
       const e = await listEnvironments(projectId);
       setEnv(e.envs ? resolveActive(e.envs, projectId) : null);
+      // Agent bundle is optional in the same way: an older backend without
+      // the route leaves the tab explaining itself rather than erroring.
+      const bundleRes = await apiFetch<ConnectBundle>(`/api/v1/projects/${projectId}/connect`);
+      setBundle(bundleRes.ok ? (bundleRes.data ?? null) : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read this project');
     } finally {
@@ -574,6 +592,62 @@ export function ConnectDialog({
                     )}
                   </Row>
                 )}
+              </>
+            ) : null}
+
+            {tab === 'agent' ? (
+              <>
+                <p className="connect-hint">
+                  Point Claude Code, Cursor, Codex, or any other coding agent at this project. The
+                  agent gets a scoped <code>cn_agent_…</code> token — never your session, never the
+                  database password, and never a key it can use to widen its own access.
+                </p>
+                <Row label="1 · Issue a token" hint="Scopes, expiry and approval gate are chosen there">
+                  <a className="btn btn-primary btn-sm" href="/agents">
+                    Open Agent access
+                  </a>
+                </Row>
+                <Row
+                  label="2 · Environment"
+                  hint="Copy into the agent's environment or secret manager — never into git"
+                >
+                  <div className="connect-actions">
+                    <div className="connect-actions-right">
+                      <CopyButton
+                        text={(bundle?.env.lines ?? []).join('\n')}
+                        label="Copy environment"
+                      />
+                    </div>
+                  </div>
+                  <pre className="connect-snippet" aria-label="Agent environment">
+                    {bundle
+                      ? bundle.env.lines.join('\n')
+                      : `CLOUDNIVO_URL=${base}\nCLOUDNIVO_PROJECT_ID=${projectId}\nCLOUDNIVO_AGENT_TOKEN=cn_agent_…`}
+                  </pre>
+                  <p className="connect-hint">
+                    The token value is shown once, when you create it. Nothing on this page can read
+                    it back.
+                  </p>
+                </Row>
+                <Row label="3 · Install and link">
+                  <CopyField
+                    text={`${bundle?.install.cli ?? 'npm install -g @cloudnivo/cli'}\ncloudnivo login --agent-token cn_agent_…\ncloudnivo link --project ${projectId}\ncloudnivo status`}
+                    label="CLI setup"
+                  />
+                </Row>
+                <Row
+                  label="4 · Let the agent discover the rest"
+                  hint="No credential needed for this one"
+                >
+                  <CopyField
+                    text={bundle?.urls.discovery ?? `${base}/api/v1/discovery`}
+                    label="Capability discovery URL"
+                  />
+                </Row>
+                <p className="connect-hint">
+                  Production and destructive changes stop for human approval. Every agent action is
+                  recorded under Agent access → Activity.
+                </p>
               </>
             ) : null}
 

@@ -1,8 +1,49 @@
-# CloudNivo SDK (Phase 9)
+# CloudNivo SDK
 
-Typed HTTP client for server-side integrations and the CLI
-(`packages/sdk`, `CloudNivoClient`). Covers projects, functions, storage,
-and the AI Builder (plan/approve/apply/status/usage).
+Typed HTTP client for server-side integrations, agents, and the CLI
+(`packages/sdk`, `CloudNivoClient`). Covers discovery, projects, database and
+migrations, secrets, environments, auth configuration, storage, functions,
+automation, logs, and the AI Builder.
+
+Accepts a session JWT, a `cn_agent_…` agent token, or a project API key in
+the same `token` option — the API decides what the credential may do.
+
+## Discovery and connection
+
+```ts
+const manifest = await cn.discover();          // no credential needed
+const bundle = await cn.connect(projectId);    // URLs, key prefixes, env template
+```
+
+## Migrations
+
+```ts
+const { migration } = await cn.createMigration(projectId, {
+  name: 'add_posts',
+  sql: "create table posts (id uuid primary key);",
+  environment: 'development',
+});
+const { preview } = await cn.previewMigration(projectId, migration.id);
+await cn.applyMigration(projectId, migration.id);
+```
+
+## Errors
+
+`SdkError` carries `code`, `message`, `remediation`, `requestId`, `details`
+and — on HTTP 428 — `approvalId` plus `needsApproval`:
+
+```ts
+try {
+  await cn.applyMigration(projectId, migration.id);
+} catch (err) {
+  if (err instanceof SdkError && err.needsApproval) {
+    // Hand err.approvalId to a human, then retry:
+    // cn.applyMigration(projectId, migration.id, { approvalId: err.approvalId })
+  }
+}
+```
+
+Branch on `err.code`, never on `err.message`.
 
 ```ts
 import { CloudNivoClient } from '@cloudnivo/sdk';
