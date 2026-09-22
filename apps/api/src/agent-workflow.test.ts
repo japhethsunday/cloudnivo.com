@@ -387,6 +387,10 @@ describe('agent developer workflow', () => {
       name: 'prod agent',
       scopes: ['projects.read', 'database.read', 'database.migrate', 'database.destructive'],
       projectIds: [project],
+      // Production is granted explicitly, so this test still asserts what it
+      // is named for: the approval gate, not the environment grant. Reaching
+      // production now takes both, and the grant alone is never enough.
+      environments: ['production'],
       approvalRequired: true,
       expiresIn: '7d',
     });
@@ -418,6 +422,44 @@ describe('agent developer workflow', () => {
     );
     expect(held.status).toBe(428);
     expect(errorOf(held.json).code).toBe('APPROVAL_REQUIRED');
+  });
+
+  it('refuses production to a destructive token that was never granted it', async () => {
+    // Same scopes as the token above, minus the environment grant. The scope
+    // is what an over-granted token has; the grant is what it should not.
+    const ungranted = await api(base, 'POST', `/api/v1/organizations/${org}/agent-tokens`, ownerToken, {
+      name: 'no prod grant',
+      scopes: ['projects.read', 'database.read', 'database.migrate', 'database.destructive'],
+      projectIds: [project],
+      approvalRequired: false,
+      expiresIn: '7d',
+    });
+    expect(ungranted.status).toBe(201);
+    const raw = data<{ raw: string }>(ungranted.json).raw;
+    const existing = await api(base, 'GET', `/api/v1/projects/${project}/database/migrations`, agent);
+    for (const m of data<{ migrations: { id: string; status: string }[] }>(existing.json).migrations) {
+      if (m.status === 'pending') {
+        await api(base, 'DELETE', `/api/v1/projects/${project}/database/migrations/${m.id}`, agent);
+      }
+    }
+    // Create still succeeds: create executes nothing, and a human may yet
+    // review it. Apply is where the environment is enforced.
+    const created = await api(base, 'POST', `/api/v1/projects/${project}/database/migrations`, raw, {
+      name: 'prod_ungranted',
+      sql: 'create table prod_ungranted (id uuid primary key);',
+      environment: 'production',
+    });
+    expect(created.status).toBe(201);
+    const id = data<{ migration: { id: string } }>(created.json).migration.id;
+    const denied = await api(
+      base,
+      'POST',
+      `/api/v1/projects/${project}/database/migrations/${id}/apply`,
+      raw,
+      {},
+    );
+    expect(denied.status).toBe(403);
+    expect(errorOf(denied.json).message).toContain('production');
   });
 
   it('rejects migrations that would escalate privilege', async () => {

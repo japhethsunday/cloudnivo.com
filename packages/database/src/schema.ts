@@ -197,6 +197,13 @@ export const projectEnvironments = pgTable(
     /** Null = the primary (main) database; otherwise a branch id. */
     branchId: uuid('branch_id'),
     isPreview: boolean('is_preview').notNull().default(false),
+    /**
+     * Server-side truth about which environments are production. The declared
+     * `environment` on a migration is caller-supplied and therefore cannot
+     * decide whether the production gate applies — this flag can. Set on the
+     * row, never read from a request body.
+     */
+    isProduction: boolean('is_production').notNull().default(false),
     status: varchar('status', { length: 20 }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -845,6 +852,12 @@ export const agentTokens = pgTable(
     keyHash: text('key_hash').notNull().unique(),
     scopes: text('scopes').array().notNull().default([]),
     projectIds: text('project_ids').array().notNull().default([]),
+    /**
+     * Environment slugs this token may act on. Empty = every non-production
+     * environment; production is never implied and must be listed explicitly,
+     * so an over-granted scope alone cannot reach it.
+     */
+    environments: text('environments').array().notNull().default([]),
     approvalRequired: boolean('approval_required').notNull().default(false),
     ipAllowlist: text('ip_allowlist').array().notNull().default([]),
     expiresAt: timestamp('expires_at', { withTimezone: true }),

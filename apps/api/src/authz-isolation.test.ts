@@ -546,6 +546,79 @@ describe('individual account authorization', () => {
     }
   });
 
+  // ── ENVIRONMENT, the level between PROJECT and RESOURCE ──
+  //
+  // Production used to be protected by a string the caller sent: declaring
+  // 'development' on the same destructive SQL, against the same database,
+  // skipped the approval gate entirely. Production-ness is now read from the
+  // stored environment row, and operating on it takes `envs:production`
+  // (admin/owner) for a human or an explicit environment grant for a token.
+  it('separates managing environments from operating on production', async () => {
+    const P = `/api/v1/projects/${projectA}`;
+    const mkEnv = async (tok: string, name: string, slug: string) =>
+      api(base, 'POST', `${P}/database/environments`, tok, { name, slug });
+
+    // Only owner/admin may create one at all (envs:manage).
+    expectDenied(await mkEnv(viewerA, 'Nope', 'nope'), 'viewer creates environment');
+    expectDenied(await mkEnv(memberA, 'Nope', 'nope'), 'member creates environment');
+    expect((await mkEnv(ownerA, 'Production', 'production')).status).toBe(201);
+    expect((await mkEnv(ownerA, 'Staging', 'staging')).status).toBe(201);
+
+    // Every role may still read the list — an environment is not a secret.
+    for (const tok of [viewerA, memberA, ownerA]) {
+      expect((await api(base, 'GET', `${P}/database/environments`, tok)).status).toBe(200);
+    }
+
+    // The owner holds envs:production and may create a production migration.
+    const prodMig = await api(base, 'POST', `${P}/database/migrations`, ownerA, {
+      name: 'owner_prod',
+      sql: 'create table owner_prod (id uuid primary key);',
+      environment: 'production',
+    });
+    expect(prodMig.status, 'owner creates production migration').toBe(201);
+  });
+
+  it('confines an agent token to the environments it was granted', async () => {
+    const P = `/api/v1/projects/${projectA}`;
+    // Scopes that would be plenty for any ordinary environment, and no
+    // environment grant at all — the over-granted token this gate exists for.
+    const tk = await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens`, ownerA, {
+      name: 'no-prod-grant',
+      scopes: ['projects.read', 'database.read', 'database.migrate', 'database.destructive'],
+      projectIds: [projectA],
+      approvalRequired: false,
+    });
+    expect(tk.status).toBe(201);
+    const raw = data<{ raw: string }>(tk.json).raw;
+
+    // Clear anything pending so ordering does not decide this test.
+    const list = await api(base, 'GET', `${P}/database/migrations`, ownerA);
+    for (const m of data<{ migrations: { id: string; status: string }[] }>(list.json).migrations) {
+      if (m.status === 'pending') {
+        await api(base, 'DELETE', `${P}/database/migrations/${m.id}`, ownerA);
+      }
+    }
+
+    // Create succeeds — create executes nothing. Apply is the boundary.
+    const created = await api(base, 'POST', `${P}/database/migrations`, raw, {
+      name: 'agent_prod',
+      sql: 'create table agent_prod (id uuid primary key);',
+      environment: 'production',
+    });
+    expect(created.status).toBe(201);
+    const id = data<{ migration: { id: string } }>(created.json).migration.id;
+    // 403 specifically, not merely "denied": production also sits behind the
+    // approval gate, which answers 428. Accepting any 4xx here would let this
+    // test pass on the approval gate alone and prove nothing about the
+    // environment grant — verified by disabling the grant check, which leaves
+    // a 428 behind.
+    const applied = await api(base, 'POST', `${P}/database/migrations/${id}/apply`, raw, {});
+    expect(applied.status, 'ungranted token applies to production').toBe(403);
+    expect(String((applied.json['error'] as { message?: string })?.message ?? '')).toContain(
+      'production',
+    );
+  });
+
   it('kills an agent token the instant it is revoked, and on rotation kills the old secret', async () => {
     const mk = await api(base, 'POST', `/api/v1/organizations/${orgA}/agent-tokens`, ownerA, {
       name: 'revocation-probe',

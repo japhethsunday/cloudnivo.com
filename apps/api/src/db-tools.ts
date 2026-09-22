@@ -240,13 +240,15 @@ export interface EnvRecord {
   slug: string;
   branchId: string | null;
   isPreview: boolean;
+  /** Server-side truth: production environments carry a stricter gate. */
+  isProduction: boolean;
   status: string;
   createdAt: string;
 }
 
 export function envServiceFor(ctx: ApiContext): {
   list(projectId: string): Promise<EnvRecord[]>;
-  create(input: { projectId: string; name: string; slug: string; branchId?: string | null; isPreview?: boolean }): Promise<EnvRecord>;
+  create(input: { projectId: string; name: string; slug: string; branchId?: string | null; isPreview?: boolean; isProduction?: boolean }): Promise<EnvRecord>;
   updateBranch(id: string, projectId: string, branchId: string | null): Promise<EnvRecord | null>;
   remove(id: string, projectId: string): Promise<boolean>;
 } {
@@ -266,11 +268,12 @@ export function envServiceFor(ctx: ApiContext): {
         slug: r.slug,
         branchId: r.branchId,
         isPreview: r.isPreview ?? false,
+        isProduction: r.isProduction ?? false,
         status: r.status ?? 'active',
         createdAt: iso(r.createdAt),
       }));
     },
-    async create(input: { projectId: string; name: string; slug: string; branchId?: string | null; isPreview?: boolean }): Promise<EnvRecord> {
+    async create(input: { projectId: string; name: string; slug: string; branchId?: string | null; isPreview?: boolean; isProduction?: boolean }): Promise<EnvRecord> {
       if (!/^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/.test(input.slug)) {
         throw new ApiError('VALIDATION_ERROR', 'Invalid environment slug', 400);
       }
@@ -283,6 +286,9 @@ export function envServiceFor(ctx: ApiContext): {
           slug: input.slug,
           branchId: input.branchId ?? null,
           isPreview: input.isPreview ?? false,
+          // 'production'/'prod' are production even if the caller omits the
+          // flag: the convention predates the column and must not be weaker.
+          isProduction: input.isProduction ?? ['production', 'prod'].includes(input.slug.toLowerCase()),
           status: 'active',
           createdAt: new Date().toISOString(),
         };
@@ -298,6 +304,8 @@ export function envServiceFor(ctx: ApiContext): {
             slug: input.slug,
             branchId: input.branchId ?? null,
             isPreview: input.isPreview ?? false,
+            isProduction:
+              input.isProduction ?? ['production', 'prod'].includes(input.slug.toLowerCase()),
           })
           .returning();
         const row = rows[0];
@@ -309,6 +317,7 @@ export function envServiceFor(ctx: ApiContext): {
           slug: row.slug,
           branchId: row.branchId,
           isPreview: row.isPreview ?? false,
+          isProduction: row.isProduction ?? false,
           status: row.status ?? 'active',
           createdAt: iso(row.createdAt),
         };
@@ -340,6 +349,7 @@ export function envServiceFor(ctx: ApiContext): {
         slug: row.slug,
         branchId: row.branchId,
         isPreview: row.isPreview ?? false,
+        isProduction: row.isProduction ?? false,
         status: row.status ?? 'active',
         createdAt: iso(row.createdAt),
       };
