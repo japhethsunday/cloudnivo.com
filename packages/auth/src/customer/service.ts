@@ -4,11 +4,21 @@ import { AuthError } from '../errors.js';
 import type { EmailService } from './email.js';
 import { sanitizeAppMetadata, sanitizeUserMetadata } from './metadata.js';
 import { generateBackupCodes, generateTotpSecret, totpProvisionUri, verifyTotp } from '../totp.js';
+import { createChallenge, verifyAuthentication, verifyRegistration } from '../webauthn.js';
 import { checkPasswordPolicy, LEGACY_PASSWORD_POLICY } from '../password-policy.js';
 import type { OtpService } from '../otp.js';
 import { isValidPhone, type SmsService } from '../sms.js';
 import type { CustomerAuthStore } from './store.js';
-import { hashToken, newOpaqueToken, sanitizeCustomClaims, signCustomerAccessToken } from './tokens.js';
+import { toPublicPasskey } from './types.js';
+
+/** How long a WebAuthn challenge stays usable. Short: it is a live ceremony. */
+const PASSKEY_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+import {
+  hashToken,
+  newOpaqueToken,
+  sanitizeCustomClaims,
+  signCustomerAccessToken,
+} from './tokens.js';
 import type {
   AuthTokens,
   CustomerAuditEvent,
@@ -118,7 +128,9 @@ export class CustomerAuthService {
   ): Promise<string> {
     const role = (user.appMetadata['role'] === 'admin' ? 'admin' : 'authenticated') as CustomerRole;
     const customClaims = sanitizeCustomClaims({
-      ...(typeof user.appMetadata === 'object' && user.appMetadata !== null ? user.appMetadata : {}),
+      ...(typeof user.appMetadata === 'object' && user.appMetadata !== null
+        ? user.appMetadata
+        : {}),
       ...(user.isAnonymous ? { anonymous: true } : {}),
     });
     return signCustomerAccessToken(
@@ -231,7 +243,11 @@ export class CustomerAuthService {
     // Anonymous addresses are unguessable; a distinct code is safe and honest.
     if (user && user.isAnonymous) {
       this.audit('user.login_failed', { projectId, userId: user.id });
-      throw new CustomerAuthError('ANONYMOUS_CONVERT_REQUIRED', 'Anonymous account must be converted first', 403);
+      throw new CustomerAuthError(
+        'ANONYMOUS_CONVERT_REQUIRED',
+        'Anonymous account must be converted first',
+        403,
+      );
     }
     if (!user || !ok) {
       this.audit('user.login_failed', { projectId });
@@ -515,7 +531,9 @@ export class CustomerAuthService {
     if (!user.isAnonymous) {
       throw new CustomerAuthError('NOT_ANONYMOUS', 'Only anonymous accounts can be converted', 400);
     }
-    const email = String(input.email ?? '').trim().toLowerCase();
+    const email = String(input.email ?? '')
+      .trim()
+      .toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
       throw new CustomerAuthError('INVALID_EMAIL', 'Invalid email address', 400);
     }
@@ -556,7 +574,9 @@ export class CustomerAuthService {
     email: string,
     purpose: 'login' | 'verify' = 'login',
   ): Promise<{ sent: boolean }> {
-    const normalized = String(email ?? '').trim().toLowerCase();
+    const normalized = String(email ?? '')
+      .trim()
+      .toLowerCase();
     const user = await this.store.findUserByEmail(projectId, normalized);
     if (user && user.status === 'active' && !user.isAnonymous) {
       const { code } = await this.deps.otp.issue(projectId, normalized, purpose);
@@ -573,7 +593,9 @@ export class CustomerAuthService {
     opts: { ip: string | null; agent: string | null },
     purpose: 'login' | 'verify' = 'login',
   ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens; sessionId: string }> {
-    const normalized = String(email ?? '').trim().toLowerCase();
+    const normalized = String(email ?? '')
+      .trim()
+      .toLowerCase();
     try {
       await this.deps.otp.verify(projectId, normalized, purpose, code);
     } catch (err) {
@@ -599,7 +621,9 @@ export class CustomerAuthService {
 
   /** Magic link (creates a passwordless account on first use — rate-limited at routes). */
   async requestMagicLink(projectId: string, email: string): Promise<{ sent: boolean }> {
-    const normalized = String(email ?? '').trim().toLowerCase();
+    const normalized = String(email ?? '')
+      .trim()
+      .toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 320) {
       return { sent: true };
     }
@@ -659,13 +683,208 @@ export class CustomerAuthService {
   // ── TOTP MFA ───────────────────────────────────────────────────
 
   /** Start MFA enrollment. Returns the secret + otpauth URI (show once as QR). */
-  async enrollTotp(
+  // ── Passkeys (WebAuthn) ──────────────────────────────────────────────
+
+  /**
+   * Begin registration. The challenge is stored server-side and spent on
+   * verify, so the browser cannot choose or reuse it.
+   */
+  async beginPasskeyRegistration(
     projectId: string,
     userId: string,
-  ): Promise<{ secret: string; uri: string }> {
+  ): Promise<{ challenge: string; excludeCredentials: string[] }> {
     const user = await this.store.findUserById(projectId, userId);
     if (!user) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
-    if (user.isAnonymous) throw new CustomerAuthError('NOT_SUPPORTED', 'Anonymous accounts cannot use MFA', 400);
+    if (user.isAnonymous) {
+      throw new CustomerAuthError(
+        'NOT_SUPPORTED',
+        'Anonymous accounts cannot register a passkey',
+        400,
+      );
+    }
+    const challenge = createChallenge();
+    await this.store.savePasskeyChallenge({
+      projectId,
+      challenge,
+      userId,
+      kind: 'register',
+      expiresAt: new Date(Date.now() + PASSKEY_CHALLENGE_TTL_MS).toISOString(),
+    });
+    // Lets the browser refuse to enrol a key this user already has, instead
+    // of creating a duplicate the user cannot tell apart.
+    const existing = await this.store.listPasskeys(projectId, userId);
+    return { challenge, excludeCredentials: existing.map(c => c.credentialId) };
+  }
+
+  async finishPasskeyRegistration(
+    projectId: string,
+    userId: string,
+    input: {
+      challenge: string;
+      attestationObject: string;
+      clientDataJSON: string;
+      label?: string | null;
+      origins: string[];
+      rpId: string;
+    },
+  ): Promise<{ id: string; label: string | null }> {
+    const pending = await this.store.consumePasskeyChallenge(
+      projectId,
+      input.challenge,
+      'register',
+    );
+    if (!pending || pending.userId !== userId) {
+      throw new CustomerAuthError('PASSKEY_CHALLENGE_INVALID', 'Challenge expired or unknown', 400);
+    }
+    const cred = verifyRegistration({
+      attestationObject: input.attestationObject,
+      clientDataJSON: input.clientDataJSON,
+      expectedChallenge: input.challenge,
+      expectedOrigins: input.origins,
+      expectedRpId: input.rpId,
+    });
+
+    // A credential id is globally unique; if it is already registered - to
+    // anyone - re-binding it would let one account capture another's key.
+    const clash = await this.store.findPasskey(projectId, cred.credentialId);
+    if (clash) {
+      throw new CustomerAuthError('PASSKEY_EXISTS', 'This passkey is already registered', 409);
+    }
+
+    await this.store.savePasskey({
+      projectId,
+      credentialId: cred.credentialId,
+      userId,
+      publicKey: cred.publicKey,
+      algorithm: cred.algorithm,
+      signCount: cred.signCount,
+      aaguid: cred.aaguid,
+      fmt: cred.fmt,
+      label: input.label?.slice(0, 80) ?? null,
+      backedUp: cred.backedUp,
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+    });
+    this.audit('user.passkey_registered', { projectId, userId });
+    return { id: cred.credentialId.slice(0, 16), label: input.label ?? null };
+  }
+
+  /**
+   * Begin authentication. Deliberately takes no user identifier and reveals
+   * nothing: a challenge is issued whether or not any account exists, so this
+   * endpoint cannot be used to enumerate users.
+   */
+  async beginPasskeyAuthentication(projectId: string): Promise<{ challenge: string }> {
+    const challenge = createChallenge();
+    await this.store.savePasskeyChallenge({
+      projectId,
+      challenge,
+      userId: null,
+      kind: 'authenticate',
+      expiresAt: new Date(Date.now() + PASSKEY_CHALLENGE_TTL_MS).toISOString(),
+    });
+    return { challenge };
+  }
+
+  async finishPasskeyAuthentication(
+    projectId: string,
+    input: {
+      challenge: string;
+      credentialId: string;
+      authenticatorData: string;
+      clientDataJSON: string;
+      signature: string;
+      origins: string[];
+      rpId: string;
+    },
+    opts: { ip: string | null; agent: string | null },
+  ): Promise<{ user: ExposedCustomerUser; tokens: AuthTokens }> {
+    const pending = await this.store.consumePasskeyChallenge(
+      projectId,
+      input.challenge,
+      'authenticate',
+    );
+    if (!pending) {
+      throw new CustomerAuthError('PASSKEY_CHALLENGE_INVALID', 'Challenge expired or unknown', 400);
+    }
+
+    const cred = await this.store.findPasskey(projectId, input.credentialId);
+    /**
+     * One message and one status for "no such credential", "bad signature"
+     * and "disabled account". Telling them apart would turn this endpoint
+     * into an oracle for which passkeys and which users exist.
+     */
+    if (!cred) {
+      throw new CustomerAuthError('PASSKEY_INVALID', 'Passkey authentication failed', 401);
+    }
+
+    let result: ReturnType<typeof verifyAuthentication>;
+    try {
+      result = verifyAuthentication({
+        credentialId: input.credentialId,
+        authenticatorData: input.authenticatorData,
+        clientDataJSON: input.clientDataJSON,
+        signature: input.signature,
+        storedPublicKey: cred.publicKey,
+        storedAlgorithm: cred.algorithm,
+        storedSignCount: cred.signCount,
+        expectedChallenge: input.challenge,
+        expectedOrigins: input.origins,
+        expectedRpId: input.rpId,
+      });
+    } catch {
+      throw new CustomerAuthError('PASSKEY_INVALID', 'Passkey authentication failed', 401);
+    }
+
+    const user = await this.store.findUserById(projectId, cred.userId);
+    if (!user || user.status !== 'active') {
+      throw new CustomerAuthError('PASSKEY_INVALID', 'Passkey authentication failed', 401);
+    }
+
+    /**
+     * A counter that went backwards is the spec's clone signal. The
+     * credential is kept but the login is refused: deleting it would let an
+     * attacker with a stolen assertion lock the real owner out.
+     */
+    if (result.signCountSuspect) {
+      this.audit('user.passkey_clone_suspected', { projectId, userId: user.id });
+      throw new CustomerAuthError(
+        'PASSKEY_COUNTER_REGRESSED',
+        'This passkey may have been cloned. Sign in another way and remove it.',
+        401,
+      );
+    }
+
+    await this.store.touchPasskey(projectId, cred.credentialId, result.signCount);
+    const { tokens } = await this.issueSession(projectId, user, opts);
+    await this.store.updateUser(projectId, user.id, { lastSignInAt: new Date().toISOString() });
+    this.audit('user.passkey_authenticated', { projectId, userId: user.id });
+    return { user: exposeUser(user), tokens };
+  }
+
+  async listPasskeys(
+    projectId: string,
+    userId: string,
+  ): Promise<ReturnType<typeof toPublicPasskey>[]> {
+    const creds = await this.store.listPasskeys(projectId, userId);
+    return creds.map(toPublicPasskey);
+  }
+
+  /** Removes a passkey by its public handle (the first 16 chars of the id). */
+  async removePasskey(projectId: string, userId: string, handle: string): Promise<boolean> {
+    const creds = await this.store.listPasskeys(projectId, userId);
+    const match = creds.find(c => c.credentialId.slice(0, 16) === handle);
+    if (!match) return false;
+    const removed = await this.store.deletePasskey(projectId, userId, match.credentialId);
+    if (removed) this.audit('user.passkey_removed', { projectId, userId });
+    return removed;
+  }
+
+  async enrollTotp(projectId: string, userId: string): Promise<{ secret: string; uri: string }> {
+    const user = await this.store.findUserById(projectId, userId);
+    if (!user) throw new CustomerAuthError('USER_NOT_FOUND', 'User not found', 404);
+    if (user.isAnonymous)
+      throw new CustomerAuthError('NOT_SUPPORTED', 'Anonymous accounts cannot use MFA', 400);
     const secret = generateTotpSecret();
     await this.store.updateUser(projectId, userId, { totpSecret: secret, totpEnabled: false });
     this.audit('user.mfa_enrolled', { projectId, userId });
@@ -679,7 +898,8 @@ export class CustomerAuthService {
     code: string,
   ): Promise<{ enabled: boolean; backupCodes: string[] }> {
     const user = await this.store.findUserById(projectId, userId);
-    if (!user?.totpSecret) throw new CustomerAuthError('MFA_NOT_ENROLLED', 'MFA enrollment not started', 400);
+    if (!user?.totpSecret)
+      throw new CustomerAuthError('MFA_NOT_ENROLLED', 'MFA enrollment not started', 400);
     if (!verifyTotp(user.totpSecret, code)) {
       throw new CustomerAuthError('MFA_INVALID', 'Incorrect authenticator code', 401);
     }
@@ -741,7 +961,11 @@ export class CustomerAuthService {
 
   // ── Phone OTP ──────────────────────────────────────────────────
 
-  async updatePhone(projectId: string, userId: string, phone: string): Promise<ExposedCustomerUser> {
+  async updatePhone(
+    projectId: string,
+    userId: string,
+    phone: string,
+  ): Promise<ExposedCustomerUser> {
     const normalized = String(phone ?? '').trim();
     if (!isValidPhone(normalized)) {
       throw new CustomerAuthError('INVALID_PHONE', 'Phone must be E.164 (+15551234567)', 400);
@@ -755,10 +979,14 @@ export class CustomerAuthService {
   }
 
   /** Send a phone code via the configured SMS provider (honest when undeliverable). */
-  async requestPhoneOtp(projectId: string, userId: string): Promise<{ sent: boolean; delivered: boolean }> {
+  async requestPhoneOtp(
+    projectId: string,
+    userId: string,
+  ): Promise<{ sent: boolean; delivered: boolean }> {
     const user = await this.store.findUserById(projectId, userId);
     if (!user?.phone) throw new CustomerAuthError('PHONE_MISSING', 'No phone number on file', 400);
-    if (user.status !== 'active') throw new CustomerAuthError('USER_DISABLED', 'Account is disabled', 403);
+    if (user.status !== 'active')
+      throw new CustomerAuthError('USER_DISABLED', 'Account is disabled', 403);
     const { code } = await this.deps.otp.issue(projectId, `phone:${user.phone}`, 'phone');
     const receipt = await this.deps.sms.send({
       to: user.phone,
@@ -792,14 +1020,21 @@ export class CustomerAuthService {
   }
 
   /** Passwordless phone sign-in: code goes to the account holding the number. */
-  async requestLoginOtp(projectId: string, phone: string): Promise<{ sent: boolean; delivered: boolean }> {
+  async requestLoginOtp(
+    projectId: string,
+    phone: string,
+  ): Promise<{ sent: boolean; delivered: boolean }> {
     const normalized = String(phone ?? '').trim();
     if (!isValidPhone(normalized)) return { sent: true, delivered: false };
     const user = await this.store.findUserByPhone(projectId, normalized);
     if (user && user.status === 'active' && !user.isAnonymous) {
       const { code } = await this.deps.otp.issue(projectId, `phone:${normalized}`, 'phone');
       const receipt = await this.deps.sms
-        .send({ to: normalized, body: `Your CloudNivo code is: ${code}. It expires in 10 minutes.`, channel: 'sms' })
+        .send({
+          to: normalized,
+          body: `Your CloudNivo code is: ${code}. It expires in 10 minutes.`,
+          channel: 'sms',
+        })
         .catch(() => ({ delivered: false, queued: false, id: 'failed', driver: 'none' }));
       this.audit('user.otp_requested', { projectId });
       return { sent: true, delivered: receipt.delivered };

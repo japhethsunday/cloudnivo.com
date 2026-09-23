@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { CustomerSession, CustomerUser, OneTimeToken } from './types.js';
+import type {
+  CustomerSession,
+  CustomerUser,
+  OneTimeToken,
+  PasskeyChallenge,
+  PasskeyCredential,
+} from './types.js';
 
 /**
  * Per-project customer auth storage. Memory adapter = dev/test namespaces
@@ -62,6 +68,21 @@ export interface CustomerAuthStore {
   ): Promise<OneTimeToken | null>;
   consumeToken(projectId: string, hash: string): Promise<boolean>;
   deleteUserTokens(projectId: string, userId: string): Promise<void>;
+
+  // ── Passkeys ──
+  savePasskey(cred: PasskeyCredential): Promise<void>;
+  findPasskey(projectId: string, credentialId: string): Promise<PasskeyCredential | null>;
+  listPasskeys(projectId: string, userId: string): Promise<PasskeyCredential[]>;
+  /** Records a successful assertion: new counter and last-used stamp. */
+  touchPasskey(projectId: string, credentialId: string, signCount: number): Promise<void>;
+  deletePasskey(projectId: string, userId: string, credentialId: string): Promise<boolean>;
+  savePasskeyChallenge(challenge: PasskeyChallenge): Promise<void>;
+  /** Reads AND removes in one step, so a challenge can never be used twice. */
+  consumePasskeyChallenge(
+    projectId: string,
+    challenge: string,
+    kind: 'register' | 'authenticate',
+  ): Promise<PasskeyChallenge | null>;
 }
 
 function now(): string {
@@ -72,6 +93,8 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
   private readonly users = new Map<string, CustomerUser>();
   private readonly sessions = new Map<string, CustomerSession>();
   private readonly tokens = new Map<string, OneTimeToken>();
+  private readonly passkeys = new Map<string, PasskeyCredential>();
+  private readonly challenges = new Map<string, PasskeyChallenge>();
 
   private userKey(projectId: string, userId: string): string {
     return `${projectId}:${userId}`;
@@ -272,5 +295,60 @@ export class MemoryCustomerAuthStore implements CustomerAuthStore {
     for (const [k, t] of this.tokens) {
       if (t.projectId === projectId && t.userId === userId) this.tokens.delete(k);
     }
+  }
+
+  // ── Passkeys ──
+
+  private pkKey(projectId: string, credentialId: string): string {
+    return `${projectId}:${credentialId}`;
+  }
+
+  async savePasskey(cred: PasskeyCredential): Promise<void> {
+    this.passkeys.set(this.pkKey(cred.projectId, cred.credentialId), { ...cred });
+  }
+
+  async findPasskey(projectId: string, credentialId: string): Promise<PasskeyCredential | null> {
+    const c = this.passkeys.get(this.pkKey(projectId, credentialId));
+    return c ? { ...c } : null;
+  }
+
+  async listPasskeys(projectId: string, userId: string): Promise<PasskeyCredential[]> {
+    return [...this.passkeys.values()]
+      .filter(c => c.projectId === projectId && c.userId === userId)
+      .map(c => ({ ...c }));
+  }
+
+  async touchPasskey(projectId: string, credentialId: string, signCount: number): Promise<void> {
+    const key = this.pkKey(projectId, credentialId);
+    const c = this.passkeys.get(key);
+    if (!c) return;
+    this.passkeys.set(key, { ...c, signCount, lastUsedAt: now() });
+  }
+
+  async deletePasskey(projectId: string, userId: string, credentialId: string): Promise<boolean> {
+    const key = this.pkKey(projectId, credentialId);
+    const c = this.passkeys.get(key);
+    // The userId check stops one user deleting another's credential by id.
+    if (!c || c.userId !== userId) return false;
+    return this.passkeys.delete(key);
+  }
+
+  async savePasskeyChallenge(challenge: PasskeyChallenge): Promise<void> {
+    this.challenges.set(`${challenge.projectId}:${challenge.challenge}`, { ...challenge });
+  }
+
+  async consumePasskeyChallenge(
+    projectId: string,
+    challenge: string,
+    kind: 'register' | 'authenticate',
+  ): Promise<PasskeyChallenge | null> {
+    const key = `${projectId}:${challenge}`;
+    const c = this.challenges.get(key);
+    // Delete before any other check: a challenge presented once is spent,
+    // whether or not it turns out to be valid.
+    this.challenges.delete(key);
+    if (!c || c.kind !== kind) return null;
+    if (Date.parse(c.expiresAt) <= Date.now()) return null;
+    return { ...c };
   }
 }
