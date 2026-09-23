@@ -149,6 +149,58 @@ describe('phase 5 storage (local provider, real bytes)', () => {
     await rm(STORAGE_DIR, { recursive: true, force: true });
   });
 
+  it('transforms an image on the signed download, and bounds what can be asked for', async () => {
+    // A real, decodable PNG — the module-level PNG fixture is only magic
+    // bytes, which no encoder can resize.
+    const sharp = (await import('sharp')).default;
+    const real = new Uint8Array(
+      await sharp({ create: { width: 400, height: 300, channels: 3, background: '#336699' } })
+        .png()
+        .toBuffer(),
+    );
+
+    const S = `/api/v1/projects/${projectA}/storage`;
+    await req(base, 'POST', `${S}/buckets`, { token: tokenA, body: { name: 'pics' } });
+    const up = await req(base, 'PUT', `${S}/buckets/pics/objects/hero.png`, {
+      token: tokenA,
+      bytes: real,
+      contentType: 'image/png',
+    });
+    expect(up.status).toBe(201);
+
+    const signed = await req(base, 'POST', `${S}/buckets/pics/sign`, {
+      token: tokenA,
+      body: { path: 'hero.png', expiresIn: 300 },
+    });
+    const url = data<{ url: string }>(signed.json).url;
+    // The signed URL carries the token in the PATH, so transform params are
+    // the first query string on it.
+    const withParams = (qs: string): string => `${url}${url.includes('?') ? '&' : '?'}${qs}`;
+
+    // Untransformed: the original bytes, unchanged.
+    const plain = await fetch(localUrl(base, url));
+    expect(plain.status).toBe(200);
+    expect(new Uint8Array(await plain.arrayBuffer())).toEqual(real);
+
+    // Transformed: resized and re-encoded, with immutable caching.
+    const webp = await fetch(localUrl(base, withParams('width=100&format=webp')));
+    expect(webp.status).toBe(200);
+    expect(webp.headers.get('content-type')).toBe('image/webp');
+    expect(webp.headers.get('cache-control')).toContain('immutable');
+    expect(webp.headers.get('x-image-width')).toBe('100');
+    const bytes = new Uint8Array(await webp.arrayBuffer());
+    expect(Buffer.from(bytes.slice(0, 4)).toString('ascii')).toBe('RIFF');
+    expect(bytes.byteLength).toBeLessThan(real.byteLength);
+
+    // The ETag is per-derivative, so two transforms are not one cache entry.
+    const other = await fetch(localUrl(base, withParams('width=50&format=webp')));
+    expect(other.headers.get('etag')).not.toBe(webp.headers.get('etag'));
+
+    // A transform past the cost ceiling is refused, not attempted.
+    const huge = await fetch(localUrl(base, withParams('width=99999')));
+    expect(huge.status).toBe(400);
+  });
+
   it('end-to-end: bucket → upload → metadata → list → signed URL → download → delete → bucket', async () => {
     const S = `/api/v1/projects/${projectA}/storage`;
     const created = await req(base, 'POST', `${S}/buckets`, {
@@ -434,7 +486,12 @@ describe('phase 5 storage (local provider, real bytes)', () => {
     expect(mkBucket.status).toBe(201);
     const created = await req(base, 'POST', `${S}/uploads`, {
       token: tokenA,
-      body: { bucket: 'resumable', path: 'multi/big.bin', contentType: 'application/octet-stream', totalBytes: 6 },
+      body: {
+        bucket: 'resumable',
+        path: 'multi/big.bin',
+        contentType: 'application/octet-stream',
+        totalBytes: 6,
+      },
     });
     expect(created.status).toBe(201);
     const uploadId = data<{ upload: { id: string } }>(created.json).upload.id;
@@ -453,12 +510,20 @@ describe('phase 5 storage (local provider, real bytes)', () => {
     const status = await req(base, 'GET', `${S}/uploads/${uploadId}`, { token: tokenA });
     expect(data<{ upload: { parts: number[] } }>(status.json).upload.parts).toEqual([0, 1, 9]);
     // Gap at 2..8 blocks completion.
-    expect((await req(base, 'POST', `${S}/uploads/${uploadId}/complete`, { token: tokenA })).status).toBe(400);
+    expect(
+      (await req(base, 'POST', `${S}/uploads/${uploadId}/complete`, { token: tokenA })).status,
+    ).toBe(400);
     // Abort and redo compactly.
-    expect((await req(base, 'DELETE', `${S}/uploads/${uploadId}`, { token: tokenA })).status).toBe(200);
+    expect((await req(base, 'DELETE', `${S}/uploads/${uploadId}`, { token: tokenA })).status).toBe(
+      200,
+    );
     const created2 = await req(base, 'POST', `${S}/uploads`, {
       token: tokenA,
-      body: { bucket: 'resumable', path: 'multi/small.bin', contentType: 'application/octet-stream' },
+      body: {
+        bucket: 'resumable',
+        path: 'multi/small.bin',
+        contentType: 'application/octet-stream',
+      },
     });
     const upload2 = data<{ upload: { id: string } }>(created2.json).upload.id;
     expect(await part(upload2, 0, new Uint8Array([7, 8]))).toBe(200);
@@ -467,7 +532,9 @@ describe('phase 5 storage (local provider, real bytes)', () => {
     expect(data<{ object: { size: number } }>(done.json).object.size).toBe(2);
     const analytics = await req(base, 'GET', `${S}/analytics`, { token: tokenA });
     expect(analytics.status).toBe(200);
-    const buckets = data<{ buckets: { name: string; files: number }[]; totals: { files: number } }>(analytics.json);
+    const buckets = data<{ buckets: { name: string; files: number }[]; totals: { files: number } }>(
+      analytics.json,
+    );
     expect(buckets.buckets.some(b => b.name === 'resumable' && b.files >= 1)).toBe(true);
     expect(buckets.totals.files).toBeGreaterThan(0);
   });

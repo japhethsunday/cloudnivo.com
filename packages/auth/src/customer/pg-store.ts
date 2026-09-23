@@ -7,7 +7,13 @@
  * `ensureAuthSchema()` is idempotent — safe to run on every boot/enable.
  */
 
-import type { CustomerSession, CustomerUser, OneTimeToken } from './types.js';
+import type {
+  CustomerSession,
+  CustomerUser,
+  OneTimeToken,
+  PasskeyChallenge,
+  PasskeyCredential,
+} from './types.js';
 
 export interface PgRunner {
   query(text: string, params: unknown[]): Promise<Record<string, unknown>[]>;
@@ -71,6 +77,37 @@ ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS backup_code_hashes text[] NOT NU
 ALTER TABLE auth.one_time_tokens DROP CONSTRAINT IF EXISTS one_time_tokens_kind_check;
 ALTER TABLE auth.one_time_tokens ADD CONSTRAINT one_time_tokens_kind_check
   CHECK (kind IN ('verify', 'reset', 'magic', 'mfa'));
+
+-- Passkeys (WebAuthn). The public key is not a secret, but the credential id
+-- is an identifier an attacker could enumerate users with, so neither is ever
+-- returned to an unauthenticated caller.
+CREATE TABLE IF NOT EXISTS auth.passkeys (
+  credential_id text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  public_key text NOT NULL,
+  algorithm integer NOT NULL,
+  sign_count bigint NOT NULL DEFAULT 0,
+  aaguid text,
+  fmt text NOT NULL DEFAULT 'none',
+  label text,
+  backed_up boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS auth_passkeys_user_idx ON auth.passkeys (user_id);
+
+-- A challenge is single-use and short-lived: storing it server-side is what
+-- stops an assertion being replayed, so it cannot live in a cookie or be
+-- echoed back by the client.
+CREATE TABLE IF NOT EXISTS auth.passkey_challenges (
+  challenge text PRIMARY KEY,
+  user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('register', 'authenticate')),
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_passkey_challenges_expiry_idx
+  ON auth.passkey_challenges (expires_at);
 `.trim();
 
 /** Split DDL into single statements (no `;` inside literals here by construction). */
@@ -406,5 +443,119 @@ export class PostgresCustomerAuthStore {
 
   async deleteUserTokens(userId: string): Promise<void> {
     await this.run.query(`DELETE FROM auth.one_time_tokens WHERE user_id = $1`, [userId]);
+  }
+
+  // ── Passkeys ──
+
+  async savePasskey(cred: Omit<PasskeyCredential, 'projectId'>): Promise<void> {
+    await this.run.query(
+      `INSERT INTO auth.passkeys
+         (credential_id, user_id, public_key, algorithm, sign_count, aaguid, fmt, label, backed_up)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (credential_id) DO NOTHING`,
+      [
+        cred.credentialId,
+        cred.userId,
+        cred.publicKey,
+        cred.algorithm,
+        cred.signCount,
+        cred.aaguid,
+        cred.fmt,
+        cred.label,
+        cred.backedUp,
+      ],
+    );
+  }
+
+  async findPasskey(credentialId: string): Promise<PasskeyCredential | null> {
+    const [r] = await this.run.query(`SELECT * FROM auth.passkeys WHERE credential_id = $1`, [
+      credentialId,
+    ]);
+    return r ? this.rowToPasskey(r) : null;
+  }
+
+  async listPasskeys(userId: string): Promise<PasskeyCredential[]> {
+    const rows = await this.run.query(
+      `SELECT * FROM auth.passkeys WHERE user_id = $1 ORDER BY created_at`,
+      [userId],
+    );
+    return rows.map(r => this.rowToPasskey(r));
+  }
+
+  async touchPasskey(credentialId: string, signCount: number): Promise<void> {
+    await this.run.query(
+      `UPDATE auth.passkeys SET sign_count = $2, last_used_at = now() WHERE credential_id = $1`,
+      [credentialId, signCount],
+    );
+  }
+
+  async deletePasskey(userId: string, credentialId: string): Promise<boolean> {
+    // user_id is in the WHERE clause, not checked afterwards: one user must
+    // not be able to delete another's credential by knowing its id.
+    const rows = await this.run.query(
+      `DELETE FROM auth.passkeys WHERE credential_id = $1 AND user_id = $2 RETURNING credential_id`,
+      [credentialId, userId],
+    );
+    return rows.length > 0;
+  }
+
+  async savePasskeyChallenge(challenge: Omit<PasskeyChallenge, 'projectId'>): Promise<void> {
+    await this.run.query(
+      `INSERT INTO auth.passkey_challenges (challenge, user_id, kind, expires_at)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (challenge) DO NOTHING`,
+      [challenge.challenge, challenge.userId, challenge.kind, challenge.expiresAt],
+    );
+  }
+
+  async consumePasskeyChallenge(
+    challenge: string,
+    kind: 'register' | 'authenticate',
+  ): Promise<PasskeyChallenge | null> {
+    /**
+     * DELETE ... RETURNING makes read-and-spend one atomic statement. A
+     * SELECT followed by a DELETE would let two concurrent requests both
+     * observe the same live challenge and both succeed — which is exactly
+     * the replay the challenge exists to prevent.
+     */
+    const [r] = await this.run.query(
+      `DELETE FROM auth.passkey_challenges
+         WHERE challenge = $1 AND kind = $2 AND expires_at > now()
+       RETURNING challenge, user_id, kind, expires_at`,
+      [challenge, kind],
+    );
+    if (!r) return null;
+    return {
+      projectId: this.projectId,
+      challenge: String(r['challenge']),
+      userId: r['user_id'] ? String(r['user_id']) : null,
+      kind: String(r['kind']) as 'register' | 'authenticate',
+      expiresAt: String(r['expires_at']),
+    };
+  }
+
+  /** Also prunes expired challenges; called opportunistically. */
+  async purgeExpiredChallenges(): Promise<number> {
+    const rows = await this.run.query(
+      `DELETE FROM auth.passkey_challenges WHERE expires_at <= now() RETURNING challenge`,
+      [],
+    );
+    return rows.length;
+  }
+
+  private rowToPasskey(r: Record<string, unknown>): PasskeyCredential {
+    return {
+      projectId: this.projectId,
+      credentialId: String(r['credential_id']),
+      userId: String(r['user_id']),
+      publicKey: String(r['public_key']),
+      algorithm: Number(r['algorithm']),
+      signCount: Number(r['sign_count']),
+      aaguid: r['aaguid'] ? String(r['aaguid']) : null,
+      fmt: String(r['fmt']),
+      label: r['label'] ? String(r['label']) : null,
+      backedUp: Boolean(r['backed_up']),
+      createdAt: String(r['created_at']),
+      lastUsedAt: r['last_used_at'] ? String(r['last_used_at']) : null,
+    };
   }
 }

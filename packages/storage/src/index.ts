@@ -18,6 +18,7 @@ export * from './policies.js';
 export * from './metadata.js';
 export * from './metadata-drizzle.js';
 export * from './service.js';
+export * from './transform.js';
 export * from './openapi.js';
 
 export interface PutOptions {
