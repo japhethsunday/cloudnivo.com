@@ -215,3 +215,4 @@ export * from './customer/pg-store.js';
 export * from './customer/service.js';
 export * from './customer/rls.js';
 export * from './webauthn.js';
+export * from './saml.js';
