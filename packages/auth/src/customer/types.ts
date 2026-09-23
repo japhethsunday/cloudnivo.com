@@ -145,6 +145,57 @@ export const CUSTOMER_AUDIT_EVENTS = [
   'user.mfa_disabled',
   'user.mfa_challenged',
   'user.mfa_verified',
+  'user.passkey_registered',
+  'user.passkey_authenticated',
+  'user.passkey_removed',
+  'user.passkey_clone_suspected',
   'user.phone_verified',
 ] as const;
 export type CustomerAuditEvent = (typeof CUSTOMER_AUDIT_EVENTS)[number];
+
+/** A registered passkey. `publicKey` is SPKI DER, base64. */
+export interface PasskeyCredential {
+  projectId: string;
+  credentialId: string;
+  userId: string;
+  publicKey: string;
+  algorithm: number;
+  signCount: number;
+  aaguid: string | null;
+  fmt: string;
+  label: string | null;
+  backedUp: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/**
+ * A pending WebAuthn challenge. Held server-side and single-use: that is what
+ * makes an assertion unreplayable, so it must never round-trip through the
+ * client as its own proof.
+ */
+export interface PasskeyChallenge {
+  projectId: string;
+  challenge: string;
+  userId: string | null;
+  kind: 'register' | 'authenticate';
+  expiresAt: string;
+}
+
+/** What the client may see: never the public key or the credential id. */
+export function toPublicPasskey(cred: PasskeyCredential): {
+  id: string;
+  label: string | null;
+  backedUp: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+} {
+  return {
+    // A short stable handle, not the credential id itself.
+    id: cred.credentialId.slice(0, 16),
+    label: cred.label,
+    backedUp: cred.backedUp,
+    createdAt: cred.createdAt,
+    lastUsedAt: cred.lastUsedAt,
+  };
+}

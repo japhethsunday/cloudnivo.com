@@ -11,6 +11,8 @@ import {
   MemorySmsService,
   OtpService,
   PostgresCustomerAuthStore,
+  type PasskeyChallenge,
+  type PasskeyCredential,
   ResendEmailService,
   SmtpEmailService,
   ensureAuthSchema,
@@ -153,6 +155,38 @@ class PgCustomerAuthAdapter implements CustomerAuthStore {
   deleteUserTokens(_projectId: string, userId: string) {
     void _projectId;
     return this.inner.deleteUserTokens(userId);
+  }
+
+  // ── Passkeys (the inner store is already scoped to one project) ──
+  savePasskey(cred: PasskeyCredential) {
+    return this.inner.savePasskey(cred);
+  }
+  findPasskey(_projectId: string, credentialId: string) {
+    void _projectId;
+    return this.inner.findPasskey(credentialId);
+  }
+  listPasskeys(_projectId: string, userId: string) {
+    void _projectId;
+    return this.inner.listPasskeys(userId);
+  }
+  touchPasskey(_projectId: string, credentialId: string, signCount: number) {
+    void _projectId;
+    return this.inner.touchPasskey(credentialId, signCount);
+  }
+  deletePasskey(_projectId: string, userId: string, credentialId: string) {
+    void _projectId;
+    return this.inner.deletePasskey(userId, credentialId);
+  }
+  savePasskeyChallenge(challenge: PasskeyChallenge) {
+    return this.inner.savePasskeyChallenge(challenge);
+  }
+  consumePasskeyChallenge(
+    _projectId: string,
+    challenge: string,
+    kind: 'register' | 'authenticate',
+  ) {
+    void _projectId;
+    return this.inner.consumePasskeyChallenge(challenge, kind);
   }
 }
 
@@ -341,6 +375,28 @@ export async function projectCorsHeaders(
   return base;
 }
 
+/** Base64url, bounded: these are parsed by the WebAuthn verifier. */
+const b64u = z
+  .string()
+  .min(1)
+  .max(8192)
+  .regex(/^[A-Za-z0-9_-]+=*$/, 'must be base64url');
+
+const PasskeyRegisterBody = z.object({
+  challenge: z.string().min(16).max(256),
+  attestationObject: b64u,
+  clientDataJSON: b64u,
+  label: z.string().max(80).optional(),
+});
+
+const PasskeyLoginBody = z.object({
+  challenge: z.string().min(16).max(256),
+  credentialId: b64u,
+  authenticatorData: b64u,
+  clientDataJSON: b64u,
+  signature: b64u,
+});
+
 const SignupBody = z.object({
   email: z.string().min(3).max(320),
   password: z.string().min(8).max(128),
@@ -389,11 +445,7 @@ const PhoneBody = z.object({ phone: z.string().min(7).max(20) });
 const PhoneVerifyBody = z.object({ code: z.string().min(4).max(10) });
 
 /** Bot gate: enforced only when CAPTCHA_PROVIDER is keyed (dev stays open). */
-async function checkCaptcha(
-  ctx: ApiContext,
-  req: IncomingMessage,
-  token: unknown,
-): Promise<void> {
+async function checkCaptcha(ctx: ApiContext, req: IncomingMessage, token: unknown): Promise<void> {
   const ip = clientIpOf(req, ctx.config.TRUSTED_PROXY_HOPS);
   let result: { ok: boolean; enforced: boolean };
   try {
@@ -403,7 +455,11 @@ async function checkCaptcha(
       ip,
     );
   } catch (err) {
-    throw new ApiError('CAPTCHA_UNAVAILABLE', err instanceof Error ? err.message : 'Try again', 503);
+    throw new ApiError(
+      'CAPTCHA_UNAVAILABLE',
+      err instanceof Error ? err.message : 'Try again',
+      503,
+    );
   }
   if (result.enforced && !result.ok) {
     throw new ApiError('CAPTCHA_FAILED', 'Bot verification failed', 403);
@@ -739,7 +795,10 @@ export async function handleCustomerAuthRoutes(
     }
     if (head === 'phone-login-verify' && req.method === 'POST') {
       await authLimit(ctx, key(`phonelogin:${meta.ip ?? 'unknown'}`));
-      const parsed = parseBody(PhoneVerifyBody.extend({ phone: z.string().min(7).max(20) }), await readJson());
+      const parsed = parseBody(
+        PhoneVerifyBody.extend({ phone: z.string().min(7).max(20) }),
+        await readJson(),
+      );
       const out = await service.verifyLoginOtp(project.id, parsed.phone, parsed.code, meta);
       emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
       return finish(200, ok(out, requestId));
@@ -819,6 +878,84 @@ export async function handleCustomerAuthRoutes(
       await service.deleteUser(project.id, parsed.id);
       return finish(200, ok({ deleted: true }, requestId));
     }
+    // ── Passkeys (WebAuthn) ──────────────────────────────────────────
+    if (head === 'passkeys') {
+      /**
+       * A passkey is bound to an origin and an rpId, and the binding is what
+       * makes it unphishable. Both come from the project's configured
+       * origins - never from the request - so a caller cannot nominate the
+       * origin their credential will be accepted for.
+       */
+      const cfg = await ctx.registry.getAuthConfig(project.id);
+      const origins = (cfg?.allowedOrigins ?? []).length
+        ? (cfg?.allowedOrigins as string[])
+        : [ctx.config.APP_URL];
+      const rpId = (() => {
+        try {
+          return new URL(origins[0] as string).hostname;
+        } catch {
+          throw new ApiError(
+            'CONFIG_INVALID',
+            'Configure a valid allowed origin before using passkeys',
+            400,
+          );
+        }
+      })();
+
+      const sub = action[2];
+
+      if (tail === 'register' && sub === 'begin' && req.method === 'POST') {
+        const caller = await customerBearer(ctx, req, project);
+        const out = await service.beginPasskeyRegistration(project.id, caller.user.id);
+        return finish(200, ok({ ...out, rpId, origin: origins[0] }, requestId));
+      }
+
+      if (tail === 'register' && sub === 'finish' && req.method === 'POST') {
+        const caller = await customerBearer(ctx, req, project);
+        const parsed = parseBody(PasskeyRegisterBody, await readJson());
+        const out = await service.finishPasskeyRegistration(project.id, caller.user.id, {
+          ...parsed,
+          origins,
+          rpId,
+        });
+        return finish(201, ok({ passkey: out }, requestId));
+      }
+
+      if (tail === 'authenticate' && sub === 'begin' && req.method === 'POST') {
+        // Public and deliberately uninformative: it takes no identifier and
+        // answers identically whether or not any account exists.
+        await authLimit(ctx, key(`passkey-begin:${meta.ip ?? 'unknown'}`));
+        const out = await service.beginPasskeyAuthentication(project.id);
+        return finish(200, ok({ ...out, rpId }, requestId));
+      }
+
+      if (tail === 'authenticate' && sub === 'finish' && req.method === 'POST') {
+        await authLimit(ctx, key(`passkey-finish:${meta.ip ?? 'unknown'}`));
+        const parsed = parseBody(PasskeyLoginBody, await readJson());
+        const out = await service.finishPasskeyAuthentication(
+          project.id,
+          { ...parsed, origins, rpId },
+          meta,
+        );
+        emitAuthHook(ctx, project, 'user.signed_in', out.user.id);
+        meterUsage(ctx, project.organizationId, project.id, 'api', 'api_requests', 1);
+        return finish(200, ok(out, requestId));
+      }
+
+      if (!tail && req.method === 'GET') {
+        const caller = await customerBearer(ctx, req, project);
+        const passkeys = await service.listPasskeys(project.id, caller.user.id);
+        return finish(200, ok({ passkeys }, requestId));
+      }
+
+      if (tail && req.method === 'DELETE') {
+        const caller = await customerBearer(ctx, req, project);
+        const removed = await service.removePasskey(project.id, caller.user.id, tail);
+        if (!removed) throw new ApiError('NOT_FOUND', 'Passkey not found', 404);
+        return finish(200, ok({ deleted: true }, requestId));
+      }
+    }
+
     if (head === 'config' && req.method === 'GET') {
       await platformAdmin(ctx, req, project).catch(async () => {
         // Members may read; admins may write.

@@ -405,7 +405,9 @@ describe('customer auth extensions E2E', () => {
     const A = `/api/v1/projects/${projectA}/auth`;
     const anon = await req(base, 'POST', `${A}/anonymous`, { body: {} });
     expect(anon.status).toBe(200);
-    const anonUser = data<{ user: { id: string; isAnonymous: boolean; role: string } }>(anon.json).user;
+    const anonUser = data<{ user: { id: string; isAnonymous: boolean; role: string } }>(
+      anon.json,
+    ).user;
     expect(anonUser.isAnonymous).toBe(true);
     expect(anonUser.role).toBe('anonymous');
     expect(JSON.stringify(anon.json)).not.toContain('passwordHash');
@@ -442,13 +444,21 @@ describe('customer auth extensions E2E', () => {
     expect(v.status).toBe(200);
     expect(data<{ tokens: { tokenType: string } }>(v.json).tokens.tokenType).toBe('bearer');
     // Single use.
-    expect((await req(base, 'POST', `${A}/otp-verify`, {
-      body: { email: 'otp-ext@example.com', code },
-    })).status).toBe(410);
+    expect(
+      (
+        await req(base, 'POST', `${A}/otp-verify`, {
+          body: { email: 'otp-ext@example.com', code },
+        })
+      ).status,
+    ).toBe(410);
     // Unknown emails still get a neutral response.
-    expect((await req(base, 'POST', `${A}/otp-request`, {
-      body: { email: 'ghost-ext@example.com' },
-    })).status).toBe(200);
+    expect(
+      (
+        await req(base, 'POST', `${A}/otp-request`, {
+          body: { email: 'ghost-ext@example.com' },
+        })
+      ).status,
+    ).toBe(200);
   });
 
   it('magic links sign in and verify email', async () => {
@@ -465,7 +475,9 @@ describe('customer auth extensions E2E', () => {
     const c = await req(base, 'POST', `${A}/magic-consume`, { body: { token: magicToken } });
     expect(c.status).toBe(200);
     expect(data<{ user: { emailVerified: boolean } }>(c.json).user.emailVerified).toBe(true);
-    expect((await req(base, 'POST', `${A}/magic-consume`, { body: { token: magicToken } })).status).toBe(400);
+    expect(
+      (await req(base, 'POST', `${A}/magic-consume`, { body: { token: magicToken } })).status,
+    ).toBe(400);
   });
 
   it('totp mfa gates password login until verified', async () => {
@@ -496,9 +508,13 @@ describe('customer auth extensions E2E', () => {
     expect(data<{ mfaRequired: boolean }>(challenged.json).mfaRequired).toBe(true);
     const ticket = data<{ mfaTicket: string }>(challenged.json).mfaTicket;
     // ...wrong code fails, live code opens the session.
-    expect((await req(base, 'POST', `${A}/mfa-verify`, {
-      body: { mfaTicket: ticket, code: '000000' },
-    })).status).toBe(401);
+    expect(
+      (
+        await req(base, 'POST', `${A}/mfa-verify`, {
+          body: { mfaTicket: ticket, code: '000000' },
+        })
+      ).status,
+    ).toBe(401);
     const challenged2 = await req(base, 'POST', `${A}/token`, {
       body: { email: 'mfa-ext@example.com', password: 'long-enough-1' },
     });
@@ -518,10 +534,14 @@ describe('customer auth extensions E2E', () => {
       body: { email: 'phone-ext@example.com', password: 'long-enough-1' },
     });
     const session = data<{ tokens: { accessToken: string } }>(login.json).tokens.accessToken;
-    expect((await req(base, 'POST', `${A}/phone`, {
-      customer: session,
-      body: { phone: 'bad' },
-    })).status).toBe(400);
+    expect(
+      (
+        await req(base, 'POST', `${A}/phone`, {
+          customer: session,
+          body: { phone: 'bad' },
+        })
+      ).status,
+    ).toBe(400);
     const set = await req(base, 'POST', `${A}/phone`, {
       customer: session,
       body: { phone: '+15550001111' },
@@ -531,5 +551,215 @@ describe('customer auth extensions E2E', () => {
     expect(rq.status).toBe(200);
     // Dev driver honestly reports non-delivery; no secrets in responses.
     expect(JSON.stringify(rq.json)).not.toContain('+15550001111');
+  });
+});
+
+/**
+ * Passkeys, end to end over HTTP: register a credential produced by a real
+ * keypair, then log in with an assertion that key signs. Nothing here is
+ * mocked — the same verifier that runs in production checks these bytes.
+ */
+describe('passkeys E2E', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let projectA = '';
+  let userToken = '';
+
+  const RP_ID = 'localhost';
+  const ORIGIN = 'http://localhost:3000';
+
+  const b64u = (b: Buffer): string => b.toString('base64url');
+
+  // CBOR writers: only the shapes an authenticator emits.
+  const cborUint = (n: number): Buffer => {
+    if (n < 24) return Buffer.from([n]);
+    if (n < 256) return Buffer.from([0x18, n]);
+    if (n < 65536) return Buffer.from([0x19, n >> 8, n & 0xff]);
+    const b = Buffer.alloc(5);
+    b[0] = 0x1a;
+    b.writeUInt32BE(n, 1);
+    return b;
+  };
+  const cborNeg = (n: number): Buffer => {
+    const b = cborUint(-1 - n);
+    b[0] = (b[0] as number) | 0x20;
+    return b;
+  };
+  const cborBytes = (v: Buffer): Buffer => {
+    const h = cborUint(v.length);
+    h[0] = (h[0] as number) | 0x40;
+    return Buffer.concat([h, v]);
+  };
+  const cborText = (v: string): Buffer => {
+    const b = Buffer.from(v, 'utf8');
+    const h = cborUint(b.length);
+    h[0] = (h[0] as number) | 0x60;
+    return Buffer.concat([h, b]);
+  };
+  const cborMap = (entries: [Buffer, Buffer][]): Buffer => {
+    const h = cborUint(entries.length);
+    h[0] = (h[0] as number) | 0xa0;
+    return Buffer.concat([h, ...entries.flatMap(([k, v]) => [k, v])]);
+  };
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const tokenA = await platformToken(USER_A);
+    projectA = await makeProject(base, tokenA, 'pkorg', 'pkshop');
+    // Bind the project's WebAuthn origin explicitly; the server derives rpId
+    // from it rather than trusting anything in the request.
+    await req(base, 'PATCH', `/api/v1/projects/${projectA}/auth/config`, {
+      token: tokenA,
+      body: { allowedOrigins: [ORIGIN] },
+    });
+    const A = `/api/v1/projects/${projectA}/auth`;
+    await req(base, 'POST', `${A}/signup`, {
+      body: { email: 'passkey@example.com', password: 'Str0ng!Passw0rd#2024' },
+    });
+    const login = await req(base, 'POST', `${A}/token`, {
+      body: {
+        grant_type: 'password',
+        email: 'passkey@example.com',
+        password: 'Str0ng!Passw0rd#2024',
+      },
+    });
+    userToken = data<{ tokens: { accessToken: string } }>(login.json).tokens.accessToken;
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('registers a real credential and signs in with it', async () => {
+    const { createHash, createSign, generateKeyPairSync, randomBytes } =
+      await import('node:crypto');
+    const A = `/api/v1/projects/${projectA}/auth`;
+
+    const kp = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const spki = kp.publicKey.export({ type: 'spki', format: 'der' }) as Buffer;
+    const point = spki.subarray(spki.length - 65);
+    const cose = cborMap([
+      [cborUint(1), cborUint(2)],
+      [cborUint(3), cborNeg(-7)],
+      [cborNeg(-1), cborUint(1)],
+      [cborNeg(-2), cborBytes(point.subarray(1, 33))],
+      [cborNeg(-3), cborBytes(point.subarray(33, 65))],
+    ]);
+    const credentialId = randomBytes(32);
+
+    const authData = (flags: number, withCred: boolean): Buffer => {
+      const head = Buffer.alloc(5);
+      head[0] = flags;
+      head.writeUInt32BE(0, 1);
+      const base37 = Buffer.concat([createHash('sha256').update(RP_ID).digest(), head]);
+      if (!withCred) return base37;
+      const len = Buffer.alloc(2);
+      len.writeUInt16BE(credentialId.length, 0);
+      return Buffer.concat([base37, Buffer.alloc(16), len, credentialId, cose]);
+    };
+    const clientData = (type: string, challenge: string): string =>
+      b64u(Buffer.from(JSON.stringify({ type, challenge, origin: ORIGIN, crossOrigin: false })));
+
+    // ── register ──
+    const begin = await req(base, 'POST', `${A}/passkeys/register/begin`, { customer: userToken });
+    expect(begin.status).toBe(200);
+    const reg = data<{ challenge: string; rpId: string }>(begin.json);
+    expect(reg.rpId).toBe(RP_ID);
+
+    const attestation = b64u(
+      cborMap([
+        [cborText('fmt'), cborText('none')],
+        [cborText('attStmt'), cborMap([])],
+        [cborText('authData'), cborBytes(authData(0x45, true))],
+      ]),
+    );
+    const finished = await req(base, 'POST', `${A}/passkeys/register/finish`, {
+      customer: userToken,
+      body: {
+        challenge: reg.challenge,
+        attestationObject: attestation,
+        clientDataJSON: clientData('webauthn.create', reg.challenge),
+        label: 'Test key',
+      },
+    });
+    expect(finished.status).toBe(201);
+
+    const listed = await req(base, 'GET', `${A}/passkeys`, { customer: userToken });
+    expect(listed.status).toBe(200);
+    const passkeys = data<{ passkeys: { id: string; label: string }[] }>(listed.json).passkeys;
+    expect(passkeys).toHaveLength(1);
+    expect(passkeys[0]?.label).toBe('Test key');
+    // The credential id and public key never leave the server.
+    expect(JSON.stringify(listed.json)).not.toContain(b64u(credentialId));
+
+    // ── sign in ──
+    const beginAuth = await req(base, 'POST', `${A}/passkeys/authenticate/begin`, { body: {} });
+    expect(beginAuth.status).toBe(200);
+    const ch = data<{ challenge: string }>(beginAuth.json).challenge;
+
+    const ad = authData(0x05, false);
+    const cdj = clientData('webauthn.get', ch);
+    const signer = createSign('SHA256');
+    signer.update(
+      Buffer.concat([ad, createHash('sha256').update(Buffer.from(cdj, 'base64url')).digest()]),
+    );
+    signer.end();
+    const signature = b64u(signer.sign({ key: kp.privateKey, dsaEncoding: 'der' }));
+
+    const loggedIn = await req(base, 'POST', `${A}/passkeys/authenticate/finish`, {
+      body: {
+        challenge: ch,
+        credentialId: b64u(credentialId),
+        authenticatorData: b64u(ad),
+        clientDataJSON: cdj,
+        signature,
+      },
+    });
+    expect(loggedIn.status).toBe(200);
+    const session = data<{ user: { email: string }; tokens: { accessToken: string } }>(
+      loggedIn.json,
+    );
+    expect(session.user.email).toBe('passkey@example.com');
+    expect(session.tokens.accessToken).toBeTruthy();
+
+    // ── the challenge is spent: replaying the exact same assertion fails ──
+    const replay = await req(base, 'POST', `${A}/passkeys/authenticate/finish`, {
+      body: {
+        challenge: ch,
+        credentialId: b64u(credentialId),
+        authenticatorData: b64u(ad),
+        clientDataJSON: cdj,
+        signature,
+      },
+    });
+    expect(replay.status).toBe(400);
+
+    // ── a forged signature from a different key is refused ──
+    const other = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const beginAgain = await req(base, 'POST', `${A}/passkeys/authenticate/begin`, { body: {} });
+    const ch2 = data<{ challenge: string }>(beginAgain.json).challenge;
+    const cdj2 = clientData('webauthn.get', ch2);
+    const forger = createSign('SHA256');
+    forger.update(
+      Buffer.concat([ad, createHash('sha256').update(Buffer.from(cdj2, 'base64url')).digest()]),
+    );
+    forger.end();
+    const forged = await req(base, 'POST', `${A}/passkeys/authenticate/finish`, {
+      body: {
+        challenge: ch2,
+        credentialId: b64u(credentialId),
+        authenticatorData: b64u(ad),
+        clientDataJSON: cdj2,
+        signature: b64u(forger.sign({ key: other.privateKey, dsaEncoding: 'der' })),
+      },
+    });
+    expect(forged.status).toBe(401);
+  });
+
+  it('refuses to list or delete passkeys without a session', async () => {
+    const A = `/api/v1/projects/${projectA}/auth`;
+    expect((await req(base, 'GET', `${A}/passkeys`)).status).toBe(401);
+    expect((await req(base, 'DELETE', `${A}/passkeys/abcdef0123456789`)).status).toBe(401);
   });
 });
