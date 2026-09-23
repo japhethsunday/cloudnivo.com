@@ -1,7 +1,11 @@
 name: cloudnivo
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector's own image, which is postgres:16 with the vector extension
+    # already built in. Plain postgres:16 cannot CREATE EXTENSION vector, so
+    # the vector search suites would skip everywhere and a broken query plan
+    # would reach customers unnoticed.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cloudnivo}

@@ -51,6 +51,9 @@ export const EXTENSION_ALLOWLIST = new Set([
   'fuzzystrmatch',
   'ltree',
   'hstore',
+  // Vector similarity search. Ships the `vector` type plus the hnsw/ivfflat
+  // index access methods; no privileged hooks, so it is safe to self-install.
+  'vector',
 ]);
 
 export function assertExtensionAllowed(name: string): string {

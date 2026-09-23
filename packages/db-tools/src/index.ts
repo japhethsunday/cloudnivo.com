@@ -8,3 +8,4 @@ export * from './errors.js';
 export * from './import.js';
 export * from './migrate.js';
 export * from './migration-plan.js';
+export * from './vector-search.js';
