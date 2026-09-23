@@ -5,3 +5,4 @@ export * from './engine.js';
 export * from './keys.js';
 export * from './keys-drizzle.js';
 export * from './openapi.js';
+export * from './graphql.js';
