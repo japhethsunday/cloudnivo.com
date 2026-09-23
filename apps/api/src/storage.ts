@@ -9,6 +9,10 @@ import {
   dispositionFor,
   type StorageCaller,
   type StorageMetadataStore,
+  applyTransform,
+  assertTransformable,
+  parseTransform,
+  transformCacheKey,
 } from '@cloudnivo/storage';
 import type { Logger } from '@cloudnivo/logging';
 import type { AppConfig } from '@cloudnivo/config';
@@ -251,8 +255,7 @@ export async function handleStorageRoutes(
   const [projectId, , ...segs] = rest;
   if (!projectId) return false;
   const start = Date.now();
-  const ip =
-    rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
+  const ip = rateLimitIp(req, ctx.config.TRUSTED_PROXY_HOPS);
   const finish = (status: number, body: unknown, fields: Record<string, unknown> = {}): true => {
     logger.info('storage.request', {
       project: projectId,
@@ -301,6 +304,34 @@ export async function handleStorageRoutes(
           out.set(c, off);
           off += c.byteLength;
         }
+        /**
+         * Optional on-the-fly transform. The signed token already proved the
+         * caller may read this object, so a transform changes only the
+         * representation — never what is reachable. parseTransform bounds the
+         * cost; see packages/storage/src/transform.ts.
+         */
+        const spec = parseTransform(query);
+        if (spec) {
+          assertTransformable(object.mimeType);
+          const image = await applyTransform(out, spec, object.mimeType);
+          sendBytes(res, 200, image.bytes, {
+            ...baseHeaders,
+            'Content-Type': image.contentType,
+            'Content-Disposition': dispositionFor(image.contentType, object.filename),
+            // Derivatives are immutable: the key includes the source etag, so
+            // replacing the object changes the URL's identity rather than
+            // needing a purge.
+            ETag: `"${transformCacheKey(object.etag, spec)}"`,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            // The same path with different transform params is a different
+            // body, so a shared cache must key on the query string.
+            Vary: 'Accept',
+            'X-Image-Width': String(image.width ?? ''),
+            'X-Image-Height': String(image.height ?? ''),
+          });
+          return true;
+        }
+
         sendBytes(res, 200, out, {
           ...baseHeaders,
           'Content-Type': object.mimeType,
@@ -360,7 +391,11 @@ export async function handleStorageRoutes(
     }
 
     /** Agent scope gate for one storage operation (no-op for other callers). */
-    async function gateSt(opts: { scope: string; action: string; resource?: string }): Promise<void> {
+    async function gateSt(opts: {
+      scope: string;
+      action: string;
+      resource?: string;
+    }): Promise<void> {
       if (!agent) return;
       await requireAgentScope(ctx, req, agent, {
         scope: opts.scope,
@@ -441,10 +476,20 @@ export async function handleStorageRoutes(
       auditSt('storage.upload.abort', segs[1].slice(0, 24));
       return finish(200, ok({ aborted: true }, requestId), { caller: caller.kind });
     }
-    if (segs[0] === 'uploads' && segs[1] && segs[2] === 'parts' && segs.length === 4 && req.method === 'PUT') {
+    if (
+      segs[0] === 'uploads' &&
+      segs[1] &&
+      segs[2] === 'parts' &&
+      segs.length === 4 &&
+      req.method === 'PUT'
+    ) {
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
-      await gateSt({ scope: 'storage.write', action: 'storage.upload.part', resource: segs[1].slice(0, 24) });
+      await gateSt({
+        scope: 'storage.write',
+        action: 'storage.upload.part',
+        resource: segs[1].slice(0, 24),
+      });
       const index = Number(segs[3]);
       if (!Number.isInteger(index) || index < 0 || index > 999) {
         throw new ApiError('VALIDATION_ERROR', 'Part index must be 0-999', 400);
@@ -462,10 +507,20 @@ export async function handleStorageRoutes(
       meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
       return finish(200, ok({ part }, requestId), { caller: caller.kind });
     }
-    if (segs[0] === 'uploads' && segs[1] && segs[2] === 'complete' && segs.length === 3 && req.method === 'POST') {
+    if (
+      segs[0] === 'uploads' &&
+      segs[1] &&
+      segs[2] === 'complete' &&
+      segs.length === 3 &&
+      req.method === 'POST'
+    ) {
       if (caller.kind === 'anonymous')
         throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
-      await gateSt({ scope: 'storage.write', action: 'storage.upload.complete', resource: segs[1].slice(0, 24) });
+      await gateSt({
+        scope: 'storage.write',
+        action: 'storage.upload.complete',
+        resource: segs[1].slice(0, 24),
+      });
       const object = await svc.completeUploadSession(caller, segs[1]);
       auditSt('storage.object.upload', object.path);
       meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
@@ -512,15 +567,15 @@ export async function handleStorageRoutes(
         });
       }
       if (req.method === 'PATCH') {
-        await gateSt({ scope: 'storage.write', action: 'storage.bucket.update', resource: bucketName });
+        await gateSt({
+          scope: 'storage.write',
+          action: 'storage.bucket.update',
+          resource: bucketName,
+        });
         const parsed = parseBody(UpdateBucketBody, await readJson());
         const updated = await svc.updateBucket(caller, bucketName, parsed);
         auditSt('storage.bucket.update', bucketName);
-        return finish(
-          200,
-          ok({ bucket: updated }, requestId),
-          { caller: caller.kind },
-        );
+        return finish(200, ok({ bucket: updated }, requestId), { caller: caller.kind });
       }
       if (req.method === 'DELETE') {
         if (agent) {
@@ -626,7 +681,11 @@ export async function handleStorageRoutes(
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
         if (last === 'metadata' && req.method === 'GET') {
-          await gateSt({ scope: 'storage.read', action: 'storage.object.metadata', resource: `${bucketName}/${objectPath}` });
+          await gateSt({
+            scope: 'storage.read',
+            action: 'storage.object.metadata',
+            resource: `${bucketName}/${objectPath}`,
+          });
           return finish(
             200,
             ok({ object: await svc.metadata(caller, bucketName, objectPath) }, requestId),
@@ -636,7 +695,11 @@ export async function handleStorageRoutes(
           );
         }
         if ((last === 'move' || last === 'copy') && req.method === 'POST') {
-          await gateSt({ scope: 'storage.write', action: `storage.object.${last}`, resource: `${bucketName}/${objectPath}` });
+          await gateSt({
+            scope: 'storage.write',
+            action: `storage.object.${last}`,
+            resource: `${bucketName}/${objectPath}`,
+          });
           const parsed = parseBody(DestBody, await readJson());
           const object =
             last === 'move'
@@ -651,7 +714,11 @@ export async function handleStorageRoutes(
       }
       const objectPath = decodePath(tail);
       if (req.method === 'GET') {
-        await gateSt({ scope: 'storage.read', action: 'storage.object.download', resource: `${bucketName}/${objectPath}` });
+        await gateSt({
+          scope: 'storage.read',
+          action: 'storage.object.download',
+          resource: `${bucketName}/${objectPath}`,
+        });
         const { stream, object } = await svc.download(caller, bucketName, objectPath);
         const chunks: Uint8Array[] = [];
         for await (const chunk of stream as AsyncIterable<Uint8Array>) chunks.push(chunk);
@@ -675,13 +742,24 @@ export async function handleStorageRoutes(
           bytes: out.byteLength,
         });
         meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
-        meterUsage(ctx, project.organizationId, projectId, 'api', 'api_bandwidth_bytes', out.byteLength);
+        meterUsage(
+          ctx,
+          project.organizationId,
+          projectId,
+          'api',
+          'api_bandwidth_bytes',
+          out.byteLength,
+        );
         return true;
       }
       if (req.method === 'PUT') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
-        await gateSt({ scope: 'storage.write', action: 'storage.object.upload', resource: `${bucketName}/${objectPath}` });
+        await gateSt({
+          scope: 'storage.write',
+          action: 'storage.object.upload',
+          resource: `${bucketName}/${objectPath}`,
+        });
         const maxBytes = config.STORAGE_MAX_FILE_MB * 1024 * 1024;
         const { bytes, sample } = await readRaw(req, maxBytes);
         const upsert = query.get('upsert') === 'true';
@@ -698,14 +776,32 @@ export async function handleStorageRoutes(
         });
         auditSt('storage.object.upload', `${bucketName}/${objectPath}`);
         meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_operations', 1);
-        meterUsage(ctx, project.organizationId, projectId, 'storage', 'storage_bytes', bytes.byteLength);
-        meterUsage(ctx, project.organizationId, projectId, 'api', 'api_bandwidth_bytes', bytes.byteLength);
+        meterUsage(
+          ctx,
+          project.organizationId,
+          projectId,
+          'storage',
+          'storage_bytes',
+          bytes.byteLength,
+        );
+        meterUsage(
+          ctx,
+          project.organizationId,
+          projectId,
+          'api',
+          'api_bandwidth_bytes',
+          bytes.byteLength,
+        );
         return finish(201, ok({ object: record }, requestId), { caller: caller.kind });
       }
       if (req.method === 'DELETE') {
         if (caller.kind === 'anonymous')
           throw new ApiError('UNAUTHORIZED', 'Authentication required', 401);
-        await gateSt({ scope: 'storage.delete', action: 'storage.object.delete', resource: `${bucketName}/${objectPath}` });
+        await gateSt({
+          scope: 'storage.delete',
+          action: 'storage.object.delete',
+          resource: `${bucketName}/${objectPath}`,
+        });
         await svc.remove(caller, bucketName, objectPath);
         auditSt('storage.object.delete', `${bucketName}/${objectPath}`);
         return finish(200, ok({ deleted: true }, requestId), { caller: caller.kind });
