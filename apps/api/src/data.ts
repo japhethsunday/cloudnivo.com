@@ -26,6 +26,7 @@ import {
   type KeyRole,
   type ProjectApiKey,
 } from '@cloudnivo/api-engine';
+import { planSearch } from '@cloudnivo/db-tools';
 import { storageOpenApiPaths } from '@cloudnivo/storage';
 import { realtimeOpenApiPaths } from '@cloudnivo/realtime';
 import { functionsOpenApiPaths } from '@cloudnivo/functions';
@@ -525,6 +526,18 @@ const CreateKeyBody = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
+const SearchBody = z.object({
+  mode: z.enum(['semantic', 'keyword', 'hybrid']),
+  vector: z.array(z.number()).min(1).optional(),
+  vectorColumn: z.string().min(1).max(63).optional(),
+  metric: z.enum(['cosine', 'l2', 'inner_product']).optional(),
+  query: z.string().min(1).max(1000).optional(),
+  textColumns: z.array(z.string().min(1).max(63)).min(1).optional(),
+  textConfig: z.string().min(1).max(40).optional(),
+  select: z.array(z.string().min(1).max(63)).min(1).optional(),
+  limit: z.number().int().min(1).optional(),
+});
+
 const MAX_DATA_BODY = 262_144;
 
 export async function handleDataRoutes(
@@ -589,11 +602,17 @@ export async function handleDataRoutes(
         });
         throw new ApiError('FORBIDDEN', 'API keys cannot manage keys', 403);
       }
+      /**
+       * Search is a POST because an embedding does not fit in a query string,
+       * but it only reads. Charging it write scope would force every
+       * retrieval agent to hold database.write.
+       */
+      const reads = req.method === 'GET' || (rowId === 'search' && req.method === 'POST');
       await requireAgentScope(ctx, req, caller.agent, {
-        scope: req.method === 'GET' ? 'database.read' : 'database.write',
+        scope: reads ? 'database.read' : 'database.write',
         organizationId: caller.project.organizationId,
         projectId: caller.project.id,
-        action: req.method === 'GET' ? 'data.read' : 'data.write',
+        action: reads ? 'data.read' : 'data.write',
         resource: `${req.method ?? 'GET'} ${seg}`,
       });
     }
@@ -674,6 +693,61 @@ export async function handleDataRoutes(
     const creds = await credsForProject(ctx, caller.project);
     const schema = await introspect(ctx, caller.project.id, creds);
     const engine = new DataEngine((text, params) => ctx.data.exec(creds, text, params));
+
+    // ── Vector / keyword / hybrid search ──
+    if (rowId === 'search' && req.method === 'POST') {
+      const body = parseBody(SearchBody, await readJson());
+      const table = schema.tables.find(x => x.name === seg);
+      if (!table) throw new ApiError('NOT_FOUND', 'Table not found', 404);
+
+      /**
+       * Columns are checked against the live schema as well as the planner's
+       * identifier pattern. The pattern stops injection; this stops a caller
+       * probing which columns exist by watching Postgres errors.
+       */
+      const known = new Set(table.columns.map(c => c.name));
+      const named = [
+        ...(body.select ?? []),
+        ...(body.textColumns ?? []),
+        ...(body.vectorColumn ? [body.vectorColumn] : []),
+      ];
+      for (const col of named) {
+        if (!known.has(col)) {
+          throw new ApiError('VALIDATION_ERROR', `Unknown column: ${col.slice(0, 60)}`, 400);
+        }
+      }
+
+      /**
+       * Row scoping, built from the authenticated identity and never from the
+       * request. planSearch binds filter params first, so this is always $1.
+       */
+      let filterSql: string | undefined;
+      let filterParams: unknown[] | undefined;
+      if (caller.kind === 'customer' && caller.role !== 'admin' && known.has('user_id')) {
+        filterSql = 'user_id = $1';
+        filterParams = [caller.userId];
+      }
+
+      const plan = planSearch({
+        table: seg,
+        mode: body.mode,
+        vector: body.vector,
+        vectorColumn: body.vectorColumn,
+        metric: body.metric,
+        query: body.query,
+        textColumns: body.textColumns,
+        textConfig: body.textConfig,
+        select: body.select,
+        limit: body.limit,
+        filterSql,
+        filterParams,
+      });
+      const rows = await ctx.data.exec(creds, plan.text, plan.params);
+      return finish(200, ok({ rows, mode: plan.mode, limit: plan.limit }, requestId), {
+        caller: caller.kind,
+        mode: plan.mode,
+      });
+    }
 
     // ── CSV export (same auth/filters as list; capped, streamed as attachment) ──
     if (rowId === 'export' && req.method === 'GET') {
@@ -762,7 +836,12 @@ export async function handleDataRoutes(
       const errors: { row: number; error: string }[] = [];
       for (let i = 0; i < parsed.rows.length; i++) {
         try {
-          const payload = forceOwnerInsert(schema, seg, caller, parsed.rows[i] as Record<string, unknown>);
+          const payload = forceOwnerInsert(
+            schema,
+            seg,
+            caller,
+            parsed.rows[i] as Record<string, unknown>,
+          );
           await engine.create(schema, seg, payload);
           inserted += 1;
         } catch (err) {
@@ -774,7 +853,15 @@ export async function handleDataRoutes(
       auditMutation(ctx, req, caller, 'data.imported', seg);
       return finish(
         200,
-        ok({ inserted, failed: parsed.rows.length - inserted, errors, truncatedErrors: errors.length >= 50 }, requestId),
+        ok(
+          {
+            inserted,
+            failed: parsed.rows.length - inserted,
+            errors,
+            truncatedErrors: errors.length >= 50,
+          },
+          requestId,
+        ),
         { caller: caller.kind },
       );
     }
@@ -896,7 +983,12 @@ function auditMutation(
     .recordAudit(event, {
       projectId: caller.project.id,
       organizationId: caller.project.organizationId,
-      userId: caller.kind === 'key' ? undefined : caller.kind === 'agent' ? caller.agent.userId : caller.userId,
+      userId:
+        caller.kind === 'key'
+          ? undefined
+          : caller.kind === 'agent'
+            ? caller.agent.userId
+            : caller.userId,
     })
     .catch(err => ctx.logger.warn('audit failed', { error: String(err).slice(0, 120) }));
   ctx.logger.info('audit', { event, project: caller.project.id, table });

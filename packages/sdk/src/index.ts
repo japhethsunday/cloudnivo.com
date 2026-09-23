@@ -98,7 +98,13 @@ async function request<T>(
   let json: {
     data?: T & { approval?: { id?: string } };
     meta?: { requestId?: string };
-    error?: { code?: string; message?: string; remediation?: string; requestId?: string; details?: unknown };
+    error?: {
+      code?: string;
+      message?: string;
+      remediation?: string;
+      requestId?: string;
+      details?: unknown;
+    };
   } = {};
   try {
     json = (await res.json()) as typeof json;
@@ -186,8 +192,20 @@ export interface CapabilityManifestView {
 
 export interface ConnectBundleView {
   project: { id: string; slug: string; name: string; organizationId: string; region: string };
-  urls: { api: string; project: string; data: string; realtime: string; openapi: string; discovery: string };
-  keys: { publicKeyPrefix: string | null; secretKeyPrefix: string | null; note: string; issue: string };
+  urls: {
+    api: string;
+    project: string;
+    data: string;
+    realtime: string;
+    openapi: string;
+    discovery: string;
+  };
+  keys: {
+    publicKeyPrefix: string | null;
+    secretKeyPrefix: string | null;
+    note: string;
+    issue: string;
+  };
   database: {
     host: string;
     port: number;
@@ -199,7 +217,10 @@ export interface ConnectBundleView {
   agentToken: { issue: string; verify: string; scopesEndpoint: string; note: string };
   environments: { slug: string; name: string; isPreview: boolean }[];
   install: { cli: string; sdk: string; login: string; link: string };
-  env: { lines: string[]; variables: { name: string; value: string; secret: boolean; note: string }[] };
+  env: {
+    lines: string[];
+    variables: { name: string; value: string; secret: boolean; note: string }[];
+  };
 }
 
 export interface MigrationView {
@@ -237,6 +258,23 @@ export interface EnvironmentView {
   isPreview: boolean;
 }
 
+export interface SearchInput {
+  mode: 'semantic' | 'keyword' | 'hybrid';
+  /** Embedding to search by. Required for semantic and hybrid. */
+  vector?: number[];
+  /** pgvector column. Required for semantic and hybrid. */
+  vectorColumn?: string;
+  /** Defaults to cosine, which must match the index's operator class. */
+  metric?: 'cosine' | 'l2' | 'inner_product';
+  /** Query text. Required for keyword and hybrid. */
+  query?: string;
+  /** Text columns to rank on. Required for keyword and hybrid. */
+  textColumns?: string[];
+  textConfig?: string;
+  select?: string[];
+  limit?: number;
+}
+
 export class CloudNivoClient {
   constructor(private readonly opts: ClientOptions) {}
 
@@ -255,12 +293,18 @@ export class CloudNivoClient {
     return request(this.opts, 'GET', '/api/v1/discovery');
   }
 
-  async discoverScopes(): Promise<{ scopes: ScopeView[]; expiryPresets: { id: string; label: string; days: number | null }[] }> {
+  async discoverScopes(): Promise<{
+    scopes: ScopeView[];
+    expiryPresets: { id: string; label: string; days: number | null }[];
+  }> {
     return request(this.opts, 'GET', '/api/v1/discovery/scopes');
   }
 
   /** Everything needed to point tooling at one project. */
-  async connect(projectId: string, opts: { reveal?: boolean; environment?: string } = {}): Promise<ConnectBundleView> {
+  async connect(
+    projectId: string,
+    opts: { reveal?: boolean; environment?: string } = {},
+  ): Promise<ConnectBundleView> {
     const q = new URLSearchParams();
     if (opts.reveal) q.set('reveal', 'true');
     if (opts.environment) q.set('environment', opts.environment);
@@ -282,8 +326,25 @@ export class CloudNivoClient {
     );
   }
 
-  async runSql(projectId: string, sql: string): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
+  async runSql(
+    projectId: string,
+    sql: string,
+  ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/database/query`, { sql });
+  }
+
+  /**
+   * Vector, keyword or hybrid search over a table.
+   *
+   * POST because an embedding does not fit in a query string; it is still a
+   * read, and an agent token needs only `database.read` for it.
+   */
+  async search(
+    projectId: string,
+    table: string,
+    input: SearchInput,
+  ): Promise<{ rows: Record<string, unknown>[]; mode: SearchInput['mode']; limit: number }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/${table}/search`, input);
   }
 
   async advisors(projectId: string): Promise<{ findings: { level: string; title: string }[] }> {
@@ -314,11 +375,21 @@ export class CloudNivoClient {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/database/migrations`, input);
   }
 
-  async getMigration(projectId: string, migrationId: string): Promise<{ migration: MigrationView }> {
-    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/database/migrations/${migrationId}`);
+  async getMigration(
+    projectId: string,
+    migrationId: string,
+  ): Promise<{ migration: MigrationView }> {
+    return request(
+      this.opts,
+      'GET',
+      `/api/v1/projects/${projectId}/database/migrations/${migrationId}`,
+    );
   }
 
-  async previewMigration(projectId: string, migrationId: string): Promise<{ migration: MigrationView; preview: MigrationPreviewView }> {
+  async previewMigration(
+    projectId: string,
+    migrationId: string,
+  ): Promise<{ migration: MigrationView; preview: MigrationPreviewView }> {
     return request(
       this.opts,
       'POST',
@@ -335,7 +406,12 @@ export class CloudNivoClient {
     projectId: string,
     migrationId: string,
     opts: { checksum?: string; approvalId?: string } = {},
-  ): Promise<{ migration: MigrationView; applied: boolean; statements: number; durationMs: number }> {
+  ): Promise<{
+    migration: MigrationView;
+    applied: boolean;
+    statements: number;
+    durationMs: number;
+  }> {
     return request(
       this.opts,
       'POST',
@@ -346,10 +422,17 @@ export class CloudNivoClient {
   }
 
   async discardMigration(projectId: string, migrationId: string): Promise<{ discarded: string }> {
-    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/database/migrations/${migrationId}`);
+    return request(
+      this.opts,
+      'DELETE',
+      `/api/v1/projects/${projectId}/database/migrations/${migrationId}`,
+    );
   }
 
-  async resetMigration(projectId: string, migrationId: string): Promise<{ migration: MigrationView }> {
+  async resetMigration(
+    projectId: string,
+    migrationId: string,
+  ): Promise<{ migration: MigrationView }> {
     return request(
       this.opts,
       'POST',
@@ -360,19 +443,30 @@ export class CloudNivoClient {
 
   // ── Secrets (write-only values) ──
 
-  async listSecrets(projectId: string): Promise<{ secrets: { name: string; createdAt: string; updatedAt: string }[] }> {
+  async listSecrets(
+    projectId: string,
+  ): Promise<{ secrets: { name: string; createdAt: string; updatedAt: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/database/vault`);
   }
 
   /** Stores or rotates a secret. The value is never readable afterwards. */
   async setSecret(projectId: string, name: string, value: string): Promise<{ stored: string }> {
-    return request(this.opts, 'PUT', `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name)}`, {
-      value,
-    });
+    return request(
+      this.opts,
+      'PUT',
+      `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name)}`,
+      {
+        value,
+      },
+    );
   }
 
   async deleteSecret(projectId: string, name: string): Promise<{ deleted: string }> {
-    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name)}`);
+    return request(
+      this.opts,
+      'DELETE',
+      `/api/v1/projects/${projectId}/database/vault/${encodeURIComponent(name)}`,
+    );
   }
 
   // ── Environments ──
@@ -389,7 +483,11 @@ export class CloudNivoClient {
   }
 
   async deleteEnvironment(projectId: string, environmentId: string): Promise<{ deleted: boolean }> {
-    return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/database/environments/${environmentId}`);
+    return request(
+      this.opts,
+      'DELETE',
+      `/api/v1/projects/${projectId}/database/environments/${environmentId}`,
+    );
   }
 
   // ── Auth configuration (the project's own end users) ──
@@ -398,23 +496,34 @@ export class CloudNivoClient {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/auth/config`);
   }
 
-  async updateAuthConfig(projectId: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async updateAuthConfig(
+    projectId: string,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     return request(this.opts, 'PATCH', `/api/v1/projects/${projectId}/auth/config`, patch);
   }
 
   // ── Storage ──
 
-  async createBucket(projectId: string, input: { name: string; public?: boolean }): Promise<{ bucket: { name: string } }> {
+  async createBucket(
+    projectId: string,
+    input: { name: string; public?: boolean },
+  ): Promise<{ bucket: { name: string } }> {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/storage/buckets`, input);
   }
 
   // ── Logs ──
 
-  async listJobs(projectId: string): Promise<{ jobs: { id: string; kind: string; status: string }[] }> {
+  async listJobs(
+    projectId: string,
+  ): Promise<{ jobs: { id: string; kind: string; status: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/jobs`);
   }
 
-  async functionLogs(projectId: string, slug: string): Promise<{ logs: { line: string; at: string }[] }> {
+  async functionLogs(
+    projectId: string,
+    slug: string,
+  ): Promise<{ logs: { line: string; at: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/functions/${slug}/logs`);
   }
 
@@ -534,11 +643,23 @@ export class CloudNivoClient {
       expiresIn?: string;
     },
   ): Promise<{ token: AgentTokenView; raw: string }> {
-    return request(this.opts, 'POST', `/api/v1/organizations/${organizationId}/agent-tokens`, input);
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/organizations/${organizationId}/agent-tokens`,
+      input,
+    );
   }
 
-  async revokeAgentToken(organizationId: string, tokenId: string): Promise<{ token: AgentTokenView }> {
-    return request(this.opts, 'DELETE', `/api/v1/organizations/${organizationId}/agent-tokens/${tokenId}`);
+  async revokeAgentToken(
+    organizationId: string,
+    tokenId: string,
+  ): Promise<{ token: AgentTokenView }> {
+    return request(
+      this.opts,
+      'DELETE',
+      `/api/v1/organizations/${organizationId}/agent-tokens/${tokenId}`,
+    );
   }
 
   async listApprovals(
@@ -592,7 +713,10 @@ export class CloudNivoClient {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/queues`);
   }
 
-  async createQueue(projectId: string, input: { name: string; maxDeliveries?: number }): Promise<{ queue: { id: string; name: string } }> {
+  async createQueue(
+    projectId: string,
+    input: { name: string; maxDeliveries?: number },
+  ): Promise<{ queue: { id: string; name: string } }> {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues`, input);
   }
 
@@ -619,11 +743,23 @@ export class CloudNivoClient {
     });
   }
 
-  async ackMessage(projectId: string, queueId: string, messageId: string): Promise<{ message: { id: string } }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/messages/${messageId}/ack`, {});
+  async ackMessage(
+    projectId: string,
+    queueId: string,
+    messageId: string,
+  ): Promise<{ message: { id: string } }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/queues/${queueId}/messages/${messageId}/ack`,
+      {},
+    );
   }
 
-  async listMessages(projectId: string, queueId: string): Promise<{ messages: { id: string; status: string }[] }> {
+  async listMessages(
+    projectId: string,
+    queueId: string,
+  ): Promise<{ messages: { id: string; status: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/queues/${queueId}/messages`);
   }
 
@@ -631,12 +767,20 @@ export class CloudNivoClient {
     return request(this.opts, 'DELETE', `/api/v1/projects/${projectId}/queues/${queueId}`);
   }
 
-  async purgeQueue(projectId: string, queueId: string, statuses: string[]): Promise<{ purged: number }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/purge`, { statuses });
+  async purgeQueue(
+    projectId: string,
+    queueId: string,
+    statuses: string[],
+  ): Promise<{ purged: number }> {
+    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/queues/${queueId}/purge`, {
+      statuses,
+    });
   }
 
   // ── Automation: schedules ──
-  async listSchedules(projectId: string): Promise<{ schedules: { id: string; name: string; cron: string }[] }> {
+  async listSchedules(
+    projectId: string,
+  ): Promise<{ schedules: { id: string; name: string; cron: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/schedules`);
   }
 
@@ -647,8 +791,16 @@ export class CloudNivoClient {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/schedules`, input);
   }
 
-  async triggerSchedule(projectId: string, scheduleId: string): Promise<{ ok: boolean; error: string | null }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/schedules/${scheduleId}/trigger`, {});
+  async triggerSchedule(
+    projectId: string,
+    scheduleId: string,
+  ): Promise<{ ok: boolean; error: string | null }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/schedules/${scheduleId}/trigger`,
+      {},
+    );
   }
 
   async patchSchedule(
@@ -656,7 +808,12 @@ export class CloudNivoClient {
     scheduleId: string,
     patch: { name?: string; cron?: string; payload?: Record<string, unknown>; enabled?: boolean },
   ): Promise<{ schedule: { id: string } }> {
-    return request(this.opts, 'PATCH', `/api/v1/projects/${projectId}/schedules/${scheduleId}`, patch);
+    return request(
+      this.opts,
+      'PATCH',
+      `/api/v1/projects/${projectId}/schedules/${scheduleId}`,
+      patch,
+    );
   }
 
   async deleteSchedule(projectId: string, scheduleId: string): Promise<{ deleted: boolean }> {
@@ -664,7 +821,9 @@ export class CloudNivoClient {
   }
 
   // ── Automation: webhooks ──
-  async listWebhooks(projectId: string): Promise<{ webhooks: { id: string; name: string; url: string }[] }> {
+  async listWebhooks(
+    projectId: string,
+  ): Promise<{ webhooks: { id: string; name: string; url: string }[] }> {
     return request(this.opts, 'GET', `/api/v1/projects/${projectId}/webhooks`);
   }
 
@@ -675,28 +834,71 @@ export class CloudNivoClient {
     return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks`, input);
   }
 
-  async listDeliveries(projectId: string, webhookId: string): Promise<{ deliveries: { id: string; status: string }[] }> {
-    return request(this.opts, 'GET', `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries`);
+  async listDeliveries(
+    projectId: string,
+    webhookId: string,
+  ): Promise<{ deliveries: { id: string; status: string }[] }> {
+    return request(
+      this.opts,
+      'GET',
+      `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries`,
+    );
   }
 
-  async testWebhook(projectId: string, webhookId: string): Promise<{ delivery: { id: string; status: string } }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/test`, {});
+  async testWebhook(
+    projectId: string,
+    webhookId: string,
+  ): Promise<{ delivery: { id: string; status: string } }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/webhooks/${webhookId}/test`,
+      {},
+    );
   }
 
-  async replayDelivery(projectId: string, webhookId: string, deliveryId: string): Promise<{ delivery: { id: string } }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries/${deliveryId}/replay`, {});
+  async replayDelivery(
+    projectId: string,
+    webhookId: string,
+    deliveryId: string,
+  ): Promise<{ delivery: { id: string } }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/webhooks/${webhookId}/deliveries/${deliveryId}/replay`,
+      {},
+    );
   }
 
-  async rotateWebhook(projectId: string, webhookId: string): Promise<{ webhook: { id: string }; secret: string }> {
-    return request(this.opts, 'POST', `/api/v1/projects/${projectId}/webhooks/${webhookId}/rotate`, {});
+  async rotateWebhook(
+    projectId: string,
+    webhookId: string,
+  ): Promise<{ webhook: { id: string }; secret: string }> {
+    return request(
+      this.opts,
+      'POST',
+      `/api/v1/projects/${projectId}/webhooks/${webhookId}/rotate`,
+      {},
+    );
   }
 
   async patchWebhook(
     projectId: string,
     webhookId: string,
-    patch: { name?: string; url?: string; eventTypes?: string[]; enabled?: boolean; maxAttempts?: number },
+    patch: {
+      name?: string;
+      url?: string;
+      eventTypes?: string[];
+      enabled?: boolean;
+      maxAttempts?: number;
+    },
   ): Promise<{ webhook: { id: string } }> {
-    return request(this.opts, 'PATCH', `/api/v1/projects/${projectId}/webhooks/${webhookId}`, patch);
+    return request(
+      this.opts,
+      'PATCH',
+      `/api/v1/projects/${projectId}/webhooks/${webhookId}`,
+      patch,
+    );
   }
 
   async deleteWebhook(projectId: string, webhookId: string): Promise<{ deleted: boolean }> {
@@ -743,7 +945,8 @@ export class CloudNivoClient {
       `${this.opts.baseUrl}/api/v1/projects/${projectId}/${table}/export`,
       { headers },
     );
-    if (!res.ok) throw new SdkError('EXPORT_FAILED', `Export failed: HTTP ${res.status}`, res.status);
+    if (!res.ok)
+      throw new SdkError('EXPORT_FAILED', `Export failed: HTTP ${res.status}`, res.status);
     return res.text();
   }
 

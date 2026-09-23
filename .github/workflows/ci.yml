@@ -119,6 +119,15 @@ jobs:
           # tests skip, which is how a broken CONNECT grant went unnoticed.
           LIVE_PG_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
             npx vitest run packages/provisioning/src/managed-provider.live.test.ts
+      - name: Vector search against real pgvector
+        run: |
+          set -euo pipefail
+          # Nearest-neighbour ordering, RRF fusion and - most of all - that the
+          # ownership filter binds to BOTH branches of the hybrid FULL OUTER
+          # JOIN can only be proven against a real pgvector. Asserting on the
+          # SQL string cannot show what Postgres returns.
+          LIVE_PG_URL=postgres://cloudnivo:cloudnivo_dev_password_change_me@localhost:5432/cloudnivo \
+            npx vitest run packages/db-tools/src/vector-search.live.test.ts
       - name: Backup + verify control database
         run: |
           set -euo pipefail
