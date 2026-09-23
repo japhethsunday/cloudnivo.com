@@ -16,10 +16,12 @@ import {
   CsvError,
   DataEngine,
   KeyError,
+  buildGraphQLSchema,
   buildOpenApiDoc,
   issueKey,
   keyCanWrite,
   parseCsv,
+  runGraphQL,
   serializeCsv,
   verifyKey,
   type IssuedKey,
@@ -319,7 +321,7 @@ const PROJECT_RESERVED = new Set([
 export function isDataRoute(rest: string[], method: string): boolean {
   if (rest.length < 2 || !rest[0] || !rest[1]) return false;
   const seg = rest[1];
-  if (seg === 'keys' || seg === 'openapi.json') return true;
+  if (seg === 'keys' || seg === 'openapi.json' || seg === 'graphql') return true;
   if (PROJECT_RESERVED.has(seg)) return false;
   return ['GET', 'POST', 'PATCH', 'DELETE'].includes(method);
 }
@@ -413,6 +415,16 @@ export async function resolveCaller(
 function toKeyError(err: unknown): ApiError {
   if (err instanceof KeyError) return new ApiError(err.code, err.message, err.status);
   throw err;
+}
+
+/** requireWrite as a predicate, for callers that branch instead of throwing. */
+function callerCanWrite(caller: DataCaller): boolean {
+  try {
+    requireWrite(caller);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function requireWrite(caller: DataCaller): void {
@@ -524,6 +536,12 @@ const CreateKeyBody = z.object({
   name: z.string().min(1).max(100),
   role: z.enum(['public', 'service', 'admin']),
   expiresAt: z.string().datetime().optional(),
+});
+
+const GraphQLBody = z.object({
+  query: z.string().min(1).max(16_384),
+  variables: z.record(z.unknown()).nullable().optional(),
+  operationName: z.string().max(200).nullable().optional(),
 });
 
 const SearchBody = z.object({
@@ -693,6 +711,42 @@ export async function handleDataRoutes(
     const creds = await credsForProject(ctx, caller.project);
     const schema = await introspect(ctx, caller.project.id, creds);
     const engine = new DataEngine((text, params) => ctx.data.exec(creds, text, params));
+
+    // ── GraphQL over the same data plane ──
+    if (seg === 'graphql' && rest.length === 2) {
+      if (req.method !== 'POST') {
+        throw new ApiError('METHOD_NOT_ALLOWED', 'GraphQL requires POST', 405);
+      }
+      const body = parseBody(GraphQLBody, await readJson());
+
+      /**
+       * The same row filters REST applies, built from the caller's identity.
+       * GraphQL must not become a second authorization system: if this were
+       * omitted, every ownership rule enforced on the REST path would be
+       * absent here.
+       */
+      const gqlSchema = buildGraphQLSchema(schema);
+      const result = await runGraphQL(
+        gqlSchema,
+        {
+          query: body.query,
+          variables: body.variables ?? null,
+          operationName: body.operationName ?? null,
+        },
+        {
+          engine,
+          snapshot: schema,
+          // The exact resolver the REST path uses, per table.
+          filtersFor: (table: string) => {
+            const scope = ownerFilterFor(schema, table, caller);
+            return scope ? [scope] : [];
+          },
+          canWrite: callerCanWrite(caller),
+          maxLimit: config.PROVISION_MAX_SQL_ROWS,
+        },
+      );
+      return finish(200, result, { caller: caller.kind });
+    }
 
     // ── Vector / keyword / hybrid search ──
     if (rowId === 'search' && req.method === 'POST') {

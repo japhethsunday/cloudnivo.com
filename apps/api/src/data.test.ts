@@ -311,3 +311,128 @@ describe('phase 3 data plane (fake backend)', () => {
     }
   });
 });
+
+/**
+ * GraphQL is a second front door onto the same rows, so what matters is that
+ * it answers over HTTP exactly as REST does — same data, same refusals.
+ */
+describe('graphql endpoint', () => {
+  let base = '';
+  let close: () => Promise<void> = async () => {};
+  let projectA = '';
+  let serviceKey = '';
+  let readKey = '';
+
+  const gql = async (
+    query: string,
+    key: string,
+  ): Promise<{ status: number; json: Record<string, unknown> }> =>
+    req(base, 'POST', `/api/v1/projects/${projectA}/graphql`, { apikey: key, body: { query } });
+
+  beforeAll(async () => {
+    const b = await boot();
+    base = b.base;
+    close = b.close;
+    const token = await tokenFor(USER_A);
+    const org = await req(base, 'POST', '/api/v1/organizations', {
+      token,
+      body: { name: 'GQL Org', slug: 'gqlorg' },
+    });
+    const orgId = data<{ organization: { id: string } }>(org.json).organization.id;
+    const p = await req(base, 'POST', '/api/v1/projects', {
+      token,
+      body: { name: 'gqlshop', slug: 'gqlshop', organizationId: orgId },
+    });
+    const { project, jobId } = data<{ project: { id: string }; jobId: string }>(p.json);
+    await pollJob(base, token, project.id, jobId);
+    projectA = project.id;
+
+    const sk = await req(base, 'POST', `/api/v1/projects/${projectA}/keys`, {
+      token,
+      body: { name: 'server', role: 'service' },
+    });
+    serviceKey = data<{ raw: string }>(sk.json).raw;
+    const rk = await req(base, 'POST', `/api/v1/projects/${projectA}/keys`, {
+      token,
+      body: { name: 'web', role: 'public' },
+    });
+    readKey = data<{ raw: string }>(rk.json).raw;
+
+    await req(base, 'POST', `/api/v1/projects/${projectA}/users`, {
+      apikey: serviceKey,
+      body: { id: 'u1', email: 'gql@example.com', age: 41 },
+    });
+  });
+  afterAll(async () => {
+    await close();
+  });
+
+  it('serves the generated schema and returns rows', async () => {
+    const res = await gql('{ users { id email age } }', serviceKey);
+    expect(res.status).toBe(200);
+    const rows = (res.json as { data: { users: { email: string }[] } }).data.users;
+    expect(rows.map(r => r.email)).toContain('gql@example.com');
+  });
+
+  it('supports by_pk, where and limit', async () => {
+    const byPk = await gql('{ users_by_pk(id: "u1") { email } }', serviceKey);
+    expect((byPk.json as { data: { users_by_pk: { email: string } } }).data.users_by_pk.email).toBe(
+      'gql@example.com',
+    );
+    const filtered = await gql(
+      '{ users(where: { email: { eq: "nobody@x.y" } }) { id } }',
+      serviceKey,
+    );
+    expect((filtered.json as { data: { users: unknown[] } }).data.users).toEqual([]);
+  });
+
+  it('mutates through the same engine as REST', async () => {
+    const created = await gql(
+      'mutation { insert_users(object: { id: "u2", email: "second@example.com", age: 22 }) { id email } }',
+      serviceKey,
+    );
+    expect((created.json as { data: { insert_users: { id: string } } }).data.insert_users.id).toBe(
+      'u2',
+    );
+
+    // The REST path must see the row GraphQL created.
+    const viaRest = await req(base, 'GET', `/api/v1/projects/${projectA}/users/u2`, {
+      apikey: serviceKey,
+    });
+    expect(data<{ row: { email: string } }>(viaRest.json).row.email).toBe('second@example.com');
+
+    const removed = await gql('mutation { delete_users_by_pk(id: "u2") }', serviceKey);
+    expect(
+      (removed.json as { data: { delete_users_by_pk: boolean } }).data.delete_users_by_pk,
+    ).toBe(true);
+  });
+
+  it('refuses mutations from a read-only key, as REST does', async () => {
+    const res = await gql(
+      'mutation { insert_users(object: { id: "u9", email: "x@y.z" }) { id } }',
+      readKey,
+    );
+    expect(JSON.stringify(res.json)).toMatch(/read-only/i);
+    // And the row was not created.
+    const check = await req(base, 'GET', `/api/v1/projects/${projectA}/users/u9`, {
+      apikey: serviceKey,
+    });
+    expect(check.status).toBe(404);
+  });
+
+  it('rejects an unknown table and a non-POST request', async () => {
+    const unknown = await gql('{ secrets { id } }', serviceKey);
+    expect(JSON.stringify(unknown.json)).toMatch(/Cannot query field/);
+    const wrongMethod = await req(base, 'GET', `/api/v1/projects/${projectA}/graphql`, {
+      apikey: serviceKey,
+    });
+    expect(wrongMethod.status).toBe(405);
+  });
+
+  it('requires a key, like every other data route', async () => {
+    const res = await req(base, 'POST', `/api/v1/projects/${projectA}/graphql`, {
+      body: { query: '{ users { id } }' },
+    });
+    expect(res.status).toBe(401);
+  });
+});
